@@ -1,0 +1,10 @@
+# Local planning notes and machine-specific files must stay out of Git.
+*.local.md
+.tools/
+/data/
+/logs/
+/dist/
+/target/
+tv-credentials.json
+*.log
+
