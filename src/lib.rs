@@ -10,3 +10,4 @@ pub mod displays;
 pub mod windows_hdr;
 #[cfg(windows)]
 pub mod windows_displays;
+pub mod display_apply;
