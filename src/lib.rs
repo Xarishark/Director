@@ -13,3 +13,5 @@ pub mod windows_displays;
 pub mod display_apply;
 pub mod display_editor;
 pub mod display_mirroring;
+pub mod display_detection;
+pub mod display_capabilities;
