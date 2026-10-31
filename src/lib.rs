@@ -5,3 +5,8 @@ pub mod diagnostics;
 pub mod audio_devices;
 #[cfg(windows)]
 pub mod windows_audio;
+pub mod displays;
+#[cfg(windows)]
+pub mod windows_hdr;
+#[cfg(windows)]
+pub mod windows_displays;
