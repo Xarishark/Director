@@ -1,0 +1,3 @@
+# Keep the Windows GNU/LLVM build independent of the toolchain's libunwind.dll.
+[target.x86_64-pc-windows-gnullvm]
+rustflags = ["-C", "target-feature=+crt-static"]
