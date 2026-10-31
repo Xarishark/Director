@@ -11,3 +11,5 @@ pub mod windows_hdr;
 #[cfg(windows)]
 pub mod windows_displays;
 pub mod display_apply;
+pub mod display_editor;
+pub mod display_mirroring;
