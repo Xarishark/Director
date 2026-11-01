@@ -27,3 +27,4 @@ pub mod samsung;
 pub mod tv_report;
 #[cfg(windows)]
 pub mod windows_lg;
+pub mod tv_setup;
