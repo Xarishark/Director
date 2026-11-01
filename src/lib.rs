@@ -22,3 +22,6 @@ pub mod windows_display_apply;
 pub mod tv_network;
 pub mod lg_protocol;
 pub mod tv_control;
+pub mod tvs;
+pub mod samsung;
+pub mod tv_report;
