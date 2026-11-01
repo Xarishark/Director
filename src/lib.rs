@@ -19,3 +19,6 @@ pub mod display_capabilities;
 pub mod windows_display_modes;
 #[cfg(windows)]
 pub mod windows_display_apply;
+pub mod tv_network;
+pub mod lg_protocol;
+pub mod tv_control;
