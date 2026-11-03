@@ -290,3 +290,97 @@ mod tests {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct LastRun {
+    pub name: String,
+    pub completed_at: String,
+    pub failed_stage: Option<String>,
+    pub message: String,
+    pub details: Vec<String>,
+}
+
+impl LastRun {
+    pub fn new(name: &str, stage: &str, report: &crate::scenes::Report) -> Self {
+        Self {
+            name: bounded(name),
+            completed_at: timestamp_utc(),
+            failed_stage: (!report.success).then(|| bounded(stage)),
+            message: bounded(&report.message),
+            details: report
+                .details
+                .iter()
+                .take(64)
+                .map(|detail| bounded(detail))
+                .collect(),
+        }
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        crate::presets::write_document(&folder()?.join("last-run.json"), self)
+    }
+
+    pub fn read() -> Result<Option<Self>, String> {
+        Self::read_file(&folder()?.join("last-run.json"))
+    }
+
+    pub(crate) fn read_file(path: &Path) -> Result<Option<Self>, String> {
+        use std::io::Read;
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut bytes = Vec::new();
+        file.take(LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > LIMIT {
+            return Err("Last run record is too large.".into());
+        }
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+}
+
+pub fn recent_text() -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 64 * 1024;
+    let dir = folder()?;
+    let mut logs = Vec::new();
+    for name in ["director.1.log", "director.log"] {
+        let mut file = match fs::File::open(dir.join(name)) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        let size = file.metadata().map_err(|e| e.to_string())?.len();
+        let start = size.saturating_sub(TAIL);
+        file.seek(SeekFrom::Start(start))
+            .map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take(TAIL)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&bytes);
+        for line in text.lines().skip(usize::from(start != 0)) {
+            if let Ok(record) = serde_json::from_str::<serde_json::Value>(line) {
+                let field = |key: &str| record[key].as_str().unwrap_or_default();
+                logs.push(format!(
+                    "{}  {} · {}\n{}",
+                    field("timestamp"),
+                    field("step"),
+                    field("outcome"),
+                    field("detail")
+                ));
+            }
+        }
+    }
+    let first = logs.len().saturating_sub(100);
+    Ok(logs[first..]
+        .iter()
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n\n"))
+}

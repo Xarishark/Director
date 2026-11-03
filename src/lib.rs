@@ -38,3 +38,4 @@ pub mod windows_tv;
 pub mod fps;
 #[cfg(windows)]
 pub mod windows_fps;
+pub mod scenes;
