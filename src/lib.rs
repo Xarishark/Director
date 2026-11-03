@@ -35,3 +35,6 @@ pub mod windows_samsung;
 pub mod windows_android_tv;
 #[cfg(windows)]
 pub mod windows_tv;
+pub mod fps;
+#[cfg(windows)]
+pub mod windows_fps;
