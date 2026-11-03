@@ -1,0 +1,103 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Director" Manufacturer="Director" Version="$(var.Version)"
+           UpgradeCode="A5865718-8A6A-4D26-B658-A35A2D636870" Scope="perUserOrMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Director is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="INSTALLSCOPE" Value="User" />
+    <Property Id="MACHINEPROGRAMFILES">
+      <RegistrySearch Id="MachineProgramFiles" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion"
+                      Name="ProgramFilesDir" Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="INSTALLFOLDER" Value="[MACHINEPROGRAMFILES]\Director"
+                 Before="CostInitialize" Sequence="both"
+                 Condition="NOT Installed AND ALLUSERS = 1 AND MACHINEPROGRAMFILES" />
+    <Icon Id="DirectorIcon" SourceFile="$(var.ReleaseDir)\director.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DirectorIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Director">
+        <Component Id="Application" Guid="*">
+          <File Id="DirectorExe" Source="$(var.ReleaseDir)\director.exe" KeyPath="yes">
+            <Shortcut Id="DirectorMenu" Directory="ProgramMenuFolder" Name="Director"
+                      WorkingDirectory="INSTALLFOLDER" Icon="DirectorIcon">
+            </Shortcut>
+          </File>
+        </Component>
+        <Component Id="WindowIcon" Guid="*">
+          <File Source="$(var.ReleaseDir)\director.ico" />
+        </Component>
+        <Directory Id="IconsFolder" Name="icons">
+          <Component Id="DeleteIcon" Guid="*"><File Source="$(var.ReleaseDir)\icons\delete.svg" /></Component>
+          <Component Id="RemoteIcon" Guid="*"><File Source="$(var.ReleaseDir)\icons\remote.svg" /></Component>
+        </Directory>
+        <Directory Id="OrientationFolder" Name="orientations">
+          <Component Id="Orientation0" Guid="*"><File Source="$(var.ReleaseDir)\orientations\0.svg" /></Component>
+          <Component Id="Orientation90" Guid="*"><File Source="$(var.ReleaseDir)\orientations\90.svg" /></Component>
+          <Component Id="Orientation180" Guid="*"><File Source="$(var.ReleaseDir)\orientations\180.svg" /></Component>
+          <Component Id="Orientation270" Guid="*"><File Source="$(var.ReleaseDir)\orientations\270.svg" /></Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Feature Id="DirectorFeature" Title="Director">
+      <ComponentGroupRef Id="DirectorFiles" />
+    </Feature>
+
+    <UI>
+      <TextStyle Id="Body" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="Heading" FaceName="Segoe UI" Size="14" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="Body" />
+      <Dialog Id="DirectorScope" Width="370" Height="220" Title="Director Setup">
+        <Control Id="Title" Type="Text" X="20" Y="18" Width="330" Height="26" Text="{\Heading}Install Director" />
+        <Control Id="Prompt" Type="Text" X="20" Y="52" Width="330" Height="18" Text="Choose who can use Director on this PC." />
+        <Control Id="Scope" Type="RadioButtonGroup" Property="INSTALLSCOPE" X="20" Y="78" Width="330" Height="52">
+          <RadioButtonGroup Property="INSTALLSCOPE">
+            <RadioButton Value="User" X="0" Y="0" Width="320" Height="18" Text="Just for me" />
+            <RadioButton Value="Machine" X="0" Y="25" Width="320" Height="18" Text="Everyone on this PC (administrator approval)" />
+          </RadioButtonGroup>
+        </Control>
+        <Control Id="Prerequisite" Type="Text" X="20" Y="141" Width="330" Height="30" Text="Director's window requires the Windows App Runtime. Install the compatible runtime separately if needed." />
+        <Control Id="Install" Type="PushButton" X="218" Y="190" Width="64" Height="19" Text="Install" Default="yes">
+          <Publish Property="ALLUSERS" Value="{}" Condition="INSTALLSCOPE = &quot;User&quot;" Order="1" />
+          <Publish Property="ALLUSERS" Value="1" Condition="INSTALLSCOPE = &quot;Machine&quot;" Order="1" />
+          <Publish Property="MSIINSTALLPERUSER" Value="1" Condition="INSTALLSCOPE = &quot;User&quot;" Order="2" />
+          <Publish Property="MSIINSTALLPERUSER" Value="{}" Condition="INSTALLSCOPE = &quot;Machine&quot;" Order="3" />
+          <Publish Event="EndDialog" Value="Return" Order="4" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="289" Y="190" Width="64" Height="19" Text="Cancel" Cancel="yes">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+      <Dialog Id="DirectorDone" Width="370" Height="115" Title="Director Setup">
+        <Control Id="Message" Type="Text" X="20" Y="23" Width="330" Height="30" Text="Director setup completed." />
+        <Control Id="Close" Type="PushButton" X="285" Y="81" Width="65" Height="19" Text="Close" Default="yes" Cancel="yes">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+      <Dialog Id="DirectorFailed" Width="370" Height="130" Title="Director Setup">
+        <Control Id="Message" Type="Text" X="20" Y="23" Width="330" Height="49" Text="Director setup could not finish. Check Windows Installer's error or rerun setup with logging enabled." />
+        <Control Id="Close" Type="PushButton" X="285" Y="96" Width="65" Height="19" Text="Close" Default="yes" Cancel="yes">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+      <InstallUISequence>
+        <Show Dialog="DirectorScope" Before="FindRelatedProducts" Condition="NOT Installed AND UILevel = 5" />
+        <Show Dialog="DirectorDone" OnExit="success" />
+        <Show Dialog="DirectorFailed" OnExit="error" />
+      </InstallUISequence>
+    </UI>
+  </Package>
+  <Fragment>
+    <ComponentGroup Id="DirectorFiles">
+      <ComponentRef Id="Application" />
+      <ComponentRef Id="WindowIcon" />
+      <ComponentRef Id="DeleteIcon" />
+      <ComponentRef Id="RemoteIcon" />
+      <ComponentRef Id="Orientation0" />
+      <ComponentRef Id="Orientation90" />
+      <ComponentRef Id="Orientation180" />
+      <ComponentRef Id="Orientation270" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

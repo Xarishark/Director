@@ -1,0 +1,28 @@
+param(
+    [string]$Wix = 'wix',
+    [switch]$UseExistingRelease
+)
+
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$versionLine = Select-String -LiteralPath (Join-Path $root 'Cargo.toml') -Pattern '^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"$' | Select-Object -First 1
+if (!$versionLine) { throw 'Cargo.toml must define a three-part MSI version.' }
+$version = $versionLine.Matches[0].Groups[1].Value
+
+if (!$UseExistingRelease) {
+    & (Join-Path $PSScriptRoot 'dev.ps1') build --locked --release
+    if ($LASTEXITCODE -ne 0) { throw 'Director release build failed.' }
+}
+
+$release = Join-Path $root 'target/release'
+$output = Join-Path $root "target/installer/Director-$version-x64.msi"
+New-Item -ItemType Directory -Force (Split-Path -Parent $output) | Out-Null
+$arguments = @('build', '-arch', 'x64', '-d', "Version=$version", '-d', "ReleaseDir=$release",
+               '-o', $output, (Join-Path $root 'installer/Director.wxs'))
+if ($Wix.EndsWith('.dll', [StringComparison]::OrdinalIgnoreCase)) {
+    & dotnet $Wix @arguments
+} else {
+    & $Wix @arguments
+}
+if ($LASTEXITCODE -ne 0) { throw 'WiX could not build the Director MSI.' }
+Get-Item -LiteralPath $output
