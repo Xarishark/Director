@@ -31,6 +31,14 @@
           <RegistryValue Root="HKMU" Key="Software\Classes\director-run" Name="URL Protocol" Type="string" Value="" />
           <RegistryValue Root="HKMU" Key="Software\Classes\director-run\shell\open\command" Type="string" Value="&quot;[#DirectorExe]&quot; &quot;%1&quot;" />
         </Component>
+        <Component Id="UserPath" Guid="*" Condition="NOT ALLUSERS = 1">
+          <RegistryValue Root="HKCU" Key="Software\Director\Installer" Name="UserPath" Type="integer" Value="1" KeyPath="yes" />
+          <Environment Id="AppendUserPath" Name="PATH" Action="set" Part="last" Value="[INSTALLFOLDER]" />
+        </Component>
+        <Component Id="MachinePath" Guid="*" Condition="ALLUSERS = 1">
+          <RegistryValue Root="HKLM" Key="Software\Director\Installer" Name="MachinePath" Type="integer" Value="1" KeyPath="yes" />
+          <Environment Id="AppendMachinePath" Name="PATH" Action="set" Part="last" System="yes" Value="[INSTALLFOLDER]" />
+        </Component>
         <Component Id="WindowIcon" Guid="*">
           <File Source="$(var.ReleaseDir)\director.ico" />
         </Component>
@@ -99,6 +107,8 @@
     <ComponentGroup Id="DirectorFiles">
       <ComponentRef Id="Application" />
       <ComponentRef Id="RunProtocol" />
+      <ComponentRef Id="UserPath" />
+      <ComponentRef Id="MachinePath" />
       <ComponentRef Id="WindowIcon" />
       <ComponentRef Id="DeleteIcon" />
       <ComponentRef Id="RemoteIcon" />
