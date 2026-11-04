@@ -1,52 +1,67 @@
-# Monitor Manager
+<p align="center"><img src="assets/director.svg" width="96" height="96" alt="Director icon"></p>
+<h1 align="center">Director</h1>
+<p align="center">Switch your monitors, sound, and TV with one scene.</p>
+<p align="center"><strong>Windows x64 · Private preview</strong></p>
 
-A planned Windows desktop application for capturing and applying independent display and audio profiles, optionally combined with TV control, frame limits, and final application/URI actions.
+Moving from your desk to the living room? A **TV Gaming** scene can wake the TV, switch your picture and sound to HDMI, cap the frame rate, and open Steam Big Picture. Use a **Desk** scene when you come back. For a quick change, open **Current setup** and adjust the active displays, audio, or FPS limit directly.
 
-**Status: planning and documentation only.** There is no application implementation, build, or release yet. Rust and WinUI 3 are selected; SDK versions, dependencies, distribution, and licensing are not yet finalized.
+## Presets and scenes
 
-## Agreed direction
+A **preset** saves one part of your setup. A **scene** combines presets and actions you want to run together. Save each piece once and reuse it across scenes.
 
-- Rust application engine with native Windows interface.
-- No Chromium or web frontend.
-- The GUI and CLI use the same profile engine; command-line operations do not initialize the GUI.
-- Display profiles and audio profiles can be created and applied independently.
-- Optional combined setups compose those profiles and additional actions.
-- Capture current settings first; add guided custom creation later.
-- Remember audio devices and wait for unavailable endpoints, such as HDMI audio, when applying a setup.
-- Native Windows notifications for operation outcomes.
-- Configurable failure behavior: revert previous settings by default, or stop and keep completed changes.
-- Prioritize basic functionality before system tray operation or starting with Windows.
-
-## Documentation
-
-| Document | Purpose |
+| Building block | What you can save |
 | --- | --- |
-| [Requirements](docs/REQUIREMENTS.md) | Agreed behavior, implementation order, acceptance criteria, and open scope |
-| [Architecture](docs/ARCHITECTURE.md) | Proposed organization of the shared engine, GUI, CLI, and integrations |
-| [Decision record](docs/DECISIONS.md) | Accepted decisions and proposals that still need confirmation |
+| **Display preset** | Which screens are enabled, how they’re arranged, which is primary, and their resolution, refresh rate, orientation, and HDR. You can extend or mirror screens. |
+| **Audio preset** | A Windows output with optional volume, a separate output for calls, and an optional microphone. Director remembers devices it has seen so you can select them while they’re offline. |
+| **TV connection** | A paired TV, its PC input, wake settings, and optional links to its Windows display and HDMI audio. |
+| **Scene** | Any combination of TV preparation, display and audio presets, a global NVIDIA or RTSS FPS limit, and apps or links to open at the end. |
 
-The local pre-1.0 checklist is a private planning aid and is deliberately ignored by Git. Repository documentation records agreed requirements and clearly labels unconfirmed proposals.
+The display and audio preset cards show a preview of what you saved. Use the checkmark to apply a preset or scene. Saving gives you a chance to review it before applying.
 
-## Planned usage
+## Install the preview
 
-These commands illustrate the intended interface. They do not exist yet; the executable name and syntax remain proposals.
+1. Download **Director-Windows-x64** from a successful **Windows build** run in GitHub Actions and extract the MSI. The artifact requires access to the private repo.
+2. Install the MSI. **Just for me** is the default. Director’s window needs a compatible x64 Windows App Runtime. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
+3. Open **Director** from Start. The installer adds Director to PATH for the selected install scope. Open a new terminal to use the command line.
 
-```text
-app capture displays "Desk monitors"
-app capture audio "Headphones"
-app apply displays "Desk monitors"
-app apply audio "Headphones"
-app apply setup "Couch gaming"
+## Set up your first TV scene
+
+1. In **Display presets**, capture your desk layout so you can switch back. Create a separate layout for the TV. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
+2. In **TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output, or create a separate **Audio preset** if you also want a specific volume.
+3. In **Scenes**, create **TV Gaming**. Select the TV, the TV display preset, and the audio choice. Add a frame-rate cap or an app launch if you want one. Apply the scene when you’re ready.
+
+Director runs the scene in order. **TV → Displays → Audio → FPS → Apps and links.** It waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and tries to restore the previous Windows settings by default.
+
+LG webOS is supported through local control. Samsung Tizen and TCL Android / Google TV are hardware previews. The TV guides explain what to try on each brand and how to send a compatibility report.
+
+## Use Director from a terminal
+
+Use `director --version` or **About Director** in Options to check your installed version.
+
+Run a saved scene from a shortcut, script, or terminal with the window closed. For example:
+
+```powershell
+director scene apply "TV Gaming"
+director display apply "Desk monitors"
+director audio apply "Headphones"
 ```
 
-## Development and documentation policy
+To change an output’s volume without switching to it, use its Windows name. Run `director audio list` for the exact name or endpoint ID.
 
-- Remain in planning until implementation is explicitly authorized.
-- Update requirements and the decision record when scope or behavior is agreed.
-- Keep implemented behavior, proposed behavior, and hardware validation clearly distinguished.
-- Add build and test instructions with the first implementation; do not present planned commands as working ones.
-- Keep credentials, real device inventories, runtime state, logs, and local planning notes out of Git.
-- Preserve existing scripts and tools during development unless changes are separately authorized.
-- Do not commit or push without explicit authorization. Retain the existing Git signing configuration.
+```powershell
+director audio volume "Speakers" 35
+```
 
-No application license has been selected yet. Distribution terms are still to be decided.
+## Logs and backups
+
+- **View logs** in Options shows the latest scene result from the app or CLI, followed by recent log entries. If a scene stopped, look there for the failed step and whether recovery succeeded.
+- **Notify when CLI scenes fail** lets Windows tell you when an unattended run stops. Click the notification to open that run in Director.
+- **Export backup** saves your scenes and presets to one local file. **Restore backup** previews what it will replace and flags device links to review. TV pairing keys stay on the original PC.
+
+## Guides
+
+- [Display setup and detection](docs/DISPLAY_SETUP.md) · [Audio devices and relinking](docs/AUDIO.md) · [Scenes](docs/SCENES.md)
+- [TV setup and pairing](docs/TVS.md) · [Samsung test guide](docs/SAMSUNG.md) · [TCL test guide](docs/ANDROID_TV.md)
+- [FPS limits](docs/FPS.md) · [Diagnostics](docs/DIAGNOSTICS.md) · [Build, test, and CLI reference](docs/DEVELOPMENT.md)
+
+Director uses Rust and native WinUI 3. See the [rights notice](LICENSE.md).
