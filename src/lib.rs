@@ -31,6 +31,8 @@ pub mod windows_lg;
 #[cfg(windows)]
 pub mod tv_cli;
 
+#[cfg(windows)]
+pub mod backup;
 pub mod diagnostics;
 pub mod display_capabilities;
 pub mod display_detection;

@@ -1,12 +1,16 @@
 //! Native options, separate from device controls.
 use crate::{DirectorApp, Message, work};
-use director::diagnostics;
+use director::{backup, diagnostics};
+use std::{path::PathBuf, sync::Arc};
 use windows_reactor::*;
 
 #[derive(Clone)]
 pub(crate) enum OptionsMessage {
     Logs(Option<String>),
     LogsLoaded(String, String, bool),
+    Backup(bool),
+    Preview(Arc<backup::Import>),
+    Done(Result<Option<String>, String>),
     Closed(ContentDialogResult),
 }
 
@@ -16,6 +20,7 @@ pub(crate) enum OptionsDialog {
         details: String,
         selected_run: bool,
     },
+    Restore(Arc<backup::Import>),
 }
 
 fn msg(message: OptionsMessage) -> Message {
@@ -73,7 +78,76 @@ impl DirectorApp {
                     selected_run,
                 });
             }
-            OptionsMessage::Closed(_) => { self.options_dialog = None; }
+            OptionsMessage::Backup(save) if self.ready() => {
+                if !save
+                    && (self.draft.is_some()
+                        || self.display.draft.is_some()
+                        || self.scene.draft.is_some())
+                {
+                    self.failure(
+                        "Save or cancel open preset and scene drafts before restoring a backup."
+                            .into(),
+                    );
+                    return;
+                }
+                let hwnd =
+                    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+                let mut pid = 0;
+                unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                        hwnd,
+                        Some(&mut pid),
+                    )
+                };
+                let owner = if pid == std::process::id() {
+                    hwnd.0 as isize
+                } else {
+                    0
+                };
+                self.begin(if save {
+                    "Choose where to save the backup…"
+                } else {
+                    "Choose a Director backup…"
+                });
+                work(cx, move || match choose_backup(save, owner) {
+                    Ok(Some(path)) if save => {
+                        msg(OptionsMessage::Done(backup::export(&path).map(|()| {
+                            Some(format!("Backup saved to {}", path.display()))
+                        })))
+                    }
+                    Ok(Some(path)) => match backup::preview(&path) {
+                        Ok(import) => msg(OptionsMessage::Preview(Arc::new(import))),
+                        Err(error) => msg(OptionsMessage::Done(Err(error))),
+                    },
+                    Ok(None) => msg(OptionsMessage::Done(Ok(None))),
+                    Err(error) => msg(OptionsMessage::Done(Err(error))),
+                });
+            }
+            OptionsMessage::Preview(import) => {
+                self.end();
+                self.status = "Review the backup before restoring.".into();
+                self.options_dialog = Some(OptionsDialog::Restore(import));
+            }
+            OptionsMessage::Closed(result) => {
+                if let Some(OptionsDialog::Restore(import)) = self.options_dialog.take()
+                    && result == ContentDialogResult::Primary
+                {
+                    self.begin("Restoring backup…");
+                    work(cx, move || {
+                        let result = backup::restore(&import).map(|()| Some(
+                            "Backup restored. Review device links before applying presets or scenes.".into()
+                        ));
+                        msg(OptionsMessage::Done(result))
+                    });
+                }
+            }
+            OptionsMessage::Done(result) => {
+                self.end();
+                match result {
+                    Ok(status) => self.status = status.unwrap_or_else(|| "Ready.".into()),
+                    Err(error) => self.failure(error),
+                }
+            }
             _ => {}
         }
     }
@@ -108,6 +182,15 @@ impl DirectorApp {
                         )),
                     ),
                 ),
+            Some(OptionsDialog::Restore(import)) => dialog
+                .title("Restore Director backup?")
+                .primary_button_text("Replace scenes and presets")
+                .close_button_text("Cancel")
+                .content(
+                    ScrollViewer::new()
+                        .max_height(440.0)
+                        .content(diagnostic_text(&import.preview)),
+                ),
             None => View::empty(),
         }
     }
@@ -120,6 +203,69 @@ fn diagnostic_text(text: &str) -> TextBlock {
         .text_wrapping(TextWrapping::Wrap)
 }
 
+fn choose_backup(save: bool, owner: isize) -> Result<Option<PathBuf>, String> {
+    use windows::{
+        Win32::{
+            Foundation::{ERROR_CANCELLED, HWND},
+            System::Com::{
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+                CoTaskMemFree, CoUninitialize,
+            },
+            UI::Shell::{
+                Common::COMDLG_FILTERSPEC, FOS_FORCEFILESYSTEM, FileOpenDialog, FileSaveDialog,
+                IFileDialog, SIGDN_FILESYSPATH,
+            },
+        },
+        core::{HRESULT, w},
+    };
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+            .ok()
+            .map_err(|e| e.to_string())?;
+        struct Apartment;
+        impl Drop for Apartment {
+            fn drop(&mut self) {
+                unsafe { CoUninitialize() };
+            }
+        }
+        let _apartment = Apartment;
+        let select = || -> windows::core::Result<Option<PathBuf>> {
+            let dialog: IFileDialog = CoCreateInstance(
+                if save {
+                    &FileSaveDialog
+                } else {
+                    &FileOpenDialog
+                },
+                None,
+                CLSCTX_INPROC_SERVER,
+            )?;
+            dialog.SetOptions(dialog.GetOptions()? | FOS_FORCEFILESYSTEM)?;
+            dialog.SetFileTypes(&[COMDLG_FILTERSPEC {
+                pszName: w!("Director backup (*.director-backup)"),
+                pszSpec: w!("*.director-backup"),
+            }])?;
+            dialog.SetDefaultExtension(w!("director-backup"))?;
+            if save {
+                dialog.SetTitle(w!("Save Director backup"))?;
+                dialog.SetFileName(w!("Director"))?;
+            } else {
+                dialog.SetTitle(w!("Open Director backup"))?;
+            }
+            if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
+                if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
+                    return Ok(None);
+                }
+                return Err(error);
+            }
+            let value = dialog.GetResult()?.GetDisplayName(SIGDN_FILESYSPATH)?;
+            use std::os::windows::ffi::OsStringExt;
+            let path = PathBuf::from(std::ffi::OsString::from_wide(value.as_wide()));
+            CoTaskMemFree(Some(value.0.cast()));
+            Ok(Some(path))
+        };
+        select().map_err(|e| format!("Could not select a backup file: {e}"))
+    }
+}
 impl DirectorApp {
     pub(crate) fn open_logs(&mut self, cx: &ComponentContext<Self>) {
         work(cx, || {
@@ -154,6 +300,13 @@ impl DirectorApp {
                 Button::new().is_enabled(!self.busy).on_click(cx.message(msg(OptionsMessage::Logs(None)))).content("View logs"),
                 Button::new().automation_name("Open logs folder").is_enabled(!self.busy)
                 .on_click(cx.message(Message::OpenLogs)).content("Open logs folder"),
+            )),
+            TextBlock::new().text("Backup").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
+            TextBlock::new().text("Save your scenes and presets to one local file. TV pairing stays on this PC.")
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72),
+            StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
+                Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(true)))).content("Export backup"),
+                Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(false)))).content("Restore backup"),
             )),
             if let Some(error) = director::diagnostics::failure() {
                 TextBlock::new().text(format!("Logging is unavailable: {error}")).text_wrapping(TextWrapping::Wrap).into()
