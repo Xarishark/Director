@@ -65,6 +65,7 @@ enum Message {
     Tip(tv_tip_ui::TipMessage),
     AudioRelink(audio_relink_ui::RelinkMessage),
     OpenLogs,
+    Options(options_ui::OptionsMessage),
     LogsOpened(Result<String, String>),
     Refresh,
     Loaded(Loaded),
@@ -110,6 +111,7 @@ struct DirectorApp {
     draft: Option<Draft>,
     selected: Option<usize>,
     pane_open: bool,
+    options_dialog: Option<options_ui::OptionsDialog>,
     show_device_id: bool,
     pending_delete: Option<String>,
     audio_relink: Option<audio_relink_ui::RelinkDraft>,
@@ -352,6 +354,7 @@ impl Component for DirectorApp {
             show_device_id: false,
             pending_delete: None,
             audio_relink: None,
+            options_dialog: None,
             busy: false,
             store_ready: false,
             guard_ready: false,
@@ -389,6 +392,7 @@ impl Component for DirectorApp {
             Message::WindowSize(size) => self.window_width = size.width,
             Message::AudioRelink(message) => self.update_audio_relink(message, context),
             Message::OpenLogs => self.open_logs(context),
+            Message::Options(message) => self.update_options(message, context),
             Message::LogsOpened(result) => {
                 director::diagnostics::result("app.logs.open", &result);
                 match result {
@@ -1088,6 +1092,7 @@ impl Component for DirectorApp {
                 nav,
             ),
             KeyedView::new("audio-dialog", dialog),
+            KeyedView::new("options-dialog", self.options_dialog(cx)),
             KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
             KeyedView::new("display-dialog", self.display_dialog(cx)),
             KeyedView::new("tv-dialog", self.tv_dialog(cx)),

@@ -1,6 +1,125 @@
 //! Native options, separate from device controls.
 use crate::{DirectorApp, Message, work};
+use director::diagnostics;
 use windows_reactor::*;
+
+#[derive(Clone)]
+pub(crate) enum OptionsMessage {
+    Logs(Option<String>),
+    LogsLoaded(String, String, bool),
+    Closed(ContentDialogResult),
+}
+
+pub(crate) enum OptionsDialog {
+    Logs {
+        summary: String,
+        details: String,
+        selected_run: bool,
+    },
+}
+
+fn msg(message: OptionsMessage) -> Message {
+    Message::Options(message)
+}
+
+impl DirectorApp {
+    pub(crate) fn update_options(&mut self, message: OptionsMessage, cx: &ComponentContext<Self>) {
+        match message {
+            OptionsMessage::Logs(id) if !self.busy => {
+                self.begin("Reading logs…");
+                work(cx, || {
+                    let selected_run = id.is_some();
+                    let run = match id {
+                        Some(id) => director::notifications::read_run(&id),
+                        None => diagnostics::LastRun::read(),
+                    };
+                    let summary = match run {
+                        Ok(Some(run)) => {
+                            let stage = run
+                                .failed_stage
+                                .map_or(String::new(), |s| format!("\nStep: {s}"));
+                            format!(
+                                "{} · {}\n{}{stage}\n{}",
+                                run.name,
+                                run.completed_at,
+                                run.message,
+                                run.details.join("\n")
+                            )
+                        }
+                        Ok(None) if selected_run => {
+                            "This run has expired. View logs from Options to see the latest run."
+                                .into()
+                        }
+                        Ok(None) => "No scene runs recorded yet.".into(),
+                        Err(error) => format!("Could not read the last run: {error}"),
+                    };
+                    let details = match diagnostics::recent_text() {
+                        Ok(text) if text.is_empty() => "No log entries yet.".into(),
+                        Ok(text) => text,
+                        Err(error) => format!("Could not read recent logs: {error}"),
+                    };
+                    msg(OptionsMessage::LogsLoaded(summary, details, selected_run))
+                });
+            }
+            OptionsMessage::LogsLoaded(summary, details, selected_run) => {
+                self.end();
+                self.status = "Ready.".into();
+                if selected_run && !self.store_ready {
+                    let _ = cx.sender().send(Message::Refresh);
+                }
+                self.options_dialog = Some(OptionsDialog::Logs {
+                    summary,
+                    details,
+                    selected_run,
+                });
+            }
+            OptionsMessage::Closed(_) => { self.options_dialog = None; }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn options_dialog(&self, cx: &ViewContext<Self>) -> View {
+        let dialog = ContentDialog::new()
+            .is_open(true)
+            .on_closed(cx.callback(|result| msg(OptionsMessage::Closed(result))));
+        match &self.options_dialog {
+            Some(OptionsDialog::Logs {
+                summary,
+                details,
+                selected_run,
+            }) => dialog
+                .title("Director logs")
+                .close_button_text("Close")
+                .content(
+                    ScrollViewer::new().max_height(520.0).content(
+                        StackPanel::new().spacing(12.0).children((
+                            TextBlock::new()
+                                .text(if *selected_run {
+                                    "Scene result"
+                                } else {
+                                    "Last run"
+                                })
+                                .font_weight(FontWeight::SEMI_BOLD),
+                            diagnostic_text(summary),
+                            TextBlock::new()
+                                .text("Recent log entries")
+                                .font_weight(FontWeight::SEMI_BOLD),
+                            diagnostic_text(details),
+                        )),
+                    ),
+                ),
+            None => View::empty(),
+        }
+    }
+}
+
+fn diagnostic_text(text: &str) -> TextBlock {
+    TextBlock::new()
+        .text(text)
+        .is_text_selection_enabled(true)
+        .text_wrapping(TextWrapping::Wrap)
+}
+
 impl DirectorApp {
     pub(crate) fn open_logs(&mut self, cx: &ComponentContext<Self>) {
         work(cx, || {
@@ -32,6 +151,7 @@ impl DirectorApp {
             TextBlock::new().text("Director keeps local logs to help explain what happened during an operation. Old logs are replaced automatically. Pairing keys and raw TV messages are excluded.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),
             StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
+                Button::new().is_enabled(!self.busy).on_click(cx.message(msg(OptionsMessage::Logs(None)))).content("View logs"),
                 Button::new().automation_name("Open logs folder").is_enabled(!self.busy)
                 .on_click(cx.message(Message::OpenLogs)).content("Open logs folder"),
             )),
