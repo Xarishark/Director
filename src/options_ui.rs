@@ -293,6 +293,14 @@ impl DirectorApp {
                 .on_toggled(cx.callback(|show| Message::Tip(crate::tv_tip_ui::TipMessage::Show(show))))
                 .slot(ToggleSwitchSlot::Header, "Show TV setup tips"),
             if let Some(error) = &self.tip.error { TextBlock::new().text(format!("Could not update setup tips: {error}")).text_wrapping(TextWrapping::Wrap).into() } else { View::empty() },
+            TextBlock::new().text("Notifications").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
+            ToggleSwitch::new().automation_name("Notify when CLI scenes fail")
+                .is_on(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).is_some_and(|p| p.notify_scene_failures))
+                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
+                .on_toggled(cx.callback(|enabled| Message::Tip(crate::tv_tip_ui::TipMessage::NotifySceneFailures(enabled))))
+                .slot(ToggleSwitchSlot::Header, "Notify when CLI scenes fail"),
+            TextBlock::new().text("Requires the MSI installation. Click a Windows notification to open that run’s details.")
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72),
             TextBlock::new().text("Diagnostics").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new().text("Director keeps local logs to help explain what happened during an operation. Old logs are replaced automatically. Pairing keys and raw TV messages are excluded.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),

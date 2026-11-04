@@ -21,8 +21,15 @@
           <File Id="DirectorExe" Source="$(var.ReleaseDir)\director.exe" KeyPath="yes">
             <Shortcut Id="DirectorMenu" Directory="ProgramMenuFolder" Name="Director"
                       WorkingDirectory="INSTALLFOLDER" Icon="DirectorIcon">
+              <ShortcutProperty Key="System.AppUserModel.ID" Value="Director.Desktop" />
+              <ShortcutProperty Key="System.AppUserModel.ToastActivatorCLSID" Value="{D67AFF0D-9557-4CA7-B644-EF5805578032}" />
             </Shortcut>
           </File>
+        </Component>
+        <Component Id="RunProtocol" Guid="*">
+          <RegistryValue Root="HKMU" Key="Software\Classes\director-run" Type="string" Value="URL:Director run" KeyPath="yes" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\director-run" Name="URL Protocol" Type="string" Value="" />
+          <RegistryValue Root="HKMU" Key="Software\Classes\director-run\shell\open\command" Type="string" Value="&quot;[#DirectorExe]&quot; &quot;%1&quot;" />
         </Component>
         <Component Id="WindowIcon" Guid="*">
           <File Source="$(var.ReleaseDir)\director.ico" />
@@ -91,6 +98,7 @@
   <Fragment>
     <ComponentGroup Id="DirectorFiles">
       <ComponentRef Id="Application" />
+      <ComponentRef Id="RunProtocol" />
       <ComponentRef Id="WindowIcon" />
       <ComponentRef Id="DeleteIcon" />
       <ComponentRef Id="RemoteIcon" />

@@ -330,14 +330,28 @@ impl DirectorApp {
         ))
     }
 }
+static NOTIFIED_RUN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 impl Component for DirectorApp {
     type Input = ();
     type Message = Message;
     fn create(_: &(), context: &ComponentContext<Self>) -> Self {
-        let _ = context.sender().send(Message::Refresh);
+        if let Some(id) = NOTIFIED_RUN.get() {
+            let _ = context
+                .sender()
+                .send(Message::Options(options_ui::OptionsMessage::Logs(Some(
+                    id.clone(),
+                ))));
+        } else {
+            let _ = context.sender().send(Message::Refresh);
+        }
         work(context, tv_tip_ui::load);
         let app = Self {
-            page: Page::Audio,
+            page: if NOTIFIED_RUN.get().is_some() {
+                Page::Options
+            } else {
+                Page::Audio
+            },
             current: current_ui::CurrentState::default(),
             fps: fps_ui::FpsState::default(),
             display: DisplayState::default(),
@@ -1104,7 +1118,13 @@ fn main() {
     director::diagnostics::init();
     director::diagnostics::event("app.session", "started", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if !args.is_empty() {
+    let run_id = match args.as_slice() {
+        [uri] => director::notifications::activation_id(uri),
+        _ => None,
+    };
+    if let Some(id) = run_id {
+        let _ = NOTIFIED_RUN.set(id.to_owned());
+    } else if !args.is_empty() {
         unsafe {
             let _ = windows::Win32::System::Console::AttachConsole(u32::MAX);
         }
