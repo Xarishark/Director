@@ -316,6 +316,12 @@ impl DirectorApp {
                 Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(true)))).content("Export backup"),
                 Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(false)))).content("Restore backup"),
             )),
+            TextBlock::new().text("About Director").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
+            StackPanel::new().spacing(4.0).children((
+                TextBlock::new().text(concat!("Version ", env!("CARGO_PKG_VERSION"))),
+                TextBlock::new().text(env!("CARGO_PKG_AUTHORS")).text_wrapping(TextWrapping::Wrap),
+                TextBlock::new().text(env!("CARGO_PKG_DESCRIPTION")).text_wrapping(TextWrapping::Wrap).opacity(0.72),
+            )),
             if let Some(error) = director::diagnostics::failure() {
                 TextBlock::new().text(format!("Logging is unavailable: {error}")).text_wrapping(TextWrapping::Wrap).into()
             } else { View::empty() },
