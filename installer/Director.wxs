@@ -1,9 +1,10 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="Director" Manufacturer="Director" Version="$(var.Version)"
+  <Package Name="Director" Manufacturer="$(var.Publisher)" Codepage="1252" Version="$(var.Version)"
            UpgradeCode="A5865718-8A6A-4D26-B658-A35A2D636870" Scope="perUserOrMachine">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Director is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPCOMMENTS" Value="$(var.Description)" />
     <Property Id="INSTALLSCOPE" Value="User" />
     <Property Id="MACHINEPROGRAMFILES">
       <RegistrySearch Id="MachineProgramFiles" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion"

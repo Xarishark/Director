@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 publish = false
-description = "Native Windows setup control, starting with default audio output"
+description = "Switch displays, audio, and TVs with reusable scenes on Windows."
+authors = ["Xarishark • Zacharias Xenakis"]
 
 [dependencies]
 windows-reactor = "=0.100.0"

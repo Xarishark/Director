@@ -36,9 +36,54 @@ pub fn embed(svg: &[u8], binary: &str) {
     let icon = out.join("director.ico");
     fs::write(&icon, ico).expect("write icon resource");
     let rc = out.join("director.rc");
-
-    fs::write(&rc, format!("1 ICON \"{}\"\n", icon.display().to_string().replace('\\', "/")))
-        .expect("write resource script");
+    let version = env::var("CARGO_PKG_VERSION").expect("package version");
+    let fixed_version = [
+        "CARGO_PKG_VERSION_MAJOR",
+        "CARGO_PKG_VERSION_MINOR",
+        "CARGO_PKG_VERSION_PATCH",
+    ]
+    .map(|key| {
+        env::var(key)
+            .expect("version component")
+            .parse::<u16>()
+            .expect("Windows version number")
+    });
+    let [major, minor, patch] = fixed_version;
+    let publisher = rc_text(&env::var("CARGO_PKG_AUTHORS").expect("package authors"));
+    let description = rc_text(&env::var("CARGO_PKG_DESCRIPTION").expect("package description"));
+    let icon_path = icon.display().to_string().replace('\\', "/");
+    fs::write(
+        &rc,
+        format!(
+            r#"1 ICON "{icon_path}"
+1 VERSIONINFO
+ FILEVERSION {major},{minor},{patch},0
+ PRODUCTVERSION {major},{minor},{patch},0
+ FILEOS 0x40004
+ FILETYPE 0x1
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", L"{publisher}\0"
+            VALUE "FileDescription", L"{description}\0"
+            VALUE "FileVersion", "{version}\0"
+            VALUE "InternalName", "{binary}\0"
+            VALUE "OriginalFilename", "{binary}.exe\0"
+            VALUE "ProductName", "Director\0"
+            VALUE "ProductVersion", "{version}\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
+"#
+        ),
+    )
+    .expect("write resource script");
     let msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
     let resource = out.join(if msvc {
         "director.res"
@@ -62,4 +107,17 @@ pub fn embed(svg: &[u8], binary: &str) {
     .expect("run Windows resource compiler (rc.exe or windres on PATH)");
     assert!(status.success(), "compile app icon resource");
     println!("cargo:rustc-link-arg-bin={binary}={}", resource.display());
+}
+
+fn rc_text(text: &str) -> String {
+    use std::fmt::Write;
+    let mut escaped = String::new();
+    for unit in text.encode_utf16() {
+        if (0x20..=0x7e).contains(&unit) && unit != u16::from(b'"') && unit != u16::from(b'\\') {
+            escaped.push(char::from_u32(u32::from(unit)).expect("ASCII character"));
+        } else {
+            write!(escaped, "\\x{unit:04X}").expect("write to string");
+        }
+    }
+    escaped
 }
