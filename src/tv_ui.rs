@@ -1072,6 +1072,7 @@ impl DirectorApp {
         StackPanel::new().spacing(8.0).children((
             TextBlock::new().text("TV audio output (optional)").font_weight(FontWeight::SEMI_BOLD),
             ComboBox::new().automation_name("Linked TV audio output").items_source(labels).selected_index(Some(index)).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(!self.busy).on_selection_changed(cx.callback(|i|msg(TvMessage::AudioLink(i)))),
+            if let Some(audio) = &tv.audio { self.audio_relink_button(cx, &audio.id, Some(&audio.name), false) } else { View::empty() },
             note("Choose the TV’s Windows HDMI audio output. Previously seen outputs are available in this picker while offline."),
         ))
     }

@@ -63,6 +63,7 @@ enum Message {
     Tv(tv_ui::TvMessage),
     Scene(scene_ui::SceneMessage),
     Tip(tv_tip_ui::TipMessage),
+    AudioRelink(audio_relink_ui::RelinkMessage),
     OpenLogs,
     LogsOpened(Result<String, String>),
     Refresh,
@@ -111,6 +112,7 @@ struct DirectorApp {
     pane_open: bool,
     show_device_id: bool,
     pending_delete: Option<String>,
+    audio_relink: Option<audio_relink_ui::RelinkDraft>,
     busy: bool,
     store_ready: bool,
     guard_ready: bool,
@@ -287,6 +289,7 @@ impl DirectorApp {
                 TextBlock::new().text("Output device").font_weight(FontWeight::SEMI_BOLD),
                 ComboBox::new().automation_name("Output device").horizontal_alignment(HorizontalAlignment::Stretch).items_source(self.outputs.iter().map(audio_relink_ui::device_label)).selected_index(index).is_enabled(!self.busy).on_selection_changed(cx.callback(Message::Output)),
                 TextBlock::new().text(detail).font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap),
+                self.audio_relink_button(cx, &d.output_id, None, false),
                 Expander::new().is_expanded(self.show_device_id).on_is_expanded_changed(cx.callback(Message::DeviceId)).slots([SlotView::new(ExpanderSlot::Header,"Device ID"),SlotView::new(ExpanderSlot::Content,StackPanel::new().spacing(10.0).children((TextBlock::new().text(d.output_id.clone()).text_wrapping(TextWrapping::Wrap),Button::new().on_click(cx.message(Message::CopyId)).content("Copy device ID"))))]),
                 Grid::new().columns([GridLength::Star(1.0),GridLength::Pixel(130.0)]).children((
                     ToggleSwitch::new().grid_column(0).automation_name("Set volume").is_on(d.set_volume).is_enabled(!self.busy).on_toggled(cx.callback(Message::SetVolume)).slot(ToggleSwitchSlot::Header,"Set volume"),
@@ -300,6 +303,7 @@ impl DirectorApp {
                             .items_source(self.outputs.iter().map(audio_relink_ui::device_label))
                             .selected_index(self.outputs.iter().position(|o|&o.id==id)).is_enabled(!self.busy)
                             .on_selection_changed(cx.callback(Message::CommunicationsOutput)).slot(ComboBoxSlot::Header,"Calls output"),
+                        self.audio_relink_button(cx, id, None, false),
                     ))
                 }else{TextBlock::new().text("Calls use the main output too. All three Windows output roles follow it.").font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap).into()},
                 ToggleSwitch::new().automation_name("Change microphone").is_on(d.input_id.is_some()).is_enabled(!self.busy).on_toggled(cx.callback(Message::ChangeInput)).slot(ToggleSwitchSlot::Header,"Change microphone"),
@@ -309,6 +313,7 @@ impl DirectorApp {
                             .items_source(self.inputs.iter().map(audio_relink_ui::device_label))
                             .selected_index(self.inputs.iter().position(|o|&o.id==id)).is_enabled(!self.busy)
                             .on_selection_changed(cx.callback(Message::InputDevice)).slot(ComboBoxSlot::Header,"Microphone"),
+                        self.audio_relink_button(cx, id, None, true),
                         ToggleSwitch::new().automation_name("Set microphone volume").is_on(d.input_set_volume).is_enabled(!self.busy).on_toggled(cx.callback(Message::SetInputVolume)).slot(ToggleSwitchSlot::Header,"Set microphone volume"),
                         if d.input_set_volume{NumberBox::new().automation_name("Microphone volume percentage").minimum(0.0).maximum(100.0).value(d.input_volume).is_enabled(!self.busy).on_value_changed(cx.callback(Message::InputVolume)).into()}else{View::empty()},
                     ))
@@ -346,6 +351,7 @@ impl Component for DirectorApp {
             pane_open: true,
             show_device_id: false,
             pending_delete: None,
+            audio_relink: None,
             busy: false,
             store_ready: false,
             guard_ready: false,
@@ -381,6 +387,7 @@ impl Component for DirectorApp {
         }
         match message {
             Message::WindowSize(size) => self.window_width = size.width,
+            Message::AudioRelink(message) => self.update_audio_relink(message, context),
             Message::OpenLogs => self.open_logs(context),
             Message::LogsOpened(result) => {
                 director::diagnostics::result("app.logs.open", &result);
@@ -1081,6 +1088,7 @@ impl Component for DirectorApp {
                 nav,
             ),
             KeyedView::new("audio-dialog", dialog),
+            KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
             KeyedView::new("display-dialog", self.display_dialog(cx)),
             KeyedView::new("tv-dialog", self.tv_dialog(cx)),
             KeyedView::new("scene-dialog", self.scene_dialog(cx)),
