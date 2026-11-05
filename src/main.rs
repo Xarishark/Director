@@ -87,7 +87,6 @@ enum Message {
     CopyId,
     DeviceId(bool),
     Pane(bool),
-    Select(Option<usize>),
     Save,
     Saved(Result<Vec<Preset>, String>),
     Delete(String),
@@ -109,7 +108,6 @@ struct DirectorApp {
     outputs: Vec<Output>,
     inputs: Vec<Output>,
     draft: Option<Draft>,
-    selected: Option<usize>,
     pane_open: bool,
     options_dialog: Option<options_ui::OptionsDialog>,
     show_device_id: bool,
@@ -234,11 +232,7 @@ impl DirectorApp {
 
             )))
         } else {
-            GridView::new()
-                .grid_row(2)
-                .selected_index(self.selected)
-                .on_selection_changed(cx.callback(Message::Select))
-                .collection_slot(GridViewSlot::Items, rows)
+            crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::AUDIO_CARD_HEIGHT, rows)
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
@@ -362,7 +356,6 @@ impl Component for DirectorApp {
             outputs: vec![],
             inputs: vec![],
             draft: None,
-            selected: None,
             window_width: 1000.0,
             pane_open: true,
             show_device_id: false,
@@ -487,7 +480,6 @@ impl Component for DirectorApp {
                     Ok(p) => {
                         self.presets = p;
                         self.store_ready = true;
-                        self.selected = None;
                     }
                     Err(e) => {
                         self.store_ready = false;
@@ -735,7 +727,6 @@ impl Component for DirectorApp {
                 }
             }
             Message::Pane(value) => self.pane_open = value,
-            Message::Select(index) => self.selected = index,
             Message::Save if self.draft_valid() => {
                 let d = self.draft.as_ref().unwrap();
                 let Some(o) = self.outputs.iter().find(|o| o.id == d.output_id) else {
@@ -799,7 +790,6 @@ impl Component for DirectorApp {
                     self.presets = p;
                     self.draft = None;
                     self.pending_delete = None;
-                    self.selected = None;
                     self.status = "Presets saved. Your audio is unchanged.".into();
                 }
                 Err(e) => self.failure(e),

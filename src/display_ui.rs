@@ -42,7 +42,6 @@ pub(crate) enum DisplayMessage {
     Name(String),
     ConfirmChanges(bool),
     Cancel,
-    Select(Option<usize>),
     Save,
     Saved(Result<Vec<Preset>, String>),
     Delete(String),
@@ -63,7 +62,6 @@ pub(crate) struct DisplayState {
     pub current: Option<Layout>,
     pub draft: Option<Preset>,
     pub store_ready: bool,
-    pub selected: Option<usize>,
     pub pending_delete: Option<String>,
 }
 fn msg(value: DisplayMessage) -> Message {
@@ -247,7 +245,6 @@ impl DirectorApp {
                     Ok(p) => {
                         self.display.presets = p;
                         self.display.store_ready = true;
-                        self.display.selected = None;
                     }
                     Err(e) => {
                         self.display.store_ready = false;
@@ -479,7 +476,6 @@ impl DirectorApp {
                 self.status = "Ready.".into();
                 self.details.clear();
             }
-            DisplayMessage::Select(index) => self.display.selected = index,
             DisplayMessage::Save if self.display_ready() && self.display.drag.is_none() => {
                 if let Some(mut preset) = self.display.draft.clone() {
                     if let Some(editor) = &self.display.editor
@@ -507,7 +503,6 @@ impl DirectorApp {
                     self.display.editor = None;
                     self.display.drag = None;
                     self.display.pending_delete = None;
-                    self.display.selected = None;
                     self.status = "Display presets saved. Your screens are unchanged.".into();
                 }
                 Err(e) => self.failure(e),
@@ -631,11 +626,7 @@ impl DirectorApp {
                     )),
                 )
         } else {
-            GridView::new()
-                .grid_row(2)
-                .selected_index(self.display.selected)
-                .on_selection_changed(cx.callback(|i| msg(DisplayMessage::Select(i))))
-                .collection_slot(GridViewSlot::Items, rows)
+            crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
