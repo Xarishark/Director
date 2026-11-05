@@ -532,7 +532,7 @@ impl DirectorApp {
                     s.display
                         .as_ref()
                         .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
-                        .map(|p| crate::preset_cards_ui::layout_preview(&p.layout))
+                        .map(|p| crate::preset_cards_ui::layout_preview(&p.layout, 124.0))
                         .unwrap_or_else(|| {
                             Border::new()
                                 .height(100.0)
@@ -551,15 +551,12 @@ impl DirectorApp {
                 ));
                 KeyedView::new(
                     s.id.clone(),
-                    GridViewItem::new()
-                        .automation_name(name.clone())
-                        .margin(4.0)
-                        .content(crate::preset_cards_ui::card(
-                            &name,
-                            body,
-                            vec![
+                    crate::preset_cards_ui::card(
+                        &name,
+                        body,
+                        vec![
+                            crate::preset_cards_ui::apply_button(
                                 Button::new()
-                                    .style(ButtonStyle::Subtle)
                                     .automation_name(format!("Apply {}", name))
                                     .is_enabled(
                                         self.scene_ready()
@@ -573,43 +570,36 @@ impl DirectorApp {
                                     )
                                     .on_click(cx.callback(move |()| {
                                         msg(SceneMessage::Apply(apply.clone()))
-                                    }))
-                                    .content(
-                                        TextBlock::new()
-                                            .text("✓")
-                                            .font_size(20.0)
-                                            .foreground(Color::rgb(75, 190, 120)),
-                                    )
-                                    .tooltip("Apply scene"),
-                                Button::new()
-                                    .style(ButtonStyle::Subtle)
-                                    .automation_name(format!("Edit {}", name))
-                                    .is_enabled(self.scene_ready())
-                                    .on_click(
-                                        cx.callback(move |()| {
-                                            msg(SceneMessage::Edit(edit.clone()))
-                                        }),
-                                    )
-                                    .content(FontIcon::new().glyph(""))
-                                    .tooltip("Edit scene"),
-                                Button::new()
-                                    .style(ButtonStyle::Subtle)
-                                    .automation_name(format!("Delete {}", name))
-                                    .is_enabled(self.scene_ready())
-                                    .on_click(cx.callback(move |()| {
+                                    })),
+                                "Apply scene",
+                            ),
+                            crate::preset_cards_ui::card_icon_button(Button::new())
+                                .automation_name(format!("Edit {}", name))
+                                .is_enabled(self.scene_ready())
+                                .on_click(
+                                    cx.callback(move |()| msg(SceneMessage::Edit(edit.clone()))),
+                                )
+                                .content(crate::preset_cards_ui::card_edit_icon())
+                                .tooltip("Edit scene"),
+                            crate::preset_cards_ui::card_icon_button(Button::new())
+                                .automation_name(format!("Delete {}", name))
+                                .is_enabled(self.scene_ready())
+                                .on_click(
+                                    cx.callback(move |()| {
                                         msg(SceneMessage::Delete(delete.clone()))
-                                    }))
-                                    .content(crate::icons::delete())
-                                    .tooltip("Delete scene"),
-                            ],
-                            340.0,
-                        )),
+                                    }),
+                                )
+                                .content(crate::icons::delete_small())
+                                .tooltip("Delete scene"),
+                        ],
+                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                    ),
                 )
             })
             .collect::<Vec<_>>();
         Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
  crate::preset_ui::header("Scenes","Bring your presets and actions together.",vec![Button::new().style(ButtonStyle::Accent).automation_name("Add scene").is_enabled(self.scene_ready()).on_click(cx.message(msg(SceneMessage::Add))).content(FontIcon::new().glyph("")).tooltip("Add scene")]),
- if self.scene.scenes.is_empty(){Border::new().grid_row(1).padding(20.0).content(StackPanel::new().spacing(12.0).children((heading("Your setup, ready in one scene"),note("Choose displays, audio and optional TV preparation. Add apps or URIs to open after setup succeeds."))))}else{GridView::new().grid_row(1).collection_slot(GridViewSlot::Items,cards)},
+ if self.scene.scenes.is_empty(){Border::new().grid_row(1).padding(20.0).content(StackPanel::new().spacing(12.0).children((heading("Your setup, ready in one scene"),note("Choose displays, audio and optional TV preparation. Add apps or URIs to open after setup succeeds."))))}else{crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::SCENE_CARD_HEIGHT, cards)},
  if self.scene.cancel.is_some(){Button::new().grid_row(2).horizontal_alignment(HorizontalAlignment::Left).automation_name("Cancel scene").on_click(cx.message(msg(SceneMessage::Stop))).content("Cancel scene")}else{View::empty()},
  ))
     }
@@ -717,7 +707,7 @@ impl DirectorApp {
  if tv.brand==director::tvs::Brand::Lg || !tv.control_inputs().is_empty(){ComboBox::new().automation_name("Scene TV input").items_source(std::iter::once("Leave input unchanged".into()).chain(tv.control_inputs().iter().map(|i|i.label.clone())).collect::<Vec<String>>()).selected_index(Some(prep.input.as_ref().and_then(|id|tv.control_inputs().iter().position(|i|&i.id==id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Input(i)))).into()}else{View::empty()},
  ))}else{View::empty()},
  )),
- StackPanel::new().spacing(10.0).children((heading("2 · Displays"),ComboBox::new().automation_name("Scene display preset").items_source(display_labels).selected_index(Some(d.display.as_ref().and_then(|id|self.scene.displays.iter().position(|p|&p.id==id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Display(i)))),d.display.as_ref().and_then(|id|self.scene.displays.iter().find(|p|&p.id==id)).map(|p|crate::preset_cards_ui::layout_preview(&p.layout)).unwrap_or_else(View::empty),Button::new().is_enabled(available).on_click(cx.message(Message::Navigate(Some("displays".into())))).content("Manage display presets"))),
+ StackPanel::new().spacing(10.0).children((heading("2 · Displays"),ComboBox::new().automation_name("Scene display preset").items_source(display_labels).selected_index(Some(d.display.as_ref().and_then(|id|self.scene.displays.iter().position(|p|&p.id==id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Display(i)))),d.display.as_ref().and_then(|id|self.scene.displays.iter().find(|p|&p.id==id)).map(|p|crate::preset_cards_ui::layout_preview(&p.layout, 124.0)).unwrap_or_else(View::empty),Button::new().is_enabled(available).on_click(cx.message(Message::Navigate(Some("displays".into())))).content("Manage display presets"))),
  StackPanel::new().spacing(10.0).children((heading("3 · Audio"),ComboBox::new().automation_name("Scene audio preset").items_source(audio_labels).selected_index(Some(ai)).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Audio(i)))),note("Audio applies after displays. A linked TV output changes all three output roles, leaving volume and microphone unchanged. Choose an audio preset for more control."),Button::new().is_enabled(available).on_click(cx.message(Message::Navigate(Some("audio".into())))).content("Manage audio presets"))),
  self.fps_controls(cx,crate::fps_ui::Target::Scene),
  StackPanel::new().spacing(10.0).children((heading("5 · After setup"),note("These run in order, only after setup succeeds."),

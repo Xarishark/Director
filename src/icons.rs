@@ -17,3 +17,7 @@ pub(crate) fn remote() -> View {
 pub(crate) fn delete() -> View {
     svg("delete.svg", 20.0)
 }
+/// The delete icon at the 16 px size used inside card buttons.
+pub(crate) fn delete_small() -> View {
+    svg("delete.svg", 16.0)
+}
