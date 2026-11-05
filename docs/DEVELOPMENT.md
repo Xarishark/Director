@@ -112,4 +112,4 @@ Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. K
 
 The build check is named **Windows x64 build**. Configure it as a required check with an up-to-date branch and require pull requests for main, including administrators. Private repository branch protection requires GitHub Pro or an eligible paid organization plan. GitHub rejected protection on the repository’s current plan.
 
-For local protection, run git config --local core.hooksPath .githooks after cloning. This checkout has it enabled. The pre-push hook blocks updates and deletion of main. GitHub-side rules are needed to enforce PR-only changes and required checks for all clients.
+For local protection, run git config --local core.hooksPath .githooks after cloning. This checkout has the same guard installed in its local Git hooks directory so it survives switching branches. The pre-push hook blocks updates and deletion of main. GitHub-side rules are needed to enforce PR-only changes and required checks for all clients.
