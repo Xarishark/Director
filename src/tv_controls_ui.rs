@@ -346,76 +346,74 @@ impl DirectorApp {
     ) {
         let ready = self.tv_ready();
         match message {
-            ControlMessage::Open(id) if ready => {
-                if self.tv.tvs.iter().any(|t| t.id == id) {
-                    self.tv.control_revision = self.tv.control_revision.wrapping_add(1);
-                    self.tv.controls = Some(Controls {
-                        tv_id: id,
-                        token: self.tv.control_revision,
-                        snapshot: None,
-                        target: String::new(),
-                        revision: 0,
-                        checking: false,
-                        notice: String::new(),
-                        details: String::new(),
-                        status_details: String::new(),
-                        show_details: false,
-                        progress: Progress::Idle,
-                        retries: WakeRetries::default(),
-                        watch: None,
-                        cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                        wake_cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                        ignore_before: std::time::Instant::now(),
-                        live_details: String::new(),
-                    });
-                    #[cfg(test)]
-                    if crate::samsung_ui::PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
-                        let tv = self
-                            .tv
-                            .tvs
-                            .iter()
-                            .find(|t| self.tv.controls.as_ref().is_some_and(|c| c.tv_id == t.id))
-                            .unwrap();
-                        let inputs = tv.control_inputs();
-                        if let Some(state) = &mut self.tv.controls {
-                            state.target = inputs.first().map_or(String::new(), |i| i.id.clone());
-                            state.snapshot = Some(Snapshot {
-                                power: PowerState::On,
-                                inputs,
-                                current_input: None,
-                                notes: vec![],
-                            });
-                        }
-                        return;
+            ControlMessage::Open(id) if ready && self.tv.tvs.iter().any(|t| t.id == id) => {
+                self.tv.control_revision = self.tv.control_revision.wrapping_add(1);
+                self.tv.controls = Some(Controls {
+                    tv_id: id,
+                    token: self.tv.control_revision,
+                    snapshot: None,
+                    target: String::new(),
+                    revision: 0,
+                    checking: false,
+                    notice: String::new(),
+                    details: String::new(),
+                    status_details: String::new(),
+                    show_details: false,
+                    progress: Progress::Idle,
+                    retries: WakeRetries::default(),
+                    watch: None,
+                    cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    wake_cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    ignore_before: std::time::Instant::now(),
+                    live_details: String::new(),
+                });
+                #[cfg(test)]
+                if crate::samsung_ui::PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
+                    let tv = self
+                        .tv
+                        .tvs
+                        .iter()
+                        .find(|t| self.tv.controls.as_ref().is_some_and(|c| c.tv_id == t.id))
+                        .unwrap();
+                    let inputs = tv.control_inputs();
+                    if let Some(state) = &mut self.tv.controls {
+                        state.target = inputs.first().map_or(String::new(), |i| i.id.clone());
+                        state.snapshot = Some(Snapshot {
+                            power: PowerState::On,
+                            inputs,
+                            current_input: None,
+                            notes: vec![],
+                        });
                     }
-                    #[cfg(test)]
-                    if CONTROL_PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
-                        if let Some(state) = &mut self.tv.controls {
-                            state.snapshot = Some(Snapshot {
-                                power: PowerState::On,
-                                inputs: vec![
-                                    director::lg_protocol::Input {
-                                        id: "HDMI_1".into(),
-                                        label: "PC".into(),
-                                    },
-                                    director::lg_protocol::Input {
-                                        id: "HDMI_2".into(),
-                                        label: "Console".into(),
-                                    },
-                                ],
-                                current_input: Some("HDMI_1".into()),
-                                notes: vec![],
-                            });
-                            state.target = "HDMI_1".into();
-                        }
-                        if LIVE_PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
-                            self.start_live_preview(cx);
-                        }
-                        return;
-                    }
-                    self.start_power_watch(cx);
-                    self.read_tv_controls(cx);
+                    return;
                 }
+                #[cfg(test)]
+                if CONTROL_PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
+                    if let Some(state) = &mut self.tv.controls {
+                        state.snapshot = Some(Snapshot {
+                            power: PowerState::On,
+                            inputs: vec![
+                                director::lg_protocol::Input {
+                                    id: "HDMI_1".into(),
+                                    label: "PC".into(),
+                                },
+                                director::lg_protocol::Input {
+                                    id: "HDMI_2".into(),
+                                    label: "Console".into(),
+                                },
+                            ],
+                            current_input: Some("HDMI_1".into()),
+                            notes: vec![],
+                        });
+                        state.target = "HDMI_1".into();
+                    }
+                    if LIVE_PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
+                        self.start_live_preview(cx);
+                    }
+                    return;
+                }
+                self.start_power_watch(cx);
+                self.read_tv_controls(cx);
             }
             ControlMessage::Watch(token, update) => {
                 let Some(state) = &mut self.tv.controls else {
