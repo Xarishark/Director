@@ -103,10 +103,10 @@ Use **Options → Open logs folder** to inspect the automatically rotating local
 
 ## GitHub Actions
 
-The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to main. You can also run it manually from the Actions tab. It uses the hosted Windows runner and the MSVC Rust toolchain, runs formatting, Clippy and tests, then builds and uploads the x64 MSI. Find the unsigned installer under the run’s **Director-Windows-x64** artifact. A version increase merged into main publishes a GitHub Release with the verified MSI after the build succeeds. A manual main-branch run can also publish the current version by enabling publish_release. GUI and physical-device checks remain separate from CI.
+The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to main. You can also run it manually from the Actions tab. It uses the hosted Windows runner and the MSVC Rust toolchain, runs formatting, Clippy and tests, then builds and uploads the x64 setup.exe and MSI. Find the unsigned installers under the run’s **Director-Windows-x64** artifact. A version increase merged into main publishes a GitHub Release with the verified setup.exe after the build succeeds. See [setup and MSI](WINDOWS_GUI.md#setup-and-msi). A manual main-branch run can also publish the current version by enabling publish_release. GUI and physical-device checks remain separate from CI.
 ## Versioning
 
-Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. Keep it in three-part numeric form, such as `0.9.1`, for MSI packaging. After changing it, refresh the root package entry in `Cargo.lock` with a normal Cargo check before running the locked build. The [MSI packaging script](../scripts/package-msi.ps1) reads the version from Cargo.toml and uses it for the installer version and filename.
+Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. Keep it in three-part numeric form, such as `0.9.1`, for MSI packaging. After changing it, refresh the root package entry in `Cargo.lock` with a normal Cargo check before running the locked build. The [MSI packaging script](../scripts/package-msi.ps1) reads the version from Cargo.toml and uses it for the MSI and setup.exe versions and filenames.
 
 ## Protecting main
 

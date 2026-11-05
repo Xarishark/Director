@@ -20,9 +20,9 @@ The display and audio preset cards show a preview of what you saved. Use the che
 
 ## Install the preview
 
-1. Download **Director-Windows-x64** from a successful **Windows build** run in GitHub Actions and extract the MSI. The artifact requires access to the private repo.
-2. Install the MSI. **Just for me** is the default. Director’s window needs a compatible x64 Windows App Runtime. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
-3. Open **Director** from Start. The installer adds Director to PATH for the selected install scope. Open a new terminal to use the command line.
+1. Download **Director-&lt;version&gt;-x64-setup.exe** from the repo’s GitHub Releases, or from the **Director-Windows-x64** artifact of a successful **Windows build** run. Both require access to the private repo.
+2. Run setup and click **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval. If Microsoft Windows App Runtime 2.6 is missing, setup downloads it (about 125 MB) and installs it first. Leave **Create a desktop shortcut** selected if you want one. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
+3. Click **Launch**, or open **Director** from Start or the desktop. Setup adds Director to PATH. Open a new terminal to use the command line.
 
 ## Set up your first TV scene
 
