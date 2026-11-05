@@ -1,0 +1,50 @@
+<!-- Director setup.exe: installs the Windows App Runtime when it is missing, then the Director MSI.
+     Built by scripts/package-msi.ps1 after Director.wxs. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Bundle Name="Director" Manufacturer="$(var.Publisher)" Version="$(var.Version)"
+          UpgradeCode="79ED9238-A425-46F4-8144-04D20E1CBDB9"
+          IconSourceFile="$(var.ReleaseDir)\director.ico" DisableModify="yes">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense" LicenseUrl=""
+          ThemeFile="$(var.InstallerDir)\theme\DirectorSetup.thm.xml"
+          LocalizationFile="$(var.InstallerDir)\theme\DirectorSetup.thm.wxl"
+          LogoFile="$(var.LogoFile)" SuppressOptionsUI="yes" ShowVersion="yes"
+          LaunchTarget="[ProgramFiles64Folder]Director\director.exe" />
+      <!-- Title bar and taskbar icon; the theme's Window/@IconFile refers to this payload. -->
+      <Payload SourceFile="$(var.ReleaseDir)\director.ico" Name="director.ico" />
+    </BootstrapperApplication>
+
+    <!-- Checkbox on the welcome page; quiet installs can pass DesktopShortcut=0. -->
+    <Variable Name="DesktopShortcut" Type="numeric" Value="1" bal:Overridable="yes" />
+
+    <!-- The pinned runtime registers this package key for each user it is installed for. -->
+    <util:RegistrySearch Id="WindowsAppRuntimeSearch" Variable="WindowsAppRuntimeRegistered" Result="exists"
+        Root="HKCU" Key="Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages\$(var.RuntimePackage)" />
+
+    <!-- Director 0.9.1 and earlier could install just for the current user. Windows Installer cannot upgrade
+         that copy from a machine-wide install, so ask the user to remove it first. Presets are kept. -->
+    <util:RegistrySearch Id="PerUserDirectorSearch" Variable="PerUserDirectorInstalled" Result="exists"
+        Root="HKCU" Key="Software\Director\Installer" Value="UserPath" />
+    <bal:Condition Condition="NOT PerUserDirectorInstalled"
+        Message="An earlier Director preview is installed just for your account. Uninstall it from Settings &gt; Apps &gt; Installed apps, then run setup again. Your presets, scenes and TV pairings are kept." />
+
+    <Chain>
+      <ExePackage Id="WindowsAppRuntime" DisplayName="Windows App Runtime $(var.RuntimeVersion)"
+                  DetectCondition="WindowsAppRuntimeRegistered" Permanent="yes" PerMachine="yes" Vital="yes"
+                  Cache="remove" InstallArguments="--quiet">
+        <!-- Pinned Microsoft-signed installer from https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads.
+             Regenerate with: wix burn remotepayload <file> -du <url> -packagetype exe -->
+        <ExePackagePayload Name="windowsappruntimeinstall-$(var.RuntimeVersion)-x64.exe" ProductName="Windows App SDK"
+            Description="WindowsAppRuntimeInstall.exe"
+            DownloadUrl="https://aka.ms/windowsappsdk/2.6/$(var.RuntimeVersion)/windowsappruntimeinstall-x64.exe"
+            Hash="602336F06392E981CA4E8D8223CE7ED9A353164B0EC4CC528805E78F07E0B86079F5F2A1FC4E9E94CA27EAF6CDE1BCE28D2EF65C4700DD5682964ED8C7F11A43"
+            Size="124945208" Version="2.6" />
+      </ExePackage>
+      <MsiPackage Id="Director" DisplayName="Director" SourceFile="$(var.MsiFile)">
+        <MsiProperty Name="DESKTOPSHORTCUT" Value="[DesktopShortcut]" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

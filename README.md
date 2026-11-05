@@ -2,6 +2,8 @@
 <h1 align="center">Director</h1>
 <p align="center">Switch your monitors, sound, and TV with one scene.</p>
 <p align="center"><strong>Windows x64 · Private preview</strong></p>
+<p align="center"><a href="https://github.com/Xarishark/Director/releases/latest/download/Director-x64-setup.exe"><img src="https://img.shields.io/badge/Download_for_Windows-x64_setup-0078D4?style=for-the-badge&amp;logo=windows&amp;logoColor=white" alt="Download Director for Windows (x64 setup)"></a></p>
+<p align="center"><sub>Latest release · Requires access to this private repo · <a href="https://github.com/Xarishark/Director/releases">All releases</a></sub></p>
 
 Moving from your desk to the living room? A **TV Gaming** scene can wake the TV, switch your picture and sound to HDMI, cap the frame rate, and open Steam Big Picture. Use a **Desk** scene when you come back. For a quick change, open **Current setup** and adjust the active displays, audio, or FPS limit directly.
 
@@ -20,9 +22,9 @@ The display and audio preset cards show a preview of what you saved. Use the che
 
 ## Install the preview
 
-1. Download **Director-Windows-x64** from a successful **Windows build** run in GitHub Actions and extract the MSI. The artifact requires access to the private repo.
-2. Install the MSI. **Just for me** is the default. Director’s window needs a compatible x64 Windows App Runtime. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
-3. Open **Director** from Start. The installer adds Director to PATH for the selected install scope. Open a new terminal to use the command line.
+1. Use the **Download for Windows** button above to get **Director-x64-setup.exe** from the latest GitHub Release. You can also get it from the **Director-Windows-x64** artifact of a successful **Windows build** run. Both require access to the private repo.
+2. Run setup and click **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval. If Microsoft Windows App Runtime 2.6 is missing, setup downloads it (about 125 MB) and installs it first. Leave **Create a desktop shortcut** selected if you want one. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
+3. Click **Launch**, or open **Director** from Start or the desktop. Setup adds Director to PATH. Open a new terminal to use the command line.
 
 ## Set up your first TV scene
 
