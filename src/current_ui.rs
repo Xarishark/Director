@@ -140,16 +140,16 @@ impl DirectorApp {
                 .into();
                 self.details = errors.join("\n");
             }
-            CurrentMessage::Display(DisplayMessage::CaptureLost) if !self.busy => {
-                if self.current.display.drag.is_some() {
-                    let token = self.current.display.drag_token;
-                    work(cx, move || {
-                        std::thread::sleep(std::time::Duration::from_millis(25));
-                        msg(CurrentMessage::Display(DisplayMessage::CancelLostDrag(
-                            token,
-                        )))
-                    });
-                }
+            CurrentMessage::Display(DisplayMessage::CaptureLost)
+                if !self.busy && self.current.display.drag.is_some() =>
+            {
+                let token = self.current.display.drag_token;
+                work(cx, move || {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    msg(CurrentMessage::Display(DisplayMessage::CancelLostDrag(
+                        token,
+                    )))
+                });
             }
             CurrentMessage::Display(event) if !self.busy => {
                 // These editor messages are synchronous and perform no persistence

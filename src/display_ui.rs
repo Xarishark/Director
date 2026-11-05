@@ -192,28 +192,27 @@ impl DirectorApp {
                 self.status =
                     format!("Confirm your display settings. Reverting in {seconds} seconds.");
             }
-            DisplayMessage::Confirm(token, result) => {
+            DisplayMessage::Confirm(token, result)
                 if self
                     .display
                     .confirmation
                     .as_ref()
-                    .is_some_and(|(active, _)| *active == token)
-                {
-                    let (_, sender) = self.display.confirmation.take().unwrap();
-                    let keep = result == ContentDialogResult::Primary && self.display.remaining > 0;
-                    let _ = sender.send(if keep {
-                        Decision::Keep
-                    } else {
-                        Decision::Revert
-                    });
-                    self.display.remaining = 0;
-                    self.status = if keep {
-                        "Keeping display settings…"
-                    } else {
-                        "Restoring previous display settings…"
-                    }
-                    .into();
+                    .is_some_and(|(active, _)| *active == token) =>
+            {
+                let (_, sender) = self.display.confirmation.take().unwrap();
+                let keep = result == ContentDialogResult::Primary && self.display.remaining > 0;
+                let _ = sender.send(if keep {
+                    Decision::Keep
+                } else {
+                    Decision::Revert
+                });
+                self.display.remaining = 0;
+                self.status = if keep {
+                    "Keeping display settings…"
+                } else {
+                    "Restoring previous display settings…"
                 }
+                .into();
             }
             DisplayMessage::Applied(token, report, current) if token == self.display.next_token => {
                 self.end();
@@ -333,16 +332,14 @@ impl DirectorApp {
                     }
                 }
             }
-            DisplayMessage::CaptureLost => {
-                if self.display.drag.is_some() {
-                    let token = self.display.drag_token;
-                    // Native ReleasePointerCapture can enqueue CaptureLost before
-                    // PointerReleased. Give that queued release a chance to finish.
-                    work(cx, move || {
-                        std::thread::sleep(Duration::from_millis(25));
-                        msg(DisplayMessage::CancelLostDrag(token))
-                    });
-                }
+            DisplayMessage::CaptureLost if self.display.drag.is_some() => {
+                let token = self.display.drag_token;
+                // Native ReleasePointerCapture can enqueue CaptureLost before
+                // PointerReleased. Give that queued release a chance to finish.
+                work(cx, move || {
+                    std::thread::sleep(Duration::from_millis(25));
+                    msg(DisplayMessage::CancelLostDrag(token))
+                });
             }
             DisplayMessage::CancelLostDrag(token) if token == self.display.drag_token => {
                 self.update_display(DisplayMessage::CancelDrag, cx);
