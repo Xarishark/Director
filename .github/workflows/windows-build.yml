@@ -119,15 +119,18 @@ jobs:
         run: |
           set -euo pipefail
           tag="v$RELEASE_VERSION"
+          # A fixed asset name keeps releases/latest/download/Director-x64-setup.exe pointing at the newest setup.
+          asset="installer/Director-x64-setup.exe"
+          cp "installer/Director-$RELEASE_VERSION-x64-setup.exe" "$asset"
           if gh release view "$tag" --json tagName > /dev/null 2>&1; then
             tagged_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')
             if [ "$tagged_sha" != "$RELEASE_SHA" ]; then
               echo "This version already points to another commit. Increase Cargo.toml's version." >&2
               exit 1
             fi
-            gh release upload "$tag" "installer/Director-$RELEASE_VERSION-x64-setup.exe" --clobber
+            gh release upload "$tag" "$asset" --clobber
           else
-            gh release create "$tag" "installer/Director-$RELEASE_VERSION-x64-setup.exe" \
+            gh release create "$tag" "$asset" \
               --target "$RELEASE_SHA" \
               --title "Director $RELEASE_VERSION" \
               --generate-notes
