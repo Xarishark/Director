@@ -14,7 +14,7 @@ $description = [regex]::Match($manifest, '(?m)^description\s*=\s*"([^"]+)"').Gro
 if (!$publisher -or !$description) { throw 'Cargo.toml must define a publisher and description.' }
 
 if (!$UseExistingRelease) {
-    & (Join-Path $PSScriptRoot 'dev.ps1') build --locked --release
+    & (Join-Path $PSScriptRoot 'dev.ps1') -Command build -CargoArguments @('--locked', '--release')
     if ($LASTEXITCODE -ne 0) { throw 'Director release build failed.' }
 }
 

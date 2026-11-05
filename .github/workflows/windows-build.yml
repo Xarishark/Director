@@ -6,14 +6,23 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish this version after the main build succeeds
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   windows:
+    name: Windows x64 build
     runs-on: windows-2025
     timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     defaults:
       run:
         shell: pwsh
@@ -22,6 +31,31 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          PREVIOUS_SHA: ${{ github.event.before }}
+          MANUAL_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          $pattern = '(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"$'
+          $manifest = Get-Content Cargo.toml -Raw
+          $version = [regex]::Match($manifest, $pattern).Groups[1].Value
+          if (-not $version) { throw 'Cargo.toml needs a three-part release version.' }
+          $release = $false
+          if ($env:EVENT -eq 'push' -and $env:PREVIOUS_SHA -match '^[a-f0-9]{40}$' -and $env:PREVIOUS_SHA -ne ('0' * 40)) {
+            $previous = git show ($env:PREVIOUS_SHA + ':Cargo.toml')
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read the previous version.' }
+            $old = [regex]::Match(($previous -join [char]10), $pattern).Groups[1].Value
+            if (-not $old) { throw 'The previous manifest has no valid version.' }
+            if ([version]$version -lt [version]$old) { throw 'The release version must not decrease.' }
+            $release = [version]$version -gt [version]$old
+          }
+          if ($env:EVENT -eq 'workflow_dispatch' -and $env:MANUAL_RELEASE -eq 'true') { $release = $true }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release=$($release.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Install Rust and WiX
         run: |
@@ -33,19 +67,19 @@ jobs:
 
       - name: Check, test, and build Director
         run: |
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw 'Visual Studio C++ build tools were not found.' }
           Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
           $env:RUSTUP_TOOLCHAIN = '1.95.0-x86_64-pc-windows-msvc'
-          ./scripts/dev.ps1 fmt --all -- --check
+          ./scripts/dev.ps1 -Command fmt -CargoArguments @('--all', '--', '--check')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/dev.ps1 clippy --locked --all-targets -- -D warnings
+          ./scripts/dev.ps1 -Command clippy -CargoArguments @('--locked', '--all-targets', '--', '-D', 'warnings')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/dev.ps1 test --locked -- --test-threads=1
+          ./scripts/dev.ps1 -Command test -CargoArguments @('--locked', '--', '--test-threads=1')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/dev.ps1 build --locked --release
+          ./scripts/dev.ps1 -Command build -CargoArguments @('--locked', '--release')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package the x64 MSI
@@ -60,3 +94,41 @@ jobs:
           path: target/installer/Director-*-x64.msi
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish versioned release
+    needs: windows
+    if: github.ref == 'refs/heads/main' && needs.windows.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified installer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: Director-Windows-x64
+          path: installer
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.windows.outputs.version }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+          if gh release view "$tag" --json tagName > /dev/null 2>&1; then
+            tagged_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')
+            if [ "$tagged_sha" != "$RELEASE_SHA" ]; then
+              echo "This version already points to another commit. Increase Cargo.toml's version." >&2
+              exit 1
+            fi
+            gh release upload "$tag" "installer/Director-$RELEASE_VERSION-x64.msi" --clobber
+          else
+            gh release create "$tag" "installer/Director-$RELEASE_VERSION-x64.msi" \
+              --target "$RELEASE_SHA" \
+              --title "Director $RELEASE_VERSION" \
+              --generate-notes
+          fi

@@ -103,7 +103,13 @@ Use **Options → Open logs folder** to inspect the automatically rotating local
 
 ## GitHub Actions
 
-The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to main. You can also run it manually from the Actions tab. It uses the hosted Windows runner and the MSVC Rust toolchain, runs formatting, Clippy and tests, then builds and uploads the x64 MSI. Find the unsigned installer under the run’s **Director-Windows-x64** artifact. The workflow does not publish a GitHub Release. GUI and physical-device checks remain separate from CI.
+The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to main. You can also run it manually from the Actions tab. It uses the hosted Windows runner and the MSVC Rust toolchain, runs formatting, Clippy and tests, then builds and uploads the x64 MSI. Find the unsigned installer under the run’s **Director-Windows-x64** artifact. A version increase merged into main publishes a GitHub Release with the verified MSI after the build succeeds. A manual main-branch run can also publish the current version by enabling publish_release. GUI and physical-device checks remain separate from CI.
 ## Versioning
 
 Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. Keep it in three-part numeric form, such as `0.9.1`, for MSI packaging. After changing it, refresh the root package entry in `Cargo.lock` with a normal Cargo check before running the locked build. The [MSI packaging script](../scripts/package-msi.ps1) reads the version from Cargo.toml and uses it for the installer version and filename.
+
+## Protecting main
+
+The build check is named **Windows x64 build**. Configure it as a required check with an up-to-date branch and require pull requests for main, including administrators. Private repository branch protection requires GitHub Pro or an eligible paid organization plan. GitHub rejected protection on the repository’s current plan.
+
+For local protection, run git config --local core.hooksPath .githooks after cloning. This checkout has it enabled. The pre-push hook blocks updates and deletion of main. GitHub-side rules are needed to enforce PR-only changes and required checks for all clients.
