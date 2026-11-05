@@ -82,7 +82,7 @@ jobs:
           ./scripts/dev.ps1 -Command build -CargoArguments @('--locked', '--release')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package the x64 MSI
+      - name: Package the x64 MSI and setup
         run: |
           $env:DOTNET_ROLL_FORWARD = 'Major'
           ./scripts/package-msi.ps1 -UseExistingRelease -Wix (Join-Path $env:RUNNER_TEMP 'director-wix\wix.exe')
@@ -91,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Director-Windows-x64
-          path: target/installer/Director-*-x64.msi
+          path: |
+            target/installer/Director-*-x64-setup.exe
+            target/installer/Director-*-x64.msi
           if-no-files-found: error
           retention-days: 14
 
@@ -125,9 +127,9 @@ jobs:
               echo "This version already points to another commit. Increase Cargo.toml's version." >&2
               exit 1
             fi
-            gh release upload "$tag" "installer/Director-$RELEASE_VERSION-x64.msi" --clobber
+            gh release upload "$tag" "installer/Director-$RELEASE_VERSION-x64-setup.exe" --clobber
           else
-            gh release create "$tag" "installer/Director-$RELEASE_VERSION-x64.msi" \
+            gh release create "$tag" "installer/Director-$RELEASE_VERSION-x64-setup.exe" \
               --target "$RELEASE_SHA" \
               --title "Director $RELEASE_VERSION" \
               --generate-notes
