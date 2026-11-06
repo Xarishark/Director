@@ -26,6 +26,8 @@ pub(crate) enum SceneMessage {
     Name(String),
     Display(Option<usize>),
     Audio(Option<usize>),
+    /// Volume for a TV's linked audio; none keeps the current volume.
+    TvVolume(Option<u8>),
     Tv(Option<usize>),
     Wake(bool),
     Input(Option<usize>),
@@ -255,8 +257,18 @@ impl DirectorApp {
                     .and_then(|i| self.scene.tvs.iter().filter(|t| t.audio.is_some()).nth(i))
                     .map(|t| t.id.clone());
                 if let Some(d) = &mut self.scene.draft {
+                    if d.tv_audio != linked {
+                        d.tv_audio_volume = None;
+                    }
                     d.audio = preset;
                     d.tv_audio = linked;
+                }
+            }
+            SceneMessage::TvVolume(volume) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft
+                    && d.tv_audio.is_some()
+                {
+                    d.tv_audio_volume = volume;
                 }
             }
             SceneMessage::Tv(index) if !self.busy && index.is_some() => {

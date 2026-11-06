@@ -257,7 +257,13 @@ impl DirectorApp {
                         .find(|t| &t.id == id)
                         .and_then(|t| t.audio.as_ref().map(|a| (t, a)))
                         .map_or("Missing TV audio".into(), |(t, a)| {
-                            format!("{} linked audio · {}", t.name, a.name)
+                            format!(
+                                "{} linked audio · {}{}",
+                                t.name,
+                                a.name,
+                                d.tv_audio_volume
+                                    .map_or(String::new(), |v| format!(" · {v}%"))
+                            )
                         })
                 } else {
                     String::new()
@@ -596,7 +602,40 @@ impl DirectorApp {
                             .is_enabled(available)
                             .horizontal_alignment(HorizontalAlignment::Stretch)
                             .on_selection_changed(cx.callback(|i| msg(SceneMessage::Audio(i)))),
-                        note("Audio switches after the displays, so a TV’s HDMI audio is ready. A linked TV output leaves volume and microphone unchanged; choose an audio preset for more control."),
+                        if d.tv_audio.is_some() {
+                            StackPanel::new()
+                                .spacing(8.0)
+                                .children((
+                                    ToggleSwitch::new()
+                                        .automation_name("Set TV audio volume")
+                                        .is_on(d.tv_audio_volume.is_some())
+                                        .is_enabled(available)
+                                        .on_toggled(cx.callback(|on: bool| {
+                                            msg(SceneMessage::TvVolume(on.then_some(50)))
+                                        }))
+                                        .slot(ToggleSwitchSlot::Header, "Set volume"),
+                                    if let Some(v) = d.tv_audio_volume {
+                                        NumberBox::new()
+                                            .automation_name("TV audio volume percentage")
+                                            .minimum(0.0)
+                                            .maximum(100.0)
+                                            .value(Some(f64::from(v)))
+                                            .is_enabled(available)
+                                            .on_value_changed(cx.callback(|v: Option<f64>| {
+                                                msg(SceneMessage::TvVolume(
+                                                    v.filter(|v| v.is_finite())
+                                                        .map(|v| v.round().clamp(0.0, 100.0) as u8),
+                                                ))
+                                            }))
+                                            .slot(NumberBoxSlot::Header, "Volume (%)")
+                                    } else {
+                                        note("Off keeps the TV output’s current volume.")
+                                    },
+                                ))
+                        } else {
+                            View::empty()
+                        },
+                        note("Audio switches after the displays, so a TV’s HDMI audio is ready. A linked TV output changes all three output roles and leaves the microphone unchanged; choose an audio preset for more control."),
                         Button::new()
                             .is_enabled(available)
                             .on_click(cx.message(Message::Go("audio".into())))

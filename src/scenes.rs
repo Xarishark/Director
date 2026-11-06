@@ -14,6 +14,9 @@ pub struct Scene {
     pub audio: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tv_audio: Option<String>,
+    /// Volume (0–100) to set on a TV's linked audio; none keeps the current volume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tv_audio_volume: Option<u8>,
     pub tv: Option<TvPreparation>,
     #[serde(default)]
     pub fps: Option<crate::fps::Request>,
@@ -203,6 +206,12 @@ impl Scene {
         }) {
             return Err("Select a saved TV and input, or leave TV preparation off.".into());
         }
+        if self
+            .tv_audio_volume
+            .is_some_and(|v| v > 100 || self.tv_audio.is_none())
+        {
+            return Err("Set a TV audio volume from 0 to 100, with TV audio selected.".into());
+        }
         if self.audio.is_some() && self.tv_audio.is_some() {
             return Err("Choose an audio preset or linked TV audio, not both.".into());
         }
@@ -288,7 +297,7 @@ pub fn resolve(
             name: format!("{} linked audio", tv.name),
             output_id: link.id.clone(),
             output_name: link.name.clone(),
-            volume_percent: None,
+            volume_percent: scene.tv_audio_volume,
             keep_changes: false,
             communications_output: None,
             input: None,
@@ -922,5 +931,16 @@ mod tests {
             force: false,
         };
         assert!(bad.validate().is_err());
+    }
+    #[test]
+    fn linked_tv_audio_volume_reaches_the_audio_request() {
+        let mut s = scene();
+        s.tv_audio = Some("tv".into());
+        s.tv_audio_volume = Some(35);
+        let tv = serde_json::from_value::<crate::tvs::Tv>(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1],"audio":{"id":"hdmi","name":"LG HDMI"}})).unwrap();
+        let plan = resolve(&s, &[], &[], &[tv]).unwrap();
+        assert_eq!(plan.audio.unwrap().volume_percent, Some(35));
+        s.tv_audio = None;
+        assert!(s.validate().is_err());
     }
 }
