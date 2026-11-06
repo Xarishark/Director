@@ -101,9 +101,21 @@ pub fn run(args: &[String]) -> i32 {
                 Ok(0)
             }
             [area, command, target, rest @ ..] if area == "audio" && command == "apply" => {
-                let saved = presets::load(&presets::path()?)?
-                    .into_iter()
-                    .find(|p| p.id == *target || p.name.to_lowercase() == target.to_lowercase());
+                let all = presets::load(&presets::path()?)?;
+                let saved = if target.starts_with('{') && !all.iter().any(|p| p.id == *target) {
+                    None
+                } else {
+                    Some(
+                        crate::cli_name::find(
+                            &all,
+                            target,
+                            |p| (&p.id, &p.name),
+                            "audio preset",
+                            "audio",
+                        )?
+                        .clone(),
+                    )
+                };
                 let mut volume_override = None;
                 let mut keep_override = false;
                 let mut i = 0;
@@ -141,16 +153,12 @@ pub fn run(args: &[String]) -> i32 {
                         volume_override.or(p.volume_percent),
                         keep_override || crate::preferences::current().keep_completed_changes,
                     )
-                } else if target.starts_with('{') {
+                } else {
                     (
                         target.clone(),
                         volume_override,
                         keep_override || crate::preferences::current().keep_completed_changes,
                     )
-                } else {
-                    return Err(format!(
-                        "No audio preset named “{target}”. Create it in the window first."
-                    ));
                 };
                 let _lock = OperationLock::acquire()?;
                 let report = audio::apply(

@@ -5,6 +5,10 @@ use crate::{
     windows_audio::OperationLock,
     windows_tv::{self, WindowsTvControls},
 };
+/// A saved TV by ID or CLI name.
+fn find<'a>(tvs: &'a [tvs::Tv], name: &str) -> Result<&'a tvs::Tv, String> {
+    crate::cli_name::find(tvs, name, |t| (&t.id, &t.name), "TV", "tv")
+}
 pub fn run(args: &[String]) -> Result<i32, String> {
     let _operation = crate::diagnostics::Operation::start("tv.cli", None);
     if let Some(command) = args.first().filter(|c| {
@@ -20,16 +24,16 @@ pub fn run(args: &[String]) -> Result<i32, String> {
    for tv in tvs::load(&tvs::path()?)?{println!("{} — {} · {} · {}",tv.name,tv.address,if tv.credential.is_some(){"Paired"}else{"Not paired"},if tv.network.targets().is_empty(){"Wake not configured"}else{"Wake available"});}
    Ok(0)
   }
-  [command,name] if command=="report"=>{let _lock=OperationLock::acquire()?;let saved=tvs::load(&tvs::path()?)?;let tv=saved.iter().find(|t|t.name.eq_ignore_ascii_case(name)).ok_or("No TV with that name.")?;let path=crate::samsung::export(tv)?;println!("Redacted report: {}",path.display());Ok(0)}
+  [command,name] if command=="report"=>{let _lock=OperationLock::acquire()?;let saved=tvs::load(&tvs::path()?)?;let tv=find(&saved,name)?;let path=crate::samsung::export(tv)?;println!("Redacted report: {}",path.display());Ok(0)}
   [command,name,id] if command=="input"=>{
    let _lock=OperationLock::acquire()?;let tvs=tvs::load(&tvs::path()?)?;
-   let tv=tvs.iter().find(|t|t.name.eq_ignore_ascii_case(name)).ok_or("No saved TV has that name.")?;
+   let tv=find(&tvs,name)?;
    let report=tv_control::switch_input(&mut WindowsTvControls::new(tv),id)?;
    println!("{}\n{}",report.message,report.details);Ok(0)
   }
   [command,name] if ["pair","check","learn","wake","status","off"].contains(&command.as_str())=>{
    let _lock=OperationLock::acquire()?;let path=tvs::path()?;let expected=tvs::load(&path)?;
-   let tv=expected.iter().find(|t|t.name.eq_ignore_ascii_case(name)).ok_or("No saved TV has that name. Add it in the TVs view first.")?;
+   let tv=find(&expected,name)?;
    match command.as_str(){
     "wake"=>{let report=crate::tv_control::Backend::wake(&mut WindowsTvControls::new(tv))?;println!("Wake request sent: {} request(s) for {} target(s). The TV’s power state has not been verified.",report.packets,report.targets);}
     "off"=>{let report=tv_control::power(&mut WindowsTvControls::new(tv),PowerAction::Off)?;println!("{}\n{}",report.message,report.details);}

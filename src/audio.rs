@@ -98,9 +98,10 @@ pub fn set_output_volume(
     let device = if let Some(exact) = outputs.iter().find(|d| d.id == resolved) {
         exact
     } else {
+        let wanted = crate::cli_name::cli_name(target);
         let mut matches = outputs
             .iter()
-            .filter(|d| d.name.to_lowercase() == target.to_lowercase());
+            .filter(|d| !wanted.is_empty() && crate::cli_name::cli_name(&d.name) == wanted);
         let first = matches
             .next()
             .ok_or("Output not found. Run director audio list.")?;
