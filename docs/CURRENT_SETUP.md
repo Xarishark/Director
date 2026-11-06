@@ -8,7 +8,7 @@ Open **Now** in the navigation pane. Displays and FPS limit come first and wait 
 
 - Arrange screens by dragging them in the box; hover for technical details.
 - Enable/disable monitors, choose the primary, resolution, refresh rate, HDR, and orientation.
-- Sound changes apply right away: choose the default output or microphone, move a volume slider, or press a mute button. See [Sound](AUDIO.md).
+- Sound changes apply right away: choose the default output or microphone, move a volume slider, or press a mute button. Turn on **Use a different device for calls** to send calls to their own output; the main output then sets apps and media only. See [Sound](AUDIO.md).
 - **Apply changes** applies everything staged: displays first, then the FPS limit (only if the display change succeeded). Its tooltip says what is staged. No preset name or Save action is involved.
 - **Discard** (on only while something is staged) rereads the actual Windows state.
 - **Save as display preset…** opens a new display preset seeded with what Now has staged, including edits you haven’t applied. **Save as scene…** opens a new scene with its Sound step dialog open, holding the current output and microphone with their volume and mute state. Saving happens in the normal editor, and Cancel discards it.
