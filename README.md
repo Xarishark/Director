@@ -40,7 +40,7 @@ The display and audio preset cards show a preview of what you saved. Use the che
 
 Director runs the scene in order: **Before → TV → Displays → Audio → FPS → After.** A Before step can wait for a setup script to finish. Director waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and restores the previous Windows settings, unless you change that in Options.
 
-Director remembers the scene you applied last until you restart the PC. Applying a different scene first runs the previous scene's **When leaving** steps, for example `steam://close/bigpicture` when you leave a console scene. **End** on the active scene card (or `director scene end`) runs them without applying another scene.
+Director remembers the scene you applied last until you restart the PC. Applying a different scene first runs the previous scene's **When leaving** steps, for example `steam://close/bigpicture` when you leave a console scene. **End** next to the **+** button (or `director scene end`) runs them without applying another scene; it appears only when the active scene has something to run. A scene can also turn its TV off when you leave it: switch it on in the scene's Prepare TV step.
 
 LG webOS is supported through local control. Samsung Tizen and TCL Android / Google TV are hardware previews. The TV guides explain what to try on each brand and how to send a compatibility report.
 
@@ -48,7 +48,7 @@ LG webOS is supported through local control. Samsung Tizen and TCL Android / Goo
 
 Use `director --version` or **About Director** in Options to check your installed version.
 
-Run a saved scene from a shortcut, script, or terminal with the window closed. For example:
+Run a saved scene from a shortcut, script, or terminal with the window closed. Each scene and preset card has a **>\_** button next to its name that shows the exact command, by name or by ID, with a Copy button, ready to paste into a Stream Deck action or a shortcut. For example:
 
 ```powershell
 director scene apply "TV Gaming"

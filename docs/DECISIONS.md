@@ -185,3 +185,11 @@ The user found the flat navigation (Scenes, Current setup, Audio presets, Displa
 ### D059 — Step-flow scene editor, Before/Leave actions and global failure policy (2026-11-06)
 
 The user found the scene form indistinguishable from Now, the side summary redundant, and per-scene recovery settings out of place. Scenes are now edited as a vertical flow of step blocks. Scenes gain Before actions (apps can wait for completion) and When leaving actions, plus a Close app action. Leave actions run when another scene is applied or the active scene is ended. Director remembers the active scene across the window and the CLI until the PC restarts. "Keep completed changes" and the device wait became one global Options setting shared by scenes and audio presets. The scenes file moved to version 2; version 1 still loads.
+
+### D060 — VRR-safe FPS cap, linked TV audio volume and a Windows 11 title bar (2026-11-06)
+
+The user asked for a VRR-safe FPS cap and chose the Reflex-style formula refresh − refresh²/3600, read from the primary display when applied (after a scene's Displays step). The FPS editor shows only the selected method's current value and names its choices "Set a frame rate limit" and "Remove the global limit". A scene's linked TV audio can now set a volume. The app name and pane toggle moved into a WinUI 3 TitleBar, so the navigation pane starts with the pages.
+
+### D061 — TV off when leaving, End beside +, shortcut commands and Save only on change (2026-11-06)
+
+The user wanted scenes to switch the TV off, chose a switch in the Prepare TV step that shows a locked "Turn off" card under When leaving, and asked that End appear only when leaving does something, next to + as a global action. Cards gain a ">_" button with copyable commands by name and by ID (for Stream Deck and shortcuts, using `director` on PATH); display and audio CLI commands accept IDs. The audio editor no longer shows the device ID. Save is enabled only for changed, valid drafts.

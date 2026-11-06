@@ -12,11 +12,21 @@ Choosing another category in the navigation pane, or Options, while the current 
 
 ## Scene editor — current
 
-A scene is edited as a vertical flow of step blocks in run order (Before, Prepare TV, Displays, Audio, FPS limit, After) joined by a thin connector line, with When leaving set apart below under its own label. Collapsed blocks show an icon, the title and a one-line summary; clicking expands the step's native controls in place, one block at a time. Unused steps are muted "+ Add" slots, never empty forms. A used block has a remove button. There is no side summary panel: the flow is the summary. Failure policy and device wait live in Options, not in the scene. Scene cards mark the active scene and offer End beside Apply. See [Scenes](SCENES.md).
+A scene is edited as a vertical flow of fixed-size step cards in run order (Before, Prepare TV, Displays, Audio, FPS limit, After) joined by small down arrows, with When leaving set apart below under its own label. A card shows an icon, the title and a one-line summary, with a pencil and a bin. The card or its pencil opens the step's controls in a dialog: Done keeps the changes and Cancel restores the step as it was when the dialog opened. Nothing in the flow expands, and the column has a fixed width (720 DIP, or less in a narrow window), so the overview never changes size. Empty steps are dashed outlines the same size as filled cards, with the step's muted icon, a one-line hint and an Add button; they open the same dialog. Every card shares one icon column, and the arrows between steps are centred on it. Leaving the page from inside a dialog (New … preset, Manage) closes it and keeps the edits. There is no side summary panel: the flow is the summary. Failure policy and device wait live in Options, not in the scene. Scene cards mark the active scene and offer End beside Apply. See [Scenes](SCENES.md).
 
 ## Status area — current
 
 The bottom status area is hidden when nothing needs attention. Work in progress shows one muted line with an indeterminate progress bar. A finished action shows a closable Success InfoBar that hides itself after 5 seconds. Something the user must read (an open draft blocking a flow, a cancelled pairing that left permission on the TV, unavailable live TV data) shows a Warning InfoBar that stays until closed. Errors stay red until closed. Routine hints such as Ready., Draft updated or Edit TV. are recorded for diagnostics but not shown; editor footers already explain save-versus-apply. This supersedes the earlier always-open InfoBar.
+
+## Save and shortcut commands — current
+
+Save is enabled only when the draft can be saved and has changed: it differs from how it opened, or it's a new item that isn't saved yet (a draft seeded from Now counts). Data that loads into an opened draft doesn't count as a change. The scene editor's footer says "No changes to save." meanwhile.
+
+Scene, display and audio cards have a borderless ">_" (CommandPrompt glyph) button right after the name. It opens a dialog with the command by name and by ID, each in selectable text with a Copy button and a one-line subtitle, plus `director scene end` for scenes that do something when left.
+
+## Title bar — current
+
+The window uses WinUI 3's TitleBar, like Windows 11 Settings: the pane toggle (☰) and "Director" sit in the title bar next to the caption buttons, and the navigation pane starts directly with Scenes. NavigationView has no pane title and hides its own toggle.
 
 ## Native Windows workspace
 
@@ -24,7 +34,7 @@ Use genuine WinUI 3 controls through Microsoft Windows Reactor. Follow the syste
 
 Audio presets is the main NavigationView page. Use a compact ListView with one selectable row per preset and an Add/plus control. Each row has visible native icon buttons: green check for Apply, pencil for Edit, red bin for Delete. Accessible names and native tooltips explain each action. Selection alone never applies anything. Deletion uses a native ContentDialog.
 
-Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, failure-policy selection, device-ID Expander with Copy, and Save/Cancel. Saving stores choices only; Cancel discards the draft. Preserve navigation collapse and device-ID expansion state across form updates.
+Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, and Save/Cancel. Saving stores choices only; Cancel discards the draft. The endpoint ID is not shown (it was noise for most people); `director audio list` prints it. Failure policy is global in Options.
 
 InfoBar communicates status and errors. Disable mutations while work is active, keeping the UI responsive. Deferred features must not pretend to work. The default client size is 1000 x 700 logical pixels, minimum 760 x 600. Scroll constrained list/editor content, keep actions reachable, and make full device identity available on demand.
 
