@@ -158,6 +158,40 @@ impl DirectorApp {
     fn ready(&self) -> bool {
         !self.busy && self.guard_ready
     }
+    /// Options sits in the pane footer as a button (reactor 0.100 has no footer menu items),
+    /// styled like a navigation item, with the same selection pill when it's the open page.
+    fn options_item(&self, cx: &ViewContext<Self>) -> View {
+        let selected = self.page == Page::Options;
+        Button::new()
+            .automation_name("Options")
+            .style(ButtonStyle::Subtle)
+            .horizontal_alignment(HorizontalAlignment::Stretch)
+            .horizontal_content_alignment(HorizontalAlignment::Left)
+            .is_enabled(!self.busy)
+            .on_click(cx.message(Message::Navigate(Some("options".into()))))
+            .content(
+                Grid::new()
+                    .columns([GridLength::Pixel(3.0), GridLength::Auto, GridLength::Auto])
+                    .column_spacing(12.0)
+                    .margin(Thickness::new(-16.0, 0.0, 0.0, 0.0))
+                    .children((
+                        Border::new()
+                            .height(16.0)
+                            .corner_radius(1.5)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .background(if selected {
+                                Brush::from(ThemeBrush::Accent)
+                            } else {
+                                Brush::from(Color::transparent())
+                            }),
+                        FontIcon::new().grid_column(1).glyph("\u{e713}"),
+                        TextBlock::new()
+                            .grid_column(2)
+                            .text("Options")
+                            .vertical_alignment(VerticalAlignment::Center),
+                    )),
+            )
+    }
     fn nav_item(&self, page: Page, tag: &str, label: &str, glyph: &str) -> View {
         NavigationViewItem::new()
             .tag(tag)
@@ -426,57 +460,13 @@ impl Component for DirectorApp {
                             self.nav_item(Page::Current, "current", "Now", "\u{e9e9}"),
                         ),
                         KeyedView::new(
-                            "library",
-                            NavigationViewItem::new()
-                                .tag("library")
-                                .selects_on_invoked(false)
-                                .is_expanded(true)
-                                .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "Library"),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph("\u{e8f1}"),
-                                    ),
-                                    SlotView::collection(
-                                        NavigationViewItemSlot::MenuItems,
-                                        [
-                                            KeyedView::new(
-                                                "displays",
-                                                self.nav_item(
-                                                    Page::Displays,
-                                                    "displays",
-                                                    "Displays",
-                                                    "\u{e7f8}",
-                                                ),
-                                            ),
-                                            KeyedView::new(
-                                                "tvs",
-                                                self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}"),
-                                            ),
-                                        ],
-                                    ),
-                                ]),
+                            "displays",
+                            self.nav_item(Page::Displays, "displays", "Displays", "\u{e7f8}"),
                         ),
+                        KeyedView::new("tvs", self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}")),
                     ],
                 ),
-                SlotView::new(
-                    NavigationViewSlot::PaneFooter,
-                    Button::new()
-                        .automation_name("Options")
-                        .style(ButtonStyle::Subtle)
-                        .horizontal_alignment(HorizontalAlignment::Stretch)
-                        .is_enabled(!self.busy)
-                        .on_click(cx.message(Message::Navigate(Some("options".into()))))
-                        .content(
-                            StackPanel::new()
-                                .orientation(Orientation::Horizontal)
-                                .spacing(12.0)
-                                .children((
-                                    FontIcon::new().glyph("\u{e713}"),
-                                    TextBlock::new().text("Options"),
-                                )),
-                        ),
-                ),
+                SlotView::new(NavigationViewSlot::PaneFooter, self.options_item(cx)),
                 SlotView::new(NavigationViewSlot::Content, body),
             ]);
         Grid::new()
