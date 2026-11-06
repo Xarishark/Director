@@ -411,7 +411,7 @@ impl DirectorApp {
                             .unwrap_or_else(View::empty),
                         Button::new()
                             .is_enabled(available)
-                            .on_click(cx.message(Message::Navigate(Some("displays".into()))))
+                            .on_click(cx.message(Message::Go("displays".into())))
                             .content("Manage display presets"),
                     ))
             }
@@ -461,7 +461,7 @@ impl DirectorApp {
                         note("Audio switches after the displays, so a TV’s HDMI audio is ready. A linked TV output leaves volume and microphone unchanged; choose an audio preset for more control."),
                         Button::new()
                             .is_enabled(available)
-                            .on_click(cx.message(Message::Navigate(Some("audio".into()))))
+                            .on_click(cx.message(Message::Go("audio".into())))
                             .content("Manage audio presets"),
                     ))
             }

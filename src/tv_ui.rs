@@ -705,6 +705,10 @@ impl DirectorApp {
                     }
                     .into();
                     self.details = details.network_warning.unwrap_or_default();
+                    if self.tv.setup.is_none() {
+                        // Refreshed data for a saved TV isn't an edit.
+                        self.rebase_tv();
+                    }
                     if self.details.is_empty() {
                         self.announce(cx);
                     } else {
@@ -852,6 +856,7 @@ impl DirectorApp {
                     self.tv.setup = None;
                     self.tv.pending_delete = None;
                     self.status = "TVs saved.".into();
+                    self.guard_saved(true, cx);
                     self.announce(cx);
                     self.library_saved(crate::library_flow::Slot::Tv, added, cx);
                 }

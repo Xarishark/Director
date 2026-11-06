@@ -389,6 +389,7 @@ impl DirectorApp {
                             draft.layout = layout;
                         }
                         self.status="Configure your layout, then save the preset. Your screens stay unchanged.".into();
+                        self.rebase_display();
                     }
                     Err(e) => self.failure(e),
                 }
@@ -511,6 +512,7 @@ impl DirectorApp {
                     self.display.drag = None;
                     self.display.pending_delete = None;
                     self.status = "Display presets saved. Your screens are unchanged.".into();
+                    self.guard_saved(true, cx);
                     self.announce(cx);
                     self.library_saved(crate::library_flow::Slot::Display, added, cx);
                 }

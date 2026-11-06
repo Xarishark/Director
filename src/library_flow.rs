@@ -54,7 +54,7 @@ impl LibraryFlow {
 impl DirectorApp {
     fn library_go(&mut self, tag: &str, cx: &ComponentContext<Self>) {
         let before = self.page;
-        <Self as Component>::update(self, Message::Navigate(Some(tag.into())), cx);
+        self.navigate_now(Some(tag.into()), cx);
         // Entering a page reloads it (sometimes via a queued message) and its load handler
         // resumes the flow. Staying on the same page reloads nothing, so resume now.
         if self.page == before {

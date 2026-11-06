@@ -465,6 +465,7 @@ impl DirectorApp {
                         self.scene.delete = None;
                         self.error = false;
                         self.status = "Scenes saved. Your setup is unchanged.".into();
+                        self.guard_saved(true, cx);
                         self.details.clear();
                         self.announce(cx);
                     }

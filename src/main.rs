@@ -8,6 +8,7 @@ mod display_ui;
 mod fps_ui;
 mod icons;
 mod library_flow;
+mod nav_guard;
 mod options_ui;
 #[cfg(test)]
 mod preset_cards_preview;
@@ -43,7 +44,7 @@ type Loaded = (
     Result<Vec<Output>, String>,
     Result<Vec<Output>, String>,
 );
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Draft {
     id: Option<String>,
     name: String,
@@ -59,6 +60,9 @@ struct Draft {
 enum Message {
     WindowSize(WindowSize),
     Navigate(Option<String>),
+    /// Navigate without asking about unsaved changes, for links that come back to a draft.
+    Go(String),
+    Guard(nav_guard::GuardMessage),
     Display(DisplayMessage),
     Current(current_ui::CurrentMessage),
     Fps(fps_ui::FpsMessage),
@@ -106,6 +110,7 @@ struct DirectorApp {
     tv: tv_ui::TvState,
     scene: scene_ui::SceneState,
     flow: library_flow::LibraryFlow,
+    nav: nav_guard::NavGuard,
     notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
     presets: Vec<Preset>,
@@ -155,8 +160,34 @@ impl DirectorApp {
         self.busy = false;
         close_guard::set_busy(false);
     }
+    /// Switch pages without asking about unsaved changes. Drafts stay open.
+    pub(crate) fn navigate_now(&mut self, tag: Option<String>, context: &ComponentContext<Self>) {
+        let Some(next) = tag.as_deref().and_then(page_for) else {
+            return;
+        };
+        if self.page == next {
+            return;
+        }
+        self.page = next;
+        self.flow.navigated();
+        self.error = false;
+        self.status = "Ready.".into();
+        self.details.clear();
+        if next == Page::Scenes {
+            self.update_scene(scene_ui::SceneMessage::Load, context);
+        } else if next == Page::Current && !self.current.dirty() {
+            self.load_current(context);
+        } else if next == Page::Displays && self.display.draft.is_none() {
+            self.update_display(DisplayMessage::Refresh, context);
+        } else if next == Page::Tvs && self.tv.draft.is_none() {
+            self.update_tv(tv_ui::TvMessage::Load, context);
+        } else if next == Page::Audio && self.draft.is_none() {
+            let _ = context.sender().send(Message::Refresh);
+        }
+    }
     fn failure(&mut self, error: String) {
         director::diagnostics::event("app.operation", "error", &error);
+        self.guard_save_failed();
         self.end();
         self.error = true;
         self.status = "Could not complete the request.".into();
@@ -337,6 +368,18 @@ impl DirectorApp {
         ))
     }
 }
+/// The page a navigation tag names.
+fn page_for(tag: &str) -> Option<Page> {
+    Some(match tag {
+        "current" => Page::Current,
+        "displays" => Page::Displays,
+        "tvs" => Page::Tvs,
+        "options" => Page::Options,
+        "scenes" => Page::Scenes,
+        "audio" => Page::Audio,
+        _ => return None,
+    })
+}
 static NOTIFIED_RUN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 impl Component for DirectorApp {
@@ -373,6 +416,7 @@ impl Component for DirectorApp {
             tv: tv_ui::TvState::default(),
             scene: scene_ui::SceneState::default(),
             flow: library_flow::LibraryFlow::default(),
+            nav: nav_guard::NavGuard::default(),
             notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
             presets: vec![],
@@ -412,6 +456,7 @@ impl Component for DirectorApp {
         app
     }
     fn update(&mut self, message: Message, context: &ComponentContext<Self>) {
+        self.track_unsaved();
         #[cfg(test)]
         if preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire)
             && self.preview_cards_message(&message)
@@ -446,42 +491,9 @@ impl Component for DirectorApp {
             Message::Status(message) => self.update_status(message),
             Message::Tv(message) => self.update_tv(message, context),
             Message::Tip(message) => self.update_tip(message, context),
-            Message::Navigate(tag) if !self.busy => {
-                let next = if tag.as_deref() == Some("current") {
-                    Page::Current
-                } else if tag.as_deref() == Some("displays") {
-                    Page::Displays
-                } else if tag.as_deref() == Some("tvs") {
-                    Page::Tvs
-                } else if tag.as_deref() == Some("options") {
-                    Page::Options
-                } else if tag.as_deref() == Some("scenes") {
-                    Page::Scenes
-                } else if tag.as_deref() == Some("audio") {
-                    Page::Audio
-                } else {
-                    return;
-                };
-                if self.page == next {
-                    return;
-                }
-                self.page = next;
-                self.flow.navigated();
-                self.error = false;
-                self.status = "Ready.".into();
-                self.details.clear();
-                if next == Page::Scenes {
-                    self.update_scene(scene_ui::SceneMessage::Load, context);
-                } else if next == Page::Current && !self.current.dirty() {
-                    self.load_current(context);
-                } else if next == Page::Displays && self.display.draft.is_none() {
-                    self.update_display(DisplayMessage::Refresh, context);
-                } else if next == Page::Tvs && self.tv.draft.is_none() {
-                    self.update_tv(tv_ui::TvMessage::Load, context);
-                } else if next == Page::Audio && self.draft.is_none() {
-                    let _ = context.sender().send(Message::Refresh);
-                }
-            }
+            Message::Navigate(tag) if !self.busy => self.navigate_guarded(tag, context),
+            Message::Go(tag) if !self.busy => self.navigate_now(Some(tag), context),
+            Message::Guard(message) => self.update_guard(message, context),
             Message::GuardReady(result) => match result {
                 Ok(()) => self.guard_ready = true,
                 Err(e) => {
@@ -816,6 +828,7 @@ impl Component for DirectorApp {
                     self.draft = None;
                     self.pending_delete = None;
                     self.status = "Presets saved. Your audio is unchanged.".into();
+                    self.guard_saved(true, context);
                     self.announce(context);
                     self.library_saved(library_flow::Slot::Audio, added, context);
                 }
@@ -1077,14 +1090,19 @@ impl Component for DirectorApp {
             .unwrap_or_else(View::empty);
         Grid::new().keyed_children([
             KeyedView::new(
-                if self.page == Page::Options {
-                    "options-nav"
-                } else {
-                    "device-nav"
-                },
+                format!(
+                    "{}-{}",
+                    if self.page == Page::Options {
+                        "options-nav"
+                    } else {
+                        "device-nav"
+                    },
+                    self.nav.revision
+                ),
                 nav,
             ),
             KeyedView::new("audio-dialog", dialog),
+            KeyedView::new("guard-dialog", self.guard_dialog(cx)),
             KeyedView::new("options-dialog", self.options_dialog(cx)),
             KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
             KeyedView::new("display-dialog", self.display_dialog(cx)),
