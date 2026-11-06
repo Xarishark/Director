@@ -3,6 +3,7 @@ mod audio_relink_ui;
 mod clipboard;
 mod close_guard;
 mod command_ui;
+mod crash_ui;
 mod current_ui;
 mod display_editor_ui;
 mod display_setup_ui;
@@ -66,6 +67,7 @@ enum Message {
     Go(String),
     Guard(nav_guard::GuardMessage),
     Command(command_ui::CommandMessage),
+    Crash(crash_ui::CrashMessage),
     Display(DisplayMessage),
     Current(current_ui::CurrentMessage),
     Fps(fps_ui::FpsMessage),
@@ -114,6 +116,8 @@ struct DirectorApp {
     nav: nav_guard::NavGuard,
     /// The scene or preset whose shortcut command is shown.
     command: Option<command_ui::Target>,
+    /// A crash report from an earlier run, offered once at startup.
+    crash: Option<director::crash::Report>,
     notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
     presets: Vec<Preset>,
@@ -406,6 +410,7 @@ impl Component for DirectorApp {
             flow: library_flow::LibraryFlow::default(),
             nav: nav_guard::NavGuard::default(),
             command: None,
+            crash: director::crash::pending(),
             notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
             presets: vec![],
@@ -486,6 +491,7 @@ impl Component for DirectorApp {
                 Message::Go(tag) if !self.busy => self.navigate_now(Some(tag), context),
                 Message::Guard(message) => self.update_guard(message, context),
                 Message::Command(message) => self.update_command(message, context),
+                Message::Crash(message) => self.update_crash(message, context),
                 Message::GuardReady(result) => match result {
                     Ok(()) => self.guard_ready = true,
                     Err(e) => {
@@ -1093,6 +1099,7 @@ impl Component for DirectorApp {
                 KeyedView::new("audio-dialog", dialog),
                 KeyedView::new("guard-dialog", self.guard_dialog(cx)),
                 KeyedView::new("command-dialog", self.command_dialog(cx)),
+                KeyedView::new("crash-dialog", self.crash_dialog(cx)),
                 KeyedView::new("options-dialog", self.options_dialog(cx)),
                 KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
                 KeyedView::new("display-dialog", self.display_dialog(cx)),
@@ -1103,6 +1110,7 @@ impl Component for DirectorApp {
 }
 fn main() {
     director::diagnostics::init();
+    director::crash::install();
     director::diagnostics::event("app.session", "started", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     let run_id = match args.as_slice() {
@@ -1122,6 +1130,7 @@ fn main() {
     }
     if let Err(error) = App::run_component::<DirectorApp>(()) {
         director::diagnostics::event("app.window", "error", &error.to_string());
+        let _ = director::crash::record("Window error", &error.to_string(), None);
         director::diagnostics::flush();
         eprintln!("Director could not open: {error}");
         std::process::exit(1);

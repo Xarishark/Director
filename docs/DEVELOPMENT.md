@@ -89,6 +89,11 @@ The ignored tv_controls_ui::native_preview::controls_fixture test opens the moda
 The pinned Reactor version rejects the tooltip wrapper on Refresh inside ContentDialog with StructureUnsupported. The refresh button retains its accessible name without that wrapper. No dependency/cache modification was made. Keep this native regression check when changing dialog content.
 
 
+## Crash reports
+
+`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, backtrace for panics and the newest 40 log records. On the next start the newest unoffered report is shown once; dismissing it renames it to `.seen.txt`. Report on GitHub opens `issues/new` with only the summary, version and backtrace in the URL: the log lines stay in the file for the user to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well, since each one is a bug. Native faults that bypass the panic hook (fail-fast, access violations) still appear only in Windows' Application event log.
+
+
 ## Action SVG assets
 
 Build stages assets/icons/remote.svg and delete.svg into each Cargo profile’s icons directory. Keep that directory beside director.exe when copying the preview, alongside the existing icon/orientation assets. The shared icons module uses the profile folder for test executables in deps. No image-generation dependency or helper executable was added. Native checks should retain accessible action labels, verify SVG rendering, and confirm Apply is unchanged.

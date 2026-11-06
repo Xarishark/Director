@@ -33,6 +33,7 @@ pub mod tv_cli;
 
 #[cfg(windows)]
 pub mod backup;
+pub mod crash;
 pub mod diagnostics;
 pub mod display_capabilities;
 pub mod display_detection;

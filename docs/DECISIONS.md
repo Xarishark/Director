@@ -193,3 +193,7 @@ The user asked for a VRR-safe FPS cap and chose the Reflex-style formula refresh
 ### D061 — TV off when leaving, End beside +, shortcut commands and Save only on change (2026-11-06)
 
 The user wanted scenes to switch the TV off, chose a switch in the Prepare TV step that shows a locked "Turn off" card under When leaving, and asked that End appear only when leaving does something, next to + as a global action. Cards gain a ">_" button with copyable commands by name and by ID (for Stream Deck and shortcuts, using `director` on PATH); display and audio CLI commands accept IDs. The audio editor no longer shows the device ID. Save is enabled only for changed, valid drafts.
+
+### D062 — Local crash reports offered as GitHub issues (2026-11-06)
+
+Opening a scene step with actions closed the window: the pinned Reactor rejects tooltips inside a ContentDialog, and nothing recorded the failure beyond one log line. The user asked why crashes aren't collected so people can report them. Director now saves a local crash report for panics and fatal window errors and offers it once on the next start. Report on GitHub opens a pre-filled issue in the browser, so nothing is uploaded without the user submitting it; the log lines stay in the file for the user to attach. A test keeps tooltips out of dialog content.

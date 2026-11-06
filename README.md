@@ -65,6 +65,7 @@ director audio volume "Speakers" 35
 ## Logs and backups
 
 - **View logs** in Options shows the latest scene result from the app or CLI, followed by recent log entries. If a scene stopped, look there for the failed step and whether recovery succeeded.
+- **If Director closes unexpectedly**, it saves a crash report in the logs folder (`Logs\Crashes`) and offers it the next time it starts. **Report on GitHub** opens a new issue in your browser with the error filled in; nothing is sent until you submit it. **Report a problem** in Options does the same for anything else.
 - **Notify when CLI scenes fail** lets Windows tell you when an unattended run stops. Click the notification to open that run in Director.
 - **Export backup** saves your scenes and presets to one local file. **Restore backup** previews what it will replace and flags device links to review. TV pairing keys stay on the original PC.
 

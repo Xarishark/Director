@@ -329,7 +329,11 @@ impl DirectorApp {
                 Button::new().is_enabled(!self.busy).on_click(cx.message(msg(OptionsMessage::Logs(None)))).content("View logs"),
                 Button::new().automation_name("Open logs folder").is_enabled(!self.busy)
                 .on_click(cx.message(Message::OpenLogs)).content("Open logs folder"),
+                Button::new().automation_name("Report a problem")
+                .on_click(cx.message(Message::Crash(crate::crash_ui::CrashMessage::ReportProblem))).content("Report a problem"),
             )),
+            TextBlock::new().text("Report a problem opens a new GitHub issue in your browser. If Director closes unexpectedly, it saves a crash report in the logs folder and offers to report it the next time it starts. Nothing is sent unless you submit the issue.")
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72).font_size(12.0),
             TextBlock::new().text("Backup").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new().text("Save your scenes and presets to one local file. TV pairing stays on this PC.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),
