@@ -272,21 +272,22 @@ impl DirectorApp {
     fn main_view(&self, cx: &ViewContext<Self>) -> View {
         let rows = self.audio_preset_cards(cx);
         let list = if self.presets.is_empty() {
-            Border::new().grid_row(2).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
+            Border::new().grid_row(1).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
                 TextBlock::new().text(if self.busy {"Loading your presets…"}else{"Your first preset starts here"}).font_size(20.0),
                 TextBlock::new().text("Choose an output, give it a name, and keep it ready. Saving does not change your audio. You can also save the sound you’ve set in Now.").text_wrapping(TextWrapping::Wrap).max_width(500.0).horizontal_alignment(HorizontalAlignment::Left),
                 Button::new().is_enabled(!self.busy).on_click(cx.message(Message::Navigate(Some("current".into())))).content("Open Now"),
             )))
         } else {
-            crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::AUDIO_CARD_HEIGHT, rows)
+            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::AUDIO_CARD_HEIGHT, rows)
         };
         Grid::new()
-            .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
+            .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
                     "Audio",
                     "Saved sound setups you can use in scenes.",
                     vec![
+                        crate::preset_ui::current("CURRENT OUTPUT", self.current()),
                         Button::new()
                             .style(ButtonStyle::Accent)
                             .automation_name("Add preset")
@@ -296,22 +297,6 @@ impl DirectorApp {
                             .tooltip("Add audio preset"),
                     ],
                 ),
-                Border::new()
-                    .grid_row(1)
-                    .padding(16.0)
-                    .margin(Thickness::new(0.0, 0.0, 0.0, 16.0))
-                    .corner_radius(8.0)
-                    .content(
-                        StackPanel::new().spacing(4.0).children((
-                            TextBlock::new()
-                                .text("CURRENT OUTPUT")
-                                .font_size(10.0)
-                                .opacity(0.65),
-                            TextBlock::new()
-                                .text(self.current())
-                                .text_trimming(TextTrimming::CharacterEllipsis),
-                        )),
-                    ),
                 list,
             ))
     }
@@ -986,8 +971,16 @@ impl Component for DirectorApp {
                             .content(ScrollViewer::new().max_height(160.0).content(status)),
                     )),
             );
+        // The window's TitleBar carries the app name and the pane toggle, as in Windows 11
+        // Settings, so the pane starts directly with the pages.
+        let title_bar = TitleBar::new()
+            .preferred_height(WindowTitleBarHeight::Standard)
+            .title("Director")
+            .is_pane_toggle_button_visible(true)
+            .on_pane_toggle_requested(cx.message(Message::Pane(!self.pane_open)));
         let nav = NavigationView::new()
-            .pane_title("Director")
+            .grid_row(1)
+            .is_pane_toggle_button_visible(false)
             .open_pane_length(200.0)
             .pane_display_mode(NavigationViewPaneDisplayMode::Left)
             .is_pane_open(self.pane_open)
@@ -1088,27 +1081,30 @@ impl Component for DirectorApp {
                     .content("This removes the saved preset. Your current audio will not change.")
             })
             .unwrap_or_else(View::empty);
-        Grid::new().keyed_children([
-            KeyedView::new(
-                format!(
-                    "{}-{}",
-                    if self.page == Page::Options {
-                        "options-nav"
-                    } else {
-                        "device-nav"
-                    },
-                    self.nav.revision
+        Grid::new()
+            .rows([GridLength::Auto, GridLength::Star(1.0)])
+            .keyed_children([
+                KeyedView::new("title-bar", title_bar),
+                KeyedView::new(
+                    format!(
+                        "{}-{}",
+                        if self.page == Page::Options {
+                            "options-nav"
+                        } else {
+                            "device-nav"
+                        },
+                        self.nav.revision
+                    ),
+                    nav,
                 ),
-                nav,
-            ),
-            KeyedView::new("audio-dialog", dialog),
-            KeyedView::new("guard-dialog", self.guard_dialog(cx)),
-            KeyedView::new("options-dialog", self.options_dialog(cx)),
-            KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
-            KeyedView::new("display-dialog", self.display_dialog(cx)),
-            KeyedView::new("tv-dialog", self.tv_dialog(cx)),
-            KeyedView::new("scene-dialog", self.scene_dialog(cx)),
-        ])
+                KeyedView::new("audio-dialog", dialog),
+                KeyedView::new("guard-dialog", self.guard_dialog(cx)),
+                KeyedView::new("options-dialog", self.options_dialog(cx)),
+                KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
+                KeyedView::new("display-dialog", self.display_dialog(cx)),
+                KeyedView::new("tv-dialog", self.tv_dialog(cx)),
+                KeyedView::new("scene-dialog", self.scene_dialog(cx)),
+            ])
     }
 }
 fn main() {

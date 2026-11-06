@@ -618,7 +618,7 @@ impl DirectorApp {
         let rows = self.display_preset_cards(cx);
         let list = if rows.is_empty() {
             Border::new()
-                .grid_row(2)
+                .grid_row(1)
                 .padding(Thickness::xy(8.0, 24.0))
                 .content(
                     StackPanel::new().spacing(10.0).children((
@@ -641,15 +641,22 @@ impl DirectorApp {
                     )),
                 )
         } else {
-            crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
+            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
         };
         Grid::new()
-            .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
+            .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
                     "Displays",
                     "Saved monitor layouts you can use in scenes.",
                     vec![
+                        crate::preset_ui::current(
+                            "CURRENT LAYOUT",
+                            self.display
+                                .current
+                                .as_ref()
+                                .map_or("Current layout unavailable".into(), Layout::summary),
+                        ),
                         Button::new()
                             .automation_name("Capture current layout")
                             .is_enabled(self.display_ready())
@@ -665,24 +672,6 @@ impl DirectorApp {
                             .tooltip("Add display preset"),
                     ],
                 ),
-                StackPanel::new()
-                    .grid_row(1)
-                    .spacing(5.0)
-                    .margin(Thickness::new(0.0, 0.0, 0.0, 20.0))
-                    .children((
-                        TextBlock::new()
-                            .text("CURRENT LAYOUT")
-                            .font_size(10.0)
-                            .opacity(0.65),
-                        TextBlock::new()
-                            .text(
-                                self.display
-                                    .current
-                                    .as_ref()
-                                    .map_or("Current layout unavailable".into(), Layout::summary),
-                            )
-                            .text_wrapping(TextWrapping::Wrap),
-                    )),
                 list,
             ))
     }
