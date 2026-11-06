@@ -1,5 +1,11 @@
 # Director interface
 
+## Information architecture — current
+
+The navigation pane has three areas. Scenes is the start page (except when opened from a failed-scene notification, which opens Options). Now (formerly Current setup) adjusts the live setup without saving. Library is an expanded, non-selectable parent item with Displays, Audio and TVs. Options stays in the pane footer. Each area has its own icon; Displays and TVs no longer share one.
+
+Pages connect forward instead of being islands. Now offers Save as display preset… and Save as audio preset…, which open the normal Library editor seeded from the staged state. The last entry of each scene-editor dropdown (New display preset…, New audio preset…, Add TV…) opens the Library editor and, after Save, returns to the scene with the new item selected; Cancel also returns. A sidebar navigation abandons the return. An existing open Library draft is never overwritten: the user is sent to finish or cancel it. The empty Scenes page is a checklist of the building blocks, linking to Now and the Library. This supersedes "Audio presets is the main NavigationView page" below; the page names in older sections refer to Library › Audio, Library › Displays and Now.
+
 ## Native Windows workspace
 
 Use genuine WinUI 3 controls through Microsoft Windows Reactor. Follow the system theme, accent, fonts, hover, focus, scrolling, and control behavior. Keep custom painting and custom interaction machinery out of core controls.
@@ -32,9 +38,9 @@ Audio and display list pages use one shared heading/toolbar component. Keep the 
 
 The display pencil opens the complete editor directly. There is no Customize layout step. A boxed map supports pointer-captured dragging with stable scale during the gesture, edge snapping, and overlap handling on drop. Show technical position details in screen hover tooltips, rather than numeric fields. Keep the primary display's Enabled switch greyed out and put the reason on a transparent, enabled hover layer above it so it can still be hovered. New GUI and CLI presets default to confirmation off; preserve existing choices.
 
-## Current setup alternative
+## Current setup alternative (now "Now")
 
-Current setup puts the shared monitor editor and audio output/volume controls into one scrolling page. Keep separate Apply display changes and Apply audio changes actions, plus Discard edits. This view neither edits nor saves preset documents. Stage edits before Apply; preserve pending edits across navigation. New page roots prevent native scroll state from leaking across pages. Theme/appearance switching was explicitly excluded by the user.
+Now puts the shared monitor editor and audio output/volume controls into one scrolling page. Keep separate Apply display changes and Apply audio changes actions, plus Discard edits. This view neither edits nor saves preset documents. Stage edits before Apply; preserve pending edits across navigation. New page roots prevent native scroll state from leaking across pages. Theme/appearance switching was explicitly excluded by the user.
 
 Orientation choices use equally sized compact rows, left-aligned icon/text, stand-only SVGs, and a standard chevron. Re-key the picker after selection so its native flyout closes, including when choosing the current orientation.
 

@@ -4,7 +4,7 @@ Director can change the global FPS setting through the NVIDIA driver or an insta
 
 ## Use it
 
-- In **Current setup → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, select a cap or **Disable global limit**, and click **Apply FPS changes**.
+- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, select a cap or **Disable global limit**, and click **Apply FPS changes**.
 - In a **scene**, use the same controls. Saving does not apply anything. The scene applies TV preparation → displays → audio → FPS → final apps/URIs. A scene containing only FPS is supported.
 - **Change FPS limit off means leave all FPS settings unchanged.** To remove the selected provider’s global cap, turn the switch on and choose **Disable global limit**.
 - Only available methods appear in the dropdown. Open RTSS first if using it. Check available methods can rediscover unavailable providers. Unavailable saved methods remain saved but fail preflight before scene device changes; there is no automatic provider fallback.
@@ -35,7 +35,7 @@ NVIDIA uses installed System32 nvapi64.dll and versioned DRS structures. RTSS is
 
 ## Manual trial
 
-Apply a cap such as 60 in Current setup, then check the saved setting in NVIDIA Control Panel / RTSS and test a game that can normally exceed 60. Try Disable global limit, then restore your preferred cap. Repeat through an FPS-only scene and CLI. Check that selecting a method or saving a scene alone changes nothing. A configured game profile can override a global limit, so choose a game without such an override for the first test.
+Apply a cap such as 60 in Now, then check the saved setting in NVIDIA Control Panel / RTSS and test a game that can normally exceed 60. Try Disable global limit, then restore your preferred cap. Repeat through an FPS-only scene and CLI. Check that selecting a method or saving a scene alone changes nothing. A configured game profile can override a global limit, so choose a game without such an override for the first test.
 
 ## References
 

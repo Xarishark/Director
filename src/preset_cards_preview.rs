@@ -113,7 +113,6 @@ impl DirectorApp {
         match message {
             Message::Loaded(_) => {
                 self.end();
-                self.page = Page::Audio;
                 self.store_ready = true;
                 self.display.store_ready = true;
                 self.outputs = vec![Output {

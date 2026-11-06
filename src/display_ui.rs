@@ -266,6 +266,7 @@ impl DirectorApp {
                 }
                 .into();
                 self.details = errors.join("\n");
+                self.library_resume(cx);
             }
             DisplayMessage::Create if self.display_ready() && self.display.draft.is_none() => {
                 self.begin("Reading monitors and supported display modes…");
@@ -475,6 +476,7 @@ impl DirectorApp {
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
+                self.library_cancelled(crate::library_flow::Slot::Display, cx);
             }
             DisplayMessage::Save if self.display_ready() && self.display.drag.is_none() => {
                 if let Some(mut preset) = self.display.draft.clone() {
@@ -498,12 +500,17 @@ impl DirectorApp {
             DisplayMessage::Saved(result) => match result {
                 Ok(p) => {
                     self.end();
+                    let added = crate::library_flow::added_id(
+                        self.display.presets.iter().map(|p| p.id.as_str()),
+                        p.iter().map(|p| p.id.as_str()),
+                    );
                     self.display.presets = p;
                     self.display.draft = None;
                     self.display.editor = None;
                     self.display.drag = None;
                     self.display.pending_delete = None;
                     self.status = "Display presets saved. Your screens are unchanged.".into();
+                    self.library_saved(crate::library_flow::Slot::Display, added, cx);
                 }
                 Err(e) => self.failure(e),
             },
@@ -620,9 +627,13 @@ impl DirectorApp {
                             .font_size(20.0)
                             .text_wrapping(TextWrapping::Wrap),
                         TextBlock::new()
-                            .text("Create a custom preset, or capture the layout you already use.")
+                            .text("Create a custom preset, capture the layout you already use, or arrange your screens in Now and save them from there.")
                             .text_wrapping(TextWrapping::Wrap)
                             .opacity(0.72),
+                        Button::new()
+                            .is_enabled(!self.busy)
+                            .on_click(cx.message(crate::Message::Navigate(Some("current".into()))))
+                            .content("Open Now"),
                     )),
                 )
         } else {
@@ -632,8 +643,8 @@ impl DirectorApp {
             .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
-                    "Display presets",
-                    "Your monitor layouts, remembered.",
+                    "Displays",
+                    "Saved monitor layouts you can use in scenes.",
                     vec![
                         Button::new()
                             .automation_name("Capture current layout")

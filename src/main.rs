@@ -7,6 +7,7 @@ mod display_setup_ui;
 mod display_ui;
 mod fps_ui;
 mod icons;
+mod library_flow;
 mod options_ui;
 #[cfg(test)]
 mod preset_cards_preview;
@@ -103,6 +104,7 @@ struct DirectorApp {
     display: DisplayState,
     tv: tv_ui::TvState,
     scene: scene_ui::SceneState,
+    flow: library_flow::LibraryFlow,
     tip: tv_tip_ui::TipState,
     presets: Vec<Preset>,
     outputs: Vec<Output>,
@@ -223,13 +225,23 @@ impl DirectorApp {
             })())
         });
     }
+    fn nav_item(&self, page: Page, tag: &str, label: &str, glyph: &str) -> View {
+        NavigationViewItem::new()
+            .tag(tag)
+            .is_selected(self.page == page)
+            .selects_on_invoked(!self.busy)
+            .slots([
+                SlotView::new(NavigationViewItemSlot::Content, label),
+                SlotView::new(NavigationViewItemSlot::Icon, FontIcon::new().glyph(glyph)),
+            ])
+    }
     fn main_view(&self, cx: &ViewContext<Self>) -> View {
         let rows = self.audio_preset_cards(cx);
         let list = if self.presets.is_empty() {
             Border::new().grid_row(2).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
                 TextBlock::new().text(if self.busy {"Loading your presets…"}else{"Your first preset starts here"}).font_size(20.0),
-                TextBlock::new().text("Choose an output, give it a name, and keep it ready. Saving does not change your audio.").text_wrapping(TextWrapping::Wrap).max_width(500.0).horizontal_alignment(HorizontalAlignment::Left),
-
+                TextBlock::new().text("Choose an output, give it a name, and keep it ready. Saving does not change your audio. You can also save the sound you’ve set in Now.").text_wrapping(TextWrapping::Wrap).max_width(500.0).horizontal_alignment(HorizontalAlignment::Left),
+                Button::new().is_enabled(!self.busy).on_click(cx.message(Message::Navigate(Some("current".into())))).content("Open Now"),
             )))
         } else {
             crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::AUDIO_CARD_HEIGHT, rows)
@@ -238,8 +250,8 @@ impl DirectorApp {
             .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
-                    "Audio presets",
-                    "Sound where you want it, in one click.",
+                    "Audio",
+                    "Saved sound setups you can use in scenes.",
                     vec![
                         Button::new()
                             .style(ButtonStyle::Accent)
@@ -337,20 +349,29 @@ impl Component for DirectorApp {
                     id.clone(),
                 ))));
         } else {
-            let _ = context.sender().send(Message::Refresh);
+            // The card fixture seeds its preview data from the audio load.
+            #[cfg(test)]
+            if preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
+                let _ = context.sender().send(Message::Refresh);
+            }
+            // Scenes is the start page; Library pages reload themselves on entry.
+            let _ = context
+                .sender()
+                .send(Message::Scene(scene_ui::SceneMessage::Load));
         }
         work(context, tv_tip_ui::load);
         let app = Self {
             page: if NOTIFIED_RUN.get().is_some() {
                 Page::Options
             } else {
-                Page::Audio
+                Page::Scenes
             },
             current: current_ui::CurrentState::default(),
             fps: fps_ui::FpsState::default(),
             display: DisplayState::default(),
             tv: tv_ui::TvState::default(),
             scene: scene_ui::SceneState::default(),
+            flow: library_flow::LibraryFlow::default(),
             tip: tv_tip_ui::TipState::default(),
             presets: vec![],
             outputs: vec![],
@@ -441,6 +462,7 @@ impl Component for DirectorApp {
                     return;
                 }
                 self.page = next;
+                self.flow.navigated();
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
@@ -527,6 +549,7 @@ impl Component for DirectorApp {
                 }
                 .into();
                 self.details = errors.join("\n");
+                self.library_resume(context);
             }
             Message::Add if self.ready() => {
                 self.show_device_id = false;
@@ -631,6 +654,7 @@ impl Component for DirectorApp {
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
+                self.library_cancelled(library_flow::Slot::Audio, context);
             }
             Message::Name(name) if !self.busy => {
                 if let Some(d) = &mut self.draft {
@@ -787,10 +811,15 @@ impl Component for DirectorApp {
             Message::Saved(result) => match result {
                 Ok(p) => {
                     self.end();
+                    let added = library_flow::added_id(
+                        self.presets.iter().map(|p| p.id.as_str()),
+                        p.iter().map(|p| p.id.as_str()),
+                    );
                     self.presets = p;
                     self.draft = None;
                     self.pending_delete = None;
                     self.status = "Presets saved. Your audio is unchanged.".into();
+                    self.library_saved(library_flow::Slot::Audio, added, context);
                 }
                 Err(e) => self.failure(e),
             },
@@ -975,74 +1004,50 @@ impl Component for DirectorApp {
                     [
                         KeyedView::new(
                             "scenes",
-                            NavigationViewItem::new()
-                                .tag("scenes")
-                                .is_selected(self.page == Page::Scenes)
-                                .selects_on_invoked(!self.busy)
-                                .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "Scenes"),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph(""),
-                                    ),
-                                ]),
+                            self.nav_item(Page::Scenes, "scenes", "Scenes", "\u{e768}"),
                         ),
                         KeyedView::new(
                             "current",
-                            NavigationViewItem::new()
-                                .tag("current")
-                                .is_selected(self.page == Page::Current)
-                                .selects_on_invoked(!self.busy)
-                                .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "Current setup"),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph(""),
-                                    ),
-                                ]),
+                            self.nav_item(Page::Current, "current", "Now", "\u{e9e9}"),
                         ),
                         KeyedView::new(
-                            "audio",
+                            "library",
                             NavigationViewItem::new()
-                                .tag("audio")
-                                .is_selected(self.page == Page::Audio)
-                                .selects_on_invoked(!self.busy)
+                                .tag("library")
+                                .selects_on_invoked(false)
+                                .is_expanded(true)
                                 .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "Audio presets"),
+                                    SlotView::new(NavigationViewItemSlot::Content, "Library"),
                                     SlotView::new(
                                         NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph("\u{e767}"),
+                                        FontIcon::new().glyph("\u{e8f1}"),
                                     ),
-                                ]),
-                        ),
-                        KeyedView::new(
-                            "displays",
-                            NavigationViewItem::new()
-                                .tag("displays")
-                                .is_selected(self.page == Page::Displays)
-                                .selects_on_invoked(!self.busy)
-                                .slots([
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Content,
-                                        "Display presets",
-                                    ),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph("\u{e7f4}"),
-                                    ),
-                                ]),
-                        ),
-                        KeyedView::new(
-                            "tvs",
-                            NavigationViewItem::new()
-                                .tag("tvs")
-                                .is_selected(self.page == Page::Tvs)
-                                .selects_on_invoked(!self.busy)
-                                .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "TVs"),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph("\u{e7f4}"),
+                                    SlotView::collection(
+                                        NavigationViewItemSlot::MenuItems,
+                                        [
+                                            KeyedView::new(
+                                                "displays",
+                                                self.nav_item(
+                                                    Page::Displays,
+                                                    "displays",
+                                                    "Displays",
+                                                    "\u{e7f8}",
+                                                ),
+                                            ),
+                                            KeyedView::new(
+                                                "audio",
+                                                self.nav_item(
+                                                    Page::Audio,
+                                                    "audio",
+                                                    "Audio",
+                                                    "\u{e767}",
+                                                ),
+                                            ),
+                                            KeyedView::new(
+                                                "tvs",
+                                                self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}"),
+                                            ),
+                                        ],
                                     ),
                                 ]),
                         ),

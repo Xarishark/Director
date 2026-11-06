@@ -5,9 +5,15 @@
 <p align="center"><a href="https://github.com/Xarishark/Director/releases/latest/download/Director-x64-setup.exe"><img src="https://img.shields.io/badge/Download_for_Windows-x64_setup-0078D4?style=for-the-badge&amp;logo=windows&amp;logoColor=white" alt="Download Director for Windows (x64 setup)"></a></p>
 <p align="center"><sub>Latest release · Requires access to this private repo · <a href="https://github.com/Xarishark/Director/releases">All releases</a></sub></p>
 
-Moving from your desk to the living room? A **TV Gaming** scene can wake the TV, switch your picture and sound to HDMI, cap the frame rate, and open Steam Big Picture. Use a **Desk** scene when you come back. For a quick change, open **Current setup** and adjust the active displays, audio, or FPS limit directly.
+Moving from your desk to the living room? A **TV Gaming** scene can wake the TV, switch your picture and sound to HDMI, cap the frame rate, and open Steam Big Picture. Use a **Desk** scene when you come back. For a quick change, open **Now** and adjust the active displays, audio, or FPS limit directly.
 
 ## Presets and scenes
+
+Director has three areas in its sidebar:
+
+- **Scenes** is where Director opens. Run a scene, or create one.
+- **Now** changes what’s active right now without saving anything. Use **Save as display preset…** or **Save as audio preset…** to keep what you’ve set up.
+- **Library** holds your saved building blocks: **Displays**, **Audio**, and **TVs**.
 
 A **preset** saves one part of your setup. A **scene** combines presets and actions you want to run together. Save each piece once and reuse it across scenes.
 
@@ -28,9 +34,9 @@ The display and audio preset cards show a preview of what you saved. Use the che
 
 ## Set up your first TV scene
 
-1. In **Display presets**, capture your desk layout so you can switch back. Create a separate layout for the TV. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
-2. In **TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output, or create a separate **Audio preset** if you also want a specific volume.
-3. In **Scenes**, create **TV Gaming**. Select the TV, the TV display preset, and the audio choice. Add a frame-rate cap or an app launch if you want one. Apply the scene when you’re ready.
+1. In **Library › Displays**, capture your desk layout so you can switch back. Create a separate layout for the TV. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
+2. In **Library › TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output, or create a separate **Audio preset** if you also want a specific volume.
+3. In **Scenes**, create **TV Gaming**. Select the TV, the TV display preset, and the audio choice. Add a frame-rate cap or an app launch if you want one. If a preset or TV is missing, choose **New display preset…**, **New audio preset…**, or **Add TV…** at the bottom of that list. Director returns to the scene with it selected after you save. Apply the scene when you’re ready.
 
 Director runs the scene in order. **TV → Displays → Audio → FPS → Apps and links.** It waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and tries to restore the previous Windows settings by default.
 

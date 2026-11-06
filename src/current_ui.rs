@@ -27,6 +27,9 @@ pub(crate) enum CurrentMessage {
     Volume(Option<f64>),
     ApplyAudio,
     AudioApplied(audio::Report, Result<Vec<Output>, String>),
+    /// Open a new Library preset from what Now has staged.
+    SaveDisplays,
+    SaveAudio,
 }
 #[derive(Default)]
 pub(crate) struct CurrentState {
@@ -135,7 +138,7 @@ impl DirectorApp {
                 self.status = if self.error {
                     "Could not read the entire current setup."
                 } else {
-                    "Current setup ready."
+                    "Now ready."
                 }
                 .into();
                 self.details = errors.join("\n");
@@ -310,6 +313,32 @@ Could not read audio outputs: {e}"
                     }
                 }
             }
+            CurrentMessage::SaveDisplays if !self.busy && self.current.display.drag.is_none() => {
+                // Seed from the staged layout so unapplied edits are saved too.
+                let layout = self
+                    .current
+                    .display
+                    .draft
+                    .as_ref()
+                    .map(|d| d.layout.clone());
+                if layout.is_some() {
+                    self.update_library(
+                        crate::library_flow::LibraryMessage::NewDisplay(layout),
+                        cx,
+                    );
+                }
+            }
+            CurrentMessage::SaveAudio if !self.busy && !self.current.output_id.is_empty() => {
+                let seed = crate::library_flow::AudioSeed {
+                    output_id: self.current.output_id.clone(),
+                    volume: self.current.volume,
+                    set_volume: self.current.volume_dirty,
+                };
+                self.update_library(
+                    crate::library_flow::LibraryMessage::NewAudio(Some(seed)),
+                    cx,
+                );
+            }
             _ => {}
         }
     }
@@ -319,18 +348,28 @@ Could not read audio outputs: {e}"
         {
             StackPanel::new().spacing(16.0).children((
                 self.monitor_editor_for(&draft.layout, editor, cx, EditorTarget::Current),
-                Button::new()
-                    .style(ButtonStyle::Accent)
-                    .automation_name("Apply current display changes")
-                    .horizontal_alignment(HorizontalAlignment::Left)
-                    .is_enabled(
-                        !self.busy
-                            && self.guard_ready
-                            && self.current.display_dirty()
-                            && self.current.display.drag.is_none(),
-                    )
-                    .on_click(cx.message(msg(CurrentMessage::ApplyDisplays)))
-                    .content("Apply display changes"),
+                StackPanel::new()
+                    .orientation(Orientation::Horizontal)
+                    .spacing(8.0)
+                    .children((
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .automation_name("Apply current display changes")
+                            .is_enabled(
+                                !self.busy
+                                    && self.guard_ready
+                                    && self.current.display_dirty()
+                                    && self.current.display.drag.is_none(),
+                            )
+                            .on_click(cx.message(msg(CurrentMessage::ApplyDisplays)))
+                            .content("Apply display changes"),
+                        Button::new()
+                            .automation_name("Save these displays as a preset")
+                            .is_enabled(!self.busy && self.current.display.drag.is_none())
+                            .on_click(cx.message(msg(CurrentMessage::SaveDisplays)))
+                            .content("Save as display preset…")
+                            .tooltip("Open a new display preset with this layout, including edits you haven’t applied"),
+                    )),
             ))
         } else {
             TextBlock::new()
@@ -357,16 +396,22 @@ Could not read audio outputs: {e}"
                 .on_selection_changed(cx.callback(|i|msg(CurrentMessage::Output(i)))).slot(ComboBoxSlot::Header,"Output device"),
             NumberBox::new().automation_name("Current output volume").minimum(0.0).maximum(100.0).value(self.current.volume).is_enabled(!self.busy&&active)
                 .on_value_changed(cx.callback(|v|msg(CurrentMessage::Volume(v)))).slot(NumberBoxSlot::Header,"Volume (%)"),
-            Button::new().style(ButtonStyle::Accent).automation_name("Apply current audio changes").horizontal_alignment(HorizontalAlignment::Left)
-                .is_enabled(!self.busy&&self.guard_ready&&self.current.audio_dirty&&active)
-                .on_click(cx.message(msg(CurrentMessage::ApplyAudio))).content("Apply audio changes"),
+            StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
+                Button::new().style(ButtonStyle::Accent).automation_name("Apply current audio changes")
+                    .is_enabled(!self.busy&&self.guard_ready&&self.current.audio_dirty&&active)
+                    .on_click(cx.message(msg(CurrentMessage::ApplyAudio))).content("Apply audio changes"),
+                Button::new().automation_name("Save this audio as a preset")
+                    .is_enabled(!self.busy&&selected.is_some())
+                    .on_click(cx.message(msg(CurrentMessage::SaveAudio))).content("Save as audio preset…")
+                    .tooltip("Open a new audio preset with this output and volume"),
+            )),
         ));
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
-                    "Current setup",
-                    "Adjust displays, sound and FPS limits without saving a preset.",
+                    "Now",
+                    "Change what’s active right now. Nothing is saved unless you save it as a preset.",
                     vec![
                         Button::new()
                             .automation_name("Discard current setup edits")

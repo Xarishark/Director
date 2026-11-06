@@ -149,6 +149,25 @@ impl DirectorApp {
             self.update_fps(crate::fps_ui::FpsMessage::Discover, cx);
         }
         let ready = self.scene_ready();
+        // The last item of each section's dropdown creates a new Library item in place.
+        if ready && self.scene.draft.is_some() {
+            use crate::library_flow::{LibraryMessage, Slot};
+            let linked = self.scene.tvs.iter().filter(|t| t.audio.is_some()).count();
+            let create = match &m {
+                SceneMessage::Display(Some(i)) if *i == self.scene.displays.len() + 1 => {
+                    Some(Slot::Display)
+                }
+                SceneMessage::Audio(Some(i)) if *i == self.scene.audio.len() + linked + 1 => {
+                    Some(Slot::Audio)
+                }
+                SceneMessage::Tv(Some(i)) if *i == self.scene.tvs.len() + 1 => Some(Slot::Tv),
+                _ => None,
+            };
+            if let Some(slot) = create {
+                self.update_library(LibraryMessage::FromScene(slot), cx);
+                return;
+            }
+        }
         match m {
             SceneMessage::Load if !self.busy => {
                 self.begin("Reading scenes and presets…");
@@ -166,6 +185,7 @@ impl DirectorApp {
                         self.scene.tvs = t;
                         self.scene.ready = true;
                         self.status = "Ready.".into();
+                        self.library_select_in_scene(cx);
                     }
                     Err(e) => {
                         self.scene.ready = false;
@@ -597,11 +617,45 @@ impl DirectorApp {
                 )
             })
             .collect::<Vec<_>>();
-        Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
- crate::preset_ui::header("Scenes","Bring your presets and actions together.",vec![Button::new().style(ButtonStyle::Accent).automation_name("Add scene").is_enabled(self.scene_ready()).on_click(cx.message(msg(SceneMessage::Add))).content(FontIcon::new().glyph("")).tooltip("Add scene")]),
- if self.scene.scenes.is_empty(){Border::new().grid_row(1).padding(20.0).content(StackPanel::new().spacing(12.0).children((heading("Your setup, ready in one scene"),note("Choose displays, audio and optional TV preparation. Add apps or URIs to open after setup succeeds."))))}else{crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::SCENE_CARD_HEIGHT, cards)},
- if self.scene.cancel.is_some(){Button::new().grid_row(2).horizontal_alignment(HorizontalAlignment::Left).automation_name("Cancel scene").on_click(cx.message(msg(SceneMessage::Stop))).content("Cancel scene")}else{View::empty()},
- ))
+        Grid::new()
+            .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+            .children((
+                crate::preset_ui::header(
+                    "Scenes",
+                    "Switch your whole setup in one click.",
+                    vec![
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .automation_name("Add scene")
+                            .is_enabled(self.scene_ready())
+                            .on_click(cx.message(msg(SceneMessage::Add)))
+                            .content(FontIcon::new().glyph(""))
+                            .tooltip("Add scene"),
+                    ],
+                ),
+                if self.scene.scenes.is_empty() {
+                    Border::new()
+                        .grid_row(1)
+                        .padding(20.0)
+                        .content(self.scene_first_run(cx))
+                } else {
+                    crate::preset_cards_ui::card_grid(
+                        1,
+                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                        cards,
+                    )
+                },
+                if self.scene.cancel.is_some() {
+                    Button::new()
+                        .grid_row(2)
+                        .horizontal_alignment(HorizontalAlignment::Left)
+                        .automation_name("Cancel scene")
+                        .on_click(cx.message(msg(SceneMessage::Stop)))
+                        .content("Cancel scene")
+                } else {
+                    View::empty()
+                },
+            ))
     }
     fn scene_summary(&self, s: &Scene) -> String {
         let display = s
@@ -656,11 +710,89 @@ impl DirectorApp {
             s.actions.len()
         )
     }
+    /// First-run checklist: save the building blocks in the Library, then combine them here.
+    fn scene_first_run(&self, cx: &ViewContext<Self>) -> View {
+        let step = |key: &str, done: bool, title: &str, detail: &str, action: View| {
+            KeyedView::new(
+                key,
+                Grid::new()
+                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+                    .column_spacing(12.0)
+                    .children((
+                        FontIcon::new()
+                            .grid_column(0)
+                            .glyph(if done { "\u{e73e}" } else { "\u{ea3a}" })
+                            .opacity(if done { 1.0 } else { 0.5 })
+                            .vertical_alignment(VerticalAlignment::Top)
+                            .margin(Thickness::new(0.0, 3.0, 0.0, 0.0)),
+                        StackPanel::new().grid_column(1).spacing(2.0).children((
+                            TextBlock::new()
+                                .text(title)
+                                .font_weight(FontWeight::SEMI_BOLD),
+                            note(detail),
+                        )),
+                        Border::new()
+                            .grid_column(2)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .content(action),
+                    )),
+            )
+        };
+        let go = |label: &str, tag: &str| -> View {
+            Button::new()
+                .is_enabled(!self.busy)
+                .on_click(cx.message(Message::Navigate(Some(tag.into()))))
+                .content(label)
+        };
+        StackPanel::new()
+            .spacing(16.0)
+            .max_width(650.0)
+            .horizontal_alignment(HorizontalAlignment::Left)
+            .children((
+                heading("Your setup, ready in one scene"),
+                note("A scene combines saved building blocks from your Library and runs them in order."),
+                StackPanel::new().spacing(14.0).keyed_children([
+                    step(
+                        "displays",
+                        !self.scene.displays.is_empty(),
+                        "1 · Save a display layout",
+                        "Arrange your screens in Now, then save them as a display preset.",
+                        go("Open Now", "current"),
+                    ),
+                    step(
+                        "audio",
+                        !self.scene.audio.is_empty(),
+                        "2 · Save your sound (optional)",
+                        "Pick an output and volume to switch to with the scene.",
+                        go("Audio", "audio"),
+                    ),
+                    step(
+                        "tv",
+                        !self.scene.tvs.is_empty(),
+                        "3 · Pair a TV (optional)",
+                        "Lets the scene wake your TV and switch its input first.",
+                        go("TVs", "tvs"),
+                    ),
+                    step(
+                        "scene",
+                        false,
+                        "4 · Create the scene",
+                        "Choose what it changes and what to open afterwards.",
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .is_enabled(self.scene_ready())
+                            .on_click(cx.message(msg(SceneMessage::Add)))
+                            .content("Create scene"),
+                    ),
+                ]),
+            ))
+    }
     fn scene_editor(&self, cx: &ViewContext<Self>, d: &Scene) -> View {
         let available = !self.busy;
         let wide = self.window_width >= 1150.0;
         let display_labels = std::iter::once("Leave displays unchanged".into())
             .chain(self.scene.displays.iter().map(|p| p.name.clone()))
+            .chain(std::iter::once("New display preset…".into()))
             .collect::<Vec<String>>();
         let audio_labels = std::iter::once("Leave audio unchanged".into())
             .chain(
@@ -674,6 +806,7 @@ impl DirectorApp {
                     .as_ref()
                     .map(|a| format!("{} linked audio · {}", t.name, a.name))
             }))
+            .chain(std::iter::once("New audio preset…".into()))
             .collect::<Vec<String>>();
         let ai = d
             .audio
@@ -698,6 +831,7 @@ impl DirectorApp {
                 .and_then(|p| self.scene.tvs.iter().find(|t| t.id == p.id));
         let tv_labels = std::iter::once("No TV preparation".into())
             .chain(self.scene.tvs.iter().map(|t| t.name.clone()))
+            .chain(std::iter::once("Add TV…".into()))
             .collect::<Vec<String>>();
         let fields=StackPanel::new().spacing(20.0).children((
  StackPanel::new().spacing(8.0).children((TextBlock::new().text("Scene name").font_weight(FontWeight::SEMI_BOLD),TextBox::new().automation_name("Scene name").text(d.name.clone()).is_enabled(available).on_text_changed(cx.callback(|s|msg(SceneMessage::Name(s)))))),

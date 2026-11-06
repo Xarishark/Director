@@ -488,6 +488,12 @@ impl DirectorApp {
                 } else {
                     String::new()
                 };
+                if paired {
+                    // Stay here so the pairing note stays visible.
+                    self.flow.navigated();
+                } else {
+                    self.library_cancelled(crate::library_flow::Slot::Tv, cx);
+                }
             }
             TvMessage::Name(v) if !self.busy => {
                 if let Some(d) = &mut self.tv.draft {
@@ -820,6 +826,10 @@ impl DirectorApp {
             TvMessage::Saved(result) => match result {
                 Ok(tvs) => {
                     self.end();
+                    let added = crate::library_flow::added_id(
+                        self.tv.tvs.iter().map(|t| t.id.as_str()),
+                        tvs.iter().map(|t| t.id.as_str()),
+                    );
                     self.tv.tvs = tvs;
                     self.tip.tvs = self.tv.tvs.clone();
                     self.tip.catalog_loaded = true;
@@ -827,6 +837,7 @@ impl DirectorApp {
                     self.tv.setup = None;
                     self.tv.pending_delete = None;
                     self.status = "TVs saved.".into();
+                    self.library_saved(crate::library_flow::Slot::Tv, added, cx);
                 }
                 Err(e) => self.failure(e),
             },
@@ -980,7 +991,7 @@ impl DirectorApp {
             .children((
                 crate::preset_ui::header(
                     "TVs",
-                    "Connect your TVs independently of presets and scenes.",
+                    "Paired TVs that scenes can wake and switch.",
                     vec![
                         Button::new()
                             .style(ButtonStyle::Accent)

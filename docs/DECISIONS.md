@@ -177,3 +177,7 @@ The user requested short nontechnical Samsung/TCL instructions and a report with
 ### D057 — NVIDIA/RTSS global FPS controls (2026-11-03)
 
 The user approved global NVIDIA and optional RTSS providers, scene placement after audio and before launches, and direct Current setup/CLI application. Switch off means unchanged; disabling the global cap is an explicit selected action. Never fall back to another provider or alter competing limiters/game-specific overrides. Use direct installed DLL interfaces, snapshot/readback/restore and the existing scene failure policy. Driver configuration verification is distinct from measuring a game. Per-game targets remain later work.
+
+### D058 — Scenes / Now / Library navigation (2026-11-06)
+
+The user found the flat navigation (Scenes, Current setup, Audio presets, Display presets, TVs) disorganized and chose grouping into three areas. Scenes becomes the start page, Current setup is renamed Now, and the presets and TVs sit under an expandable Library item. Now can seed new Library presets, and the scene editor can create a missing preset or TV in place and return with it selected. Storage formats, CLI names and scene execution are unchanged.
