@@ -510,6 +510,7 @@ impl Component for DirectorApp {
                 KeyedView::new("options-dialog", self.options_dialog(cx)),
                 KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
                 KeyedView::new("display-dialog", self.display_dialog(cx)),
+                KeyedView::new("current-dialog", self.current_dialog(cx)),
                 KeyedView::new("tv-dialog", self.tv_dialog(cx)),
                 KeyedView::new("scene-dialog", self.scene_dialog(cx)),
             ])

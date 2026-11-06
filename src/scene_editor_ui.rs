@@ -1253,6 +1253,14 @@ mod tests {
             ("crash dialog", include_str!("crash_ui.rs")),
             ("shared page helpers", include_str!("ui.rs")),
             (
+                "save as display preset dialog",
+                region(
+                    include_str!("current_ui.rs"),
+                    "pub(crate) fn current_dialog",
+                    "#[cfg(test)]",
+                ),
+            ),
+            (
                 "command dialog",
                 region(
                     include_str!("command_ui.rs"),

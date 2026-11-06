@@ -62,8 +62,13 @@ pub(crate) enum CurrentMessage {
     CallsDevice(Option<usize>),
     /// A live sound change finished, with the devices read afterwards.
     SoundDone(Result<String, String>, Devices),
-    /// Open a new display preset from what Now has staged.
+    /// Ask for a name, then save what Now has staged as a new display preset.
     SaveDisplays,
+    /// The name typed in the save dialog.
+    SaveName(String),
+    SaveClosed(ContentDialogResult),
+    /// The preset was saved (its name), or why not.
+    DisplaysSaved(Result<String, String>),
     /// Open a new scene whose Sound step holds the current output and microphone, at their
     /// volume and mute, with the Sound step's dialog open.
     SaveAudio,
@@ -84,6 +89,13 @@ pub(crate) struct CurrentState {
     sound_pending: bool,
     /// The calls switch is on, even while calls still use the main output.
     calls_split: bool,
+    /// The save-as-preset dialog is open, with the name typed so far.
+    save_name: Option<String>,
+    /// Why the last save failed, shown in the reopened dialog.
+    save_error: Option<String>,
+    /// Bumped to open the dialog again: WinUI closes it itself, and an unchanged dialog
+    /// isn't reopened.
+    save_revision: u64,
     /// The slider tokens when that change started; a slider moved since then keeps its place.
     tokens_at_start: (u64, u64),
     pub(crate) fps_dirty: bool,
@@ -522,18 +534,91 @@ Could not read audio outputs: {e}"
                 }
             }
             CurrentMessage::SaveDisplays if !self.busy && self.current.display.drag.is_none() => {
+                if self.current.display.draft.is_some() {
+                    self.current.save_name = Some(String::new());
+                    self.current.save_error = None;
+                    self.current.save_revision += 1;
+                }
+            }
+            CurrentMessage::SaveName(name) => {
+                if let Some(current) = &mut self.current.save_name {
+                    *current = name;
+                }
+            }
+            CurrentMessage::SaveClosed(result) => {
+                let Some(name) = self.current.save_name.clone() else {
+                    return;
+                };
+                let name = name.trim().to_string();
+                if result != ContentDialogResult::Primary {
+                    self.current.save_name = None;
+                    self.current.save_error = None;
+                    return;
+                }
                 // Seed from the staged layout so unapplied edits are saved too.
-                let layout = self
-                    .current
-                    .display
-                    .draft
-                    .as_ref()
-                    .map(|d| d.layout.clone());
-                if layout.is_some() {
-                    self.update_library(
-                        crate::library_flow::LibraryMessage::NewDisplay(layout),
-                        cx,
-                    );
+                let (Some(draft), Some(editor)) =
+                    (&self.current.display.draft, &self.current.display.editor)
+                else {
+                    self.current.save_name = None;
+                    return;
+                };
+                let error = if name.is_empty() {
+                    Some("Enter a name for the preset.".to_string())
+                } else if name.len() > 160 {
+                    Some("Use a name of 160 characters or fewer.".to_string())
+                } else {
+                    editor.validate(&draft.layout).err()
+                };
+                if let Some(e) = error {
+                    // Reopen the dialog with the reason and the name kept.
+                    self.current.save_name = Some(name);
+                    self.current.save_error = Some(e);
+                    self.current.save_revision += 1;
+                    return;
+                }
+                let layout = draft.layout.clone();
+                self.begin("Saving display preset…");
+                work(cx, move || {
+                    msg(CurrentMessage::DisplaysSaved((|| {
+                        let _lock = OperationLock::acquire()?;
+                        let path = director::displays::path()?;
+                        let existing = director::displays::load(&path)?;
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default();
+                        let mut next = existing.clone();
+                        next.push(Preset {
+                            id: format!("{}-{}", std::process::id(), now.as_nanos()),
+                            name: name.clone(),
+                            captured_at_unix_seconds: now.as_secs(),
+                            confirm_changes: false,
+                            layout,
+                        });
+                        next.sort_by_key(|p| p.name.to_lowercase());
+                        // Refuses a name whose command name another preset already uses.
+                        director::displays::save(&path, &existing, &next)?;
+                        Ok(name)
+                    })()))
+                });
+            }
+            CurrentMessage::DisplaysSaved(result) => {
+                self.end();
+                match result {
+                    Ok(name) => {
+                        self.current.save_name = None;
+                        self.current.save_error = None;
+                        self.error = false;
+                        self.details.clear();
+                        // Show it among the presets; Now keeps its staged edits. The list's
+                        // load clears notices, so it shows the confirmation once loaded.
+                        self.display.notice_after_load =
+                            Some(format!("Saved “{name}”. Your screens are unchanged."));
+                        self.navigate_now(Some("displays".into()), cx);
+                    }
+                    Err(e) => {
+                        self.current.save_error = Some(e);
+                        self.current.save_revision += 1;
+                    }
                 }
             }
             CurrentMessage::SaveAudio if !self.busy => {
@@ -781,6 +866,47 @@ Could not read audio outputs: {e}"
             )),
             None,
         )
+    }
+}
+
+impl DirectorApp {
+    /// Now's save-as-preset dialog: just a name. No tooltips inside dialogs.
+    pub(crate) fn current_dialog(&self, cx: &ViewContext<Self>) -> View {
+        let Some(name) = &self.current.save_name else {
+            return View::empty();
+        };
+        let dialog = ContentDialog::new()
+            .is_open(true)
+            .title("Save as display preset")
+            .primary_button_text("Save")
+            .close_button_text("Cancel")
+            .is_primary_button_enabled(!self.busy && !name.trim().is_empty())
+            .on_closed(cx.callback(|result| msg(CurrentMessage::SaveClosed(result))))
+            .content(
+                StackPanel::new().spacing(crate::ui::GAP_M).width(360.0).children((
+                    TextBox::new()
+                        .automation_name("Display preset name")
+                        .text(name.clone())
+                        .placeholder_text("For example, Desk monitors")
+                        .on_text_changed(cx.callback(|v| msg(CurrentMessage::SaveName(v))))
+                        .slot(TextBoxSlot::Header, "Name"),
+                    crate::ui::caption(
+                        "Saves the layout shown here, including changes you haven’t applied. Your screens don’t change.",
+                    ),
+                    match &self.current.save_error {
+                        Some(e) => TextBlock::new()
+                            .text(e.clone())
+                            .foreground(crate::ui::critical())
+                            .text_wrapping(TextWrapping::Wrap)
+                            .into(),
+                        None => View::empty(),
+                    },
+                )),
+            );
+        Grid::new().keyed_children([KeyedView::new(
+            format!("save-dialog-{}", self.current.save_revision),
+            dialog,
+        )])
     }
 }
 

@@ -55,6 +55,8 @@ pub(crate) struct DisplayState {
     pub drag: Option<director::display_editor::Drag>,
     /// The display selected in the arrangement map.
     pub selected: usize,
+    /// A success message to show once the preset list has loaded (loading clears notices).
+    pub notice_after_load: Option<String>,
     pub editor: Option<director::display_editor::Editor>,
     pub progress: Option<Arc<Mutex<mpsc::Receiver<u64>>>>,
     pub confirmation: Option<(u64, mpsc::Sender<Decision>)>,
@@ -269,6 +271,12 @@ impl DirectorApp {
                 }
                 .into();
                 self.details = errors.join("\n");
+                if let Some(notice) = self.display.notice_after_load.take()
+                    && !self.error
+                {
+                    self.status = notice;
+                    self.announce(cx);
+                }
                 self.library_resume(cx);
             }
             DisplayMessage::Create if self.display_ready() && self.display.draft.is_none() => {
