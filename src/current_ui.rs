@@ -557,27 +557,31 @@ Could not read audio outputs: {e}"
         let on = state.calls_separate();
         let devices = state.shown(false);
         let current = state.calls_device();
-        StackPanel::new().spacing(8.0).children((
-            ToggleSwitch::new()
-                .automation_name("Use a different device for calls")
-                .is_on(on)
-                .is_enabled(available && state.default_device(false).is_some())
-                .on_toggled(cx.callback(|v| msg(CurrentMessage::SplitCalls(v))))
-                .slot(ToggleSwitchSlot::Header, "Use a different device for calls"),
-            if on {
+        // The picker is always there, beside its switch and greyed out while the switch is
+        // off, so turning it on doesn't push anything down the page.
+        Grid::new()
+            .columns([GridLength::Auto, GridLength::Star(1.0)])
+            .column_spacing(crate::ui::GAP_L)
+            .children((
+                ToggleSwitch::new()
+                    .automation_name("Use a different device for calls")
+                    .vertical_alignment(VerticalAlignment::Bottom)
+                    .is_on(on)
+                    .is_enabled(available && state.default_device(false).is_some())
+                    .on_toggled(cx.callback(|v| msg(CurrentMessage::SplitCalls(v))))
+                    .slot(ToggleSwitchSlot::Header, "Different device for calls"),
                 ComboBox::new()
+                    .grid_column(1)
                     .automation_name("Calls output")
                     .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .vertical_alignment(VerticalAlignment::Bottom)
                     .items_source(devices.iter().map(|o| o.name.clone()).collect::<Vec<_>>())
                     .selected_index(current.and_then(|c| devices.iter().position(|o| o.id == c.id)))
-                    .placeholder_text("Choose the calls output")
-                    .is_enabled(available)
+                    .placeholder_text("Same as the output above")
+                    .is_enabled(available && on)
                     .on_selection_changed(cx.callback(|i| msg(CurrentMessage::CallsDevice(i))))
-                    .slot(ComboBoxSlot::Header, "Calls output")
-            } else {
-                crate::ui::caption("Off: calls use the output above.")
-            },
-        ))
+                    .slot(ComboBoxSlot::Header, "Calls output"),
+            ))
     }
     /// The output (false) or microphone (true): device picker, mute button and volume slider.
     fn sound_row(&self, cx: &ViewContext<Self>, input: bool) -> View {
