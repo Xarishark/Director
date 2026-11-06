@@ -581,7 +581,7 @@ Could not read audio outputs: {e}"
         };
         let displays = ui::section(
             "Displays",
-            "Drag screens to arrange them; hover for details. Changes wait until you select Apply changes.",
+            "Drag screens to arrange them; hover for details.",
             Some(
                 Button::new()
                     .style(ButtonStyle::Subtle)
@@ -598,7 +598,7 @@ Could not read audio outputs: {e}"
             0.0,
             (ui::section(
                 "Sound",
-                "Changes apply as you make them; there’s nothing to apply. The output becomes the default for apps, media and calls.",
+                "Changes apply as you make them. The output becomes the default for apps, media and calls.",
                 Some(
                     Button::new()
                         .style(ButtonStyle::Subtle)
@@ -618,7 +618,7 @@ Could not read audio outputs: {e}"
             0.0,
             (ui::section(
                 "FPS limit",
-                "Changes wait until you select Apply changes.",
+                "",
                 None,
                 self.fps_controls(cx, crate::fps_ui::Target::Current),
             ),),
@@ -630,14 +630,14 @@ Could not read audio outputs: {e}"
             && (self.current.display_dirty() || self.current.fps_dirty)
             && (!self.current.fps_dirty || self.live_fps_ready());
         ui::page(
-            ui::header(
-                "Now",
-                "Change what’s active right now. Nothing is saved unless you save it.",
-                vec![],
-            ),
-            StackPanel::new()
-                .spacing(ui::GAP_XXL)
-                .children((sound, displays, fps)),
+            ui::header("Now", "Changes here aren’t saved.", vec![]),
+            StackPanel::new().spacing(ui::GAP_XXL).children((
+                sound,
+                // Above the line applies at once; below it waits for the Apply bar.
+                ui::divider("Changes below wait for Apply changes"),
+                displays,
+                fps,
+            )),
             // The Apply bar belongs to the staged sections only, so it appears once something
             // is staged and sound never looks like it waits for it.
             (self.current.display_dirty() || self.current.fps_dirty).then(|| {

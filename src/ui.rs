@@ -249,6 +249,18 @@ pub(crate) fn setting(title: &str, description: &str, control: impl Into<View>) 
     )
 }
 
+/// A full-width rule with a caption under it, separating parts of a page that behave
+/// differently.
+pub(crate) fn divider(caption_text: &str) -> View {
+    StackPanel::new().spacing(GAP_S).children((
+        Border::new()
+            .height(1.0)
+            .horizontal_alignment(HorizontalAlignment::Stretch)
+            .background(OUTLINE),
+        caption(caption_text),
+    ))
+}
+
 /// An editor footer: a hint on the left, the buttons (Cancel, then the accent action) on the right.
 pub(crate) fn footer(hint: View, actions: Vec<View>) -> View {
     Grid::new()
