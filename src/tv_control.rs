@@ -175,12 +175,24 @@ pub fn power(backend: &mut impl Backend, action: PowerAction) -> Result<Report, 
     }
 }
 /// Turn the TV off when it reports awake, or wake it when it reports off or
-/// standby. Sends nothing when the TV can't be read or reports Unknown.
+/// standby. An unreachable TV is treated as off (a fully-off TV often drops
+/// off the network); one that answers with an Unknown state is left alone.
 pub fn toggle(backend: &mut impl Backend) -> Result<Report, String> {
-    let state = crate::diagnostics::measure("tv.toggle.preflight", "fresh power state", || {
-        backend.power()
-    })
-    .map_err(|e| format!("Could not read the TV's power status. Nothing was sent. {e}"))?;
+    let state =
+        match crate::diagnostics::measure("tv.toggle.preflight", "fresh power state", || {
+            backend.power()
+        }) {
+            Ok(state) => state,
+            Err(e) => {
+                crate::diagnostics::event("tv.toggle.preflight.state", "unreachable", &e);
+                let mut report = power(backend, PowerAction::Wake)?;
+                report.message = format!(
+                    "The TV didn't answer, so it was treated as off. {}",
+                    report.message
+                );
+                return Ok(report);
+            }
+        };
     crate::diagnostics::event("tv.toggle.preflight.state", "reported", state.label());
     if state == PowerState::Unknown {
         return Err("The TV did not report a recognized power state. Nothing was sent.".into());
@@ -363,8 +375,8 @@ mod tests {
         assert_eq!(b.events, ["read-power"]);
         b.events.clear();
         b.state = Err("offline".into());
-        assert!(toggle(&mut b).is_err());
-        assert_eq!(b.events, ["read-power"]);
+        toggle(&mut b).unwrap();
+        assert_eq!(b.events, ["read-power", "wake"]);
     }
     #[test]
     fn inputs_are_freshly_validated_and_read_back() {
