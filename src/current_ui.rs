@@ -50,7 +50,8 @@ pub(crate) enum CurrentMessage {
     SoundDone(Result<String, String>, Devices),
     /// Open a new display preset from what Now has staged.
     SaveDisplays,
-    /// Open a new scene whose Sound step holds the current output and volume.
+    /// Open a new scene whose Sound step holds the current output and microphone, at their
+    /// volume and mute, with the Sound step's dialog open.
     SaveAudio,
 }
 #[derive(Default)]
@@ -107,6 +108,31 @@ impl CurrentState {
         list.iter()
             .filter(|o| o.active || current.as_ref() == Some(&o.id))
             .collect()
+    }
+    /// A scene Sound step holding what Now shows: the output and microphone with their volume
+    /// (the slider, which leads the device while a change settles) and mute state.
+    fn sound_now(&self, output: &Output) -> director::scenes::Sound {
+        let percent = |v: Option<f64>| {
+            v.filter(|v| v.is_finite())
+                .map(|v| v.round().clamp(0.0, 100.0) as u8)
+        };
+        director::scenes::Sound {
+            output: Some(director::scenes::SoundOutput::Device {
+                id: output.id.clone(),
+                name: output.name.clone(),
+            }),
+            volume: percent(self.volume),
+            mute: output.muted,
+            mic: self.default_device(true).map(|mic| director::scenes::Mic {
+                device: director::audio::DeviceSelection {
+                    id: mic.id.clone(),
+                    name: mic.name.clone(),
+                },
+                volume: percent(self.mic_volume),
+                mute: mic.muted,
+            }),
+            ..Default::default()
+        }
     }
     /// Take fresh device lists; the sliders follow the devices again.
     fn set_devices(&mut self, outputs: Vec<Output>, inputs: Vec<Output>) {
@@ -429,18 +455,7 @@ Could not read audio outputs: {e}"
                     return;
                 };
                 let mut scene = director::scenes::Scene::new(crate::scene_ui::new_id(), "");
-                scene.sound = Some(director::scenes::Sound {
-                    output: Some(director::scenes::SoundOutput::Device {
-                        id: output.id.clone(),
-                        name: output.name.clone(),
-                    }),
-                    volume: self
-                        .current
-                        .volume
-                        .filter(|v| v.is_finite())
-                        .map(|v| v.round().clamp(0.0, 100.0) as u8),
-                    ..Default::default()
-                });
+                scene.sound = Some(self.current.sound_now(output));
                 self.update_library(
                     crate::library_flow::LibraryMessage::NewScene(Box::new(scene)),
                     cx,
@@ -725,6 +740,30 @@ mod tests {
         assert_eq!(original.monitors[0].hdr, Some(false));
         state.set_displays(original, vec![Options::default()]);
         assert!(!state.dirty());
+    }
+    #[test]
+    fn save_as_scene_keeps_the_output_and_microphone_as_shown() {
+        let mut state = CurrentState::default();
+        let mut speakers = output("speakers", true);
+        speakers.muted = Some(false);
+        let mut mic = output("mic", true);
+        mic.volume_percent = Some(80);
+        mic.muted = Some(true);
+        state.set_devices(vec![speakers], vec![mic]);
+        // A slider that moved but hasn't settled yet still wins.
+        state.volume = Some(55.4);
+        let sound = state.sound_now(state.default_device(false).unwrap());
+        assert_eq!(
+            sound.output,
+            Some(director::scenes::SoundOutput::Device {
+                id: "speakers".into(),
+                name: "speakers".into(),
+            })
+        );
+        assert_eq!((sound.volume, sound.mute), (Some(55), Some(false)));
+        let mic = sound.mic.unwrap();
+        assert_eq!(mic.device.id, "mic");
+        assert_eq!((mic.volume, mic.mute), (Some(80), Some(true)));
     }
     #[test]
     fn sliders_follow_the_default_devices_and_pickers_hide_disconnected_ones() {

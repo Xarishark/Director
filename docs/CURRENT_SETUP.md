@@ -11,7 +11,7 @@ Open **Now** in the navigation pane. Sound comes first because it applies as you
 - Sound changes apply right away: choose the default output or microphone, move a volume slider, or press a mute button. See [Sound](AUDIO.md).
 - **Apply changes** in the footer applies everything staged: displays first, then the FPS limit (only if the display change succeeded). The footer says what is staged. No preset name or Save action is involved.
 - **Discard** (on only while something is staged) rereads the actual Windows state.
-- **Save as display preset…** opens a new display preset seeded with what Now has staged, including edits you haven’t applied. **Save as scene…** opens a new scene whose Sound step holds the current output and volume. Saving happens in the normal editor, and Cancel discards it.
+- **Save as display preset…** opens a new display preset seeded with what Now has staged, including edits you haven’t applied. **Save as scene…** opens a new scene with its Sound step dialog open, holding the current output and microphone with their volume and mute state. Saving happens in the normal editor, and Cancel discards it.
 
 Display and FPS controls stage changes until Apply changes is pressed, so a multi-monitor arrangement can be prepared before reconfiguring hardware. Display Apply uses verification/recovery and keeps verified changes without a Keep/Revert prompt. Sound controls don't stage: choosing an output makes it the default for all three roles, a volume slider sends its level once it rests for 150 ms, and mute toggles. Each change is verified and put back if Windows does not confirm it.
 

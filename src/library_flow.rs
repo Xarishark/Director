@@ -130,8 +130,12 @@ impl DirectorApp {
             && self.scene.draft.is_none()
             && let Some(scene) = self.flow.scene_seed.take()
         {
+            // A scene seeded from Now holds only its sound: open that step so it can be
+            // checked and adjusted straight away. Cancel keeps the seeded sound.
+            let sound = scene.sound.is_some();
+            self.scene.snapshot = sound.then(|| scene.clone());
             self.scene.draft = Some(scene);
-            self.scene.open = None;
+            self.scene.open = sound.then_some(crate::scene_editor_ui::Step::Sound);
             self.status = "Name this scene to save the sound set in Now.".into();
         }
     }
