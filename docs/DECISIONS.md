@@ -181,3 +181,7 @@ The user approved global NVIDIA and optional RTSS providers, scene placement aft
 ### D058 — Scenes / Now / Library navigation (2026-11-06)
 
 The user found the flat navigation (Scenes, Current setup, Audio presets, Display presets, TVs) disorganized and chose grouping into three areas. Scenes becomes the start page, Current setup is renamed Now, and the presets and TVs sit under an expandable Library item. Now can seed new Library presets, and the scene editor can create a missing preset or TV in place and return with it selected. Storage formats, CLI names and scene execution are unchanged.
+
+### D059 — Step-flow scene editor, Before/Leave actions and global failure policy (2026-11-06)
+
+The user found the scene form indistinguishable from Now, the side summary redundant, and per-scene recovery settings out of place. Scenes are now edited as a vertical flow of step blocks. Scenes gain Before actions (apps can wait for completion) and When leaving actions, plus a Close app action. Leave actions run when another scene is applied or the active scene is ended. Director remembers the active scene across the window and the CLI until the PC restarts. "Keep completed changes" and the device wait became one global Options setting shared by scenes and audio presets. The scenes file moved to version 2; version 1 still loads.

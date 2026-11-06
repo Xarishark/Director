@@ -22,7 +22,7 @@ A **preset** saves one part of your setup. A **scene** combines presets and acti
 | **Display preset** | Which screens are enabled, how they’re arranged, which is primary, and their resolution, refresh rate, orientation, and HDR. You can extend or mirror screens. |
 | **Audio preset** | A Windows output with optional volume, a separate output for calls, and an optional microphone. Director remembers devices it has seen so you can select them while they’re offline. |
 | **TV connection** | A paired TV, its PC input, wake settings, and optional links to its Windows display and HDMI audio. |
-| **Scene** | Any combination of TV preparation, display and audio presets, a global NVIDIA or RTSS FPS limit, and apps or links to open at the end. |
+| **Scene** | Any combination of TV preparation, display and audio presets, a global NVIDIA or RTSS FPS limit, and apps, links or "close app" steps to run before, after, or when you leave the scene. |
 
 The display and audio preset cards show a preview of what you saved. Use the checkmark to apply a preset or scene. Saving gives you a chance to review it before applying.
 
@@ -38,7 +38,9 @@ The display and audio preset cards show a preview of what you saved. Use the che
 2. In **Library › TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output, or create a separate **Audio preset** if you also want a specific volume.
 3. In **Scenes**, create **TV Gaming**. Select the TV, the TV display preset, and the audio choice. Add a frame-rate cap or an app launch if you want one. If a preset or TV is missing, choose **New display preset…**, **New audio preset…**, or **Add TV…** at the bottom of that list. Director returns to the scene with it selected after you save. Apply the scene when you’re ready.
 
-Director runs the scene in order. **TV → Displays → Audio → FPS → Apps and links.** It waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and tries to restore the previous Windows settings by default.
+Director runs the scene in order: **Before → TV → Displays → Audio → FPS → After.** A Before step can wait for a setup script to finish. Director waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and restores the previous Windows settings, unless you change that in Options.
+
+Director remembers the scene you applied last until you restart the PC. Applying a different scene first runs the previous scene's **When leaving** steps, for example `steam://close/bigpicture` when you leave a console scene. **End** on the active scene card (or `director scene end`) runs them without applying another scene.
 
 LG webOS is supported through local control. Samsung Tizen and TCL Android / Google TV are hardware previews. The TV guides explain what to try on each brand and how to send a compatibility report.
 

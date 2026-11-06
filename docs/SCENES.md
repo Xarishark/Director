@@ -35,3 +35,21 @@ Model/runner tests cover stable reference resolution, direct TV audio, stage ord
 ## FPS stage
 
 A scene may optionally set a global NVIDIA/RTSS FPS limit. Order is TV → displays → audio → FPS → final launches. Unsupported providers fail preflight before device changes; default failure/cancel recovery includes the selected FPS configuration. FPS-only scenes are supported. Off means unchanged; Disable global limit is an explicit operation. See FPS.md.
+
+## Before, After and When leaving — version 2
+
+Scenes are stored as `version: 2`. Version 1 files still load; their per-scene `keep_on_failure` and `wait_seconds` are read and dropped, and are no longer written. Older Director builds refuse a version 2 file instead of rewriting it.
+
+Each scene has three action lists. **Before** runs first, after the settings snapshot and before any device change. **After** (the old final actions) runs once every device step has succeeded. **When leaving** runs when a different scene is applied, from the window or the CLI, or when the active scene is ended. Order is Before → TV → Displays → Audio → FPS → After.
+
+Actions are Run app, Open link (URI) and Close app. An app can **wait until it finishes**: it then fails the step on a non-zero exit code or when it runs longer than the device wait from Options, and the process is left running on timeout. New Before apps wait by default; After and leave apps don't. Close app asks every running copy of a program (by `name.exe` or full path) to close through its windows, waits up to 10 seconds, and ends it only when "End it if it doesn't close" is on. A program that isn't running counts as closed. Steam Big Picture is best closed with the link `steam://close/bigpicture`.
+
+The active scene is stored in `active-scene.json` with the time Windows started, so it survives closing Director and is shared with the CLI, but is forgotten after a restart. A successful apply records the scene; a failed apply clears it. Leave actions never block the next scene: each failure is reported as a warning and the remaining actions still run. End runs the leave actions and forgets the active scene; it doesn't restore any settings. `director scene list` marks the active scene and `director scene end` ends it.
+
+## Global failure policy
+
+"Keep changes that finished if a later step fails" and the device wait (1–120 seconds, default 30) are Options settings in `preferences.json`, shared by scenes, audio presets (window, Now and CLI) and waited apps. The per-preset audio checkbox is gone; saved presets keep their `keep_changes` field for compatibility, and it is ignored. `director audio apply --keep-on-failure` still overrides the setting for one run.
+
+## Step-flow editor
+
+The editor is one column of step blocks in run order, joined by a connector line, with When leaving set apart below. A collapsed block shows its title and a one-line summary (the display block also shows a small layout preview); clicking it expands the existing controls in place, one block at a time. Unused steps are muted "+ Add" slots, and each used block has a remove button that resets that step. The former right-hand summary panel and the per-scene "Readiness and recovery" section were removed. This supersedes the editor layout described under "Native editor" above.
