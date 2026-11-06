@@ -4,7 +4,7 @@ Director can change the global FPS setting through the NVIDIA driver or an insta
 
 ## Use it
 
-- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, select a cap or **Disable global limit**, and click **Apply FPS changes**.
+- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, choose **Set a frame rate limit** (a number, or **VRR-safe cap**) or **Remove the global limit**, and click **Apply FPS changes**.
 - In a **scene**, use the same controls. Saving does not apply anything. The scene applies TV preparation → displays → audio → FPS → final apps/URIs. A scene containing only FPS is supported.
 - **Change FPS limit off means leave all FPS settings unchanged.** To remove the selected provider’s global cap, turn the switch on and choose **Disable global limit**.
 - Only available methods appear in the dropdown. Open RTSS first if using it. Check available methods can rediscover unavailable providers. Unavailable saved methods remain saved but fail preflight before scene device changes; there is no automatic provider fallback.
@@ -18,6 +18,14 @@ Headless commands:
     director fps set rtss off
 
 Existing director scene apply commands use the saved FPS choice without opening the window.
+
+## VRR-safe cap
+
+Turn on **VRR-safe cap** under Set a frame rate limit to cap a little below the primary display's refresh rate, so a VRR display stays in its variable-refresh range. Director uses the curve NVIDIA Reflex uses, refresh − refresh²/3600 (rounded down): 240 Hz → 224 FPS, 165 Hz → 157, 144 Hz → 138, 120 Hz → 116, 60 Hz → 59.
+
+The refresh rate is read when the cap is applied, not when it's saved. A scene reads it after its Displays step, so switching to a 120 Hz TV gives 116. Now and the CLI (`director fps set rtss vrr`) read the current primary display. If the refresh rate can't be read, the step fails before anything changes. The dialog previews the value from the scene's display preset, or the current layout.
+
+The editor shows the current value of the selected method only. "Remove the global limit" turns off a cap that's already set; turning off **Change FPS limit** leaves the current setting alone.
 
 ## What the setting means
 

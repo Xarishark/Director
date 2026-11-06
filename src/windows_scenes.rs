@@ -390,11 +390,18 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
     }
     fn fps(&mut self, plan: &Plan) -> Result<(), String> {
         use crate::fps::Backend;
-        let request = plan.scene.fps.as_ref().ok_or("Missing FPS request.")?;
+        let wanted = plan.scene.fps.as_ref().ok_or("Missing FPS request.")?;
+        // Displays run first, so this reads the refresh rate the scene switched to.
+        let refresh = if wanted.vrr_safe {
+            crate::windows_displays::capture()?.primary_refresh_hz()
+        } else {
+            None
+        };
+        let request = wanted.resolved(refresh)?;
         let provider = self.fps.as_mut().ok_or("Missing FPS provider.")?;
         self.fps_attempted = true;
-        provider.set(request)?;
-        crate::fps::verify(request, &provider.snapshot()?)
+        provider.set(&request)?;
+        crate::fps::verify(&request, &provider.snapshot()?)
     }
     fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String> {
         match action {

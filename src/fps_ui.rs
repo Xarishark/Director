@@ -16,6 +16,8 @@ pub(crate) enum FpsMessage {
     Enable(Target, bool),
     Method(Target, Option<usize>),
     Mode(Target, Option<usize>),
+    /// Use a VRR-safe cap worked out from the primary display's refresh rate.
+    VrrSafe(Target, bool),
     Value(Target, Option<f64>),
     Apply,
     Applied(Result<String, String>, Vec<Capability>),
@@ -146,6 +148,7 @@ impl DirectorApp {
                                 .map_or(60, |s| if s.value == 0 { 60 } else { s.value })
                                 .clamp(1, c.maximum),
                         ),
+                        vrr_safe: false,
                     })
                 } else {
                     None
@@ -179,11 +182,21 @@ impl DirectorApp {
             }
             FpsMessage::Mode(target, Some(index)) if !self.busy => {
                 if let Some(r) = self.fps_request_mut(target) {
-                    r.limit = if index == 1 {
-                        None
+                    if index == 1 {
+                        r.limit = None;
+                        r.vrr_safe = false;
                     } else {
-                        Some(r.limit.unwrap_or(60))
-                    };
+                        r.limit = Some(r.limit.unwrap_or(60));
+                    }
+                    self.fps_edited(target);
+                }
+            }
+            FpsMessage::VrrSafe(target, on) if !self.busy => {
+                if let Some(r) = self.fps_request_mut(target) {
+                    r.vrr_safe = on;
+                    if r.limit.is_none() {
+                        r.limit = Some(60);
+                    }
                     self.fps_edited(target);
                 }
             }
@@ -239,7 +252,12 @@ impl DirectorApp {
                     work(cx, move || {
                         let result = (|| {
                             let _lock = director::windows_audio::OperationLock::acquire()?;
-                            director::windows_fps::apply(&request, false)
+                            let refresh = if request.vrr_safe {
+                                director::windows_displays::capture()?.primary_refresh_hz()
+                            } else {
+                                None
+                            };
+                            director::windows_fps::apply(&request.resolved(refresh)?, false)
                         })();
                         msg(FpsMessage::Applied(result, director::windows_fps::survey()))
                     });
@@ -262,6 +280,34 @@ impl DirectorApp {
             _ => {}
         }
     }
+    /// The refresh rate a VRR-safe preview uses: the scene's display preset, or the live
+    /// layout in Now (falling back to the last captured layout).
+    fn fps_preview_refresh(&self, target: Target) -> Option<f64> {
+        let scene = (target == Target::Scene)
+            .then(|| {
+                self.scene
+                    .draft
+                    .as_ref()
+                    .and_then(|d| d.display.as_ref())
+                    .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
+                    .and_then(|p| p.layout.primary_refresh_hz())
+            })
+            .flatten();
+        scene
+            .or_else(|| {
+                self.current
+                    .display
+                    .draft
+                    .as_ref()
+                    .and_then(|d| d.layout.primary_refresh_hz())
+            })
+            .or_else(|| {
+                self.display
+                    .current
+                    .as_ref()
+                    .and_then(|l| l.primary_refresh_hz())
+            })
+    }
     pub(crate) fn fps_controls(&self, cx: &ViewContext<Self>, target: Target) -> View {
         let request = self.fps_request(target);
         let methods = self
@@ -273,30 +319,28 @@ impl DirectorApp {
         let available = !self.busy && self.guard_ready;
         let selected = request.and_then(|r| methods.iter().position(|c| c.provider == r.provider));
         let cap = request.and_then(|r| self.fps.caps.iter().find(|c| c.provider == r.provider));
-        let current = self
-            .fps
-            .caps
-            .iter()
-            .filter_map(|c| {
-                c.current.as_ref().map(|s| {
-                    format!(
-                        "{}: {}{}",
-                        c.provider.label(),
-                        if s.value == 0 {
-                            "global limit off".into()
-                        } else {
-                            format!("{} FPS", s.value)
-                        },
-                        if s.limiter_disabled == Some(true) {
-                            " (limiter suspended)"
-                        } else {
-                            ""
-                        }
-                    )
-                })
+        // Only the selected method: the others don't matter for this step.
+        let current = request
+            .and_then(|r| self.fps.caps.iter().find(|c| c.provider == r.provider))
+            .and_then(|c| c.current.as_ref().map(|s| (c.provider, s)))
+            .map(|(provider, s)| {
+                format!(
+                    "Currently: {} with {}{}",
+                    if s.value == 0 {
+                        "no global limit".into()
+                    } else {
+                        format!("{} FPS", s.value)
+                    },
+                    provider.label(),
+                    if s.limiter_disabled == Some(true) {
+                        " (limiter suspended)"
+                    } else {
+                        ""
+                    }
+                )
             })
-            .collect::<Vec<_>>()
-            .join(" · ");
+            .unwrap_or_default();
+        let refresh = self.fps_preview_refresh(target);
         StackPanel::new().spacing(12.0).children((
 if target==Target::Scene{View::empty()}else{TextBlock::new().text("FPS limit").font_size(24.0).font_weight(FontWeight::SEMI_BOLD).into()},
 if current.is_empty(){View::empty()}else{note(current)},
@@ -305,8 +349,9 @@ if !self.fps.loaded||self.fps.checking{note("Checking installed FPS methods…")
 if self.fps.loaded&&self.fps.caps.iter().any(|c|!c.available){Button::new().automation_name("Check FPS methods").is_enabled(!self.fps.checking).on_click(cx.message(msg(FpsMessage::Discover))).content("Check available methods")}else{View::empty()},
 if let Some(r)=request{StackPanel::new().spacing(12.0).children((
 ComboBox::new().automation_name("FPS method").items_source(methods.iter().map(|c|c.provider.label())).selected_index(selected).placeholder_text(format!("{} unavailable",r.provider.label())).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(available).on_selection_changed(cx.callback(move|i|msg(FpsMessage::Method(target,i)))).slot(ComboBoxSlot::Header,"Method"),
-ComboBox::new().automation_name("FPS limit mode").items_source(["Cap frame rate","Disable global limit"]).selected_index(Some(if r.limit.is_some(){0}else{1})).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(available).on_selection_changed(cx.callback(move|i|msg(FpsMessage::Mode(target,i)))).slot(ComboBoxSlot::Header,"Limit"),
-if let Some(n)=r.limit{NumberBox::new().automation_name("FPS value").value(Some(f64::from(n))).minimum(1.0).maximum(f64::from(cap.map_or(1000,|c|c.maximum))).is_enabled(available).on_value_changed(cx.callback(move|v|msg(FpsMessage::Value(target,v)))).slot(NumberBoxSlot::Header,"Frames per second")}else{View::empty()},
+ComboBox::new().automation_name("FPS limit mode").items_source(["Set a frame rate limit","Remove the global limit"]).selected_index(Some(if r.limit.is_some()||r.vrr_safe{0}else{1})).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(available).on_selection_changed(cx.callback(move|i|msg(FpsMessage::Mode(target,i)))).slot(ComboBoxSlot::Header,"Limit"),
+if r.limit.is_some()||r.vrr_safe{ToggleSwitch::new().automation_name("VRR-safe cap").is_on(r.vrr_safe).is_enabled(available).on_toggled(cx.callback(move|v|msg(FpsMessage::VrrSafe(target,v)))).slot(ToggleSwitchSlot::Header,"VRR-safe cap")}else{note("Turns off a global cap that’s already set. To leave the current setting as it is, turn off Change FPS limit.")},
+if r.vrr_safe{note(match refresh{Some(hz)=>format!("{} FPS on a {} Hz display. Worked out from the primary display when {} runs.",director::fps::vrr_safe_cap(hz),hz.round(),if target==Target::Scene{"the scene"}else{"this"}),None=>"A little below the primary display’s refresh rate, worked out when applied.".into()})}else if let Some(n)=r.limit{NumberBox::new().automation_name("FPS value").value(Some(f64::from(n))).minimum(1.0).maximum(f64::from(cap.map_or(1000,|c|c.maximum))).is_enabled(available).on_value_changed(cx.callback(move|v|msg(FpsMessage::Value(target,v)))).slot(NumberBoxSlot::Header,"Frames per second")}else{View::empty()},
 if let Some(c)=cap{note(&c.detail)}else{note("The saved method is unavailable. Applying will fail before any scene changes.")},
 if let Err(e)=r.validate(){note(e)}else{View::empty()},
 note("Global setting. Game-specific profiles and other limiters can still apply. RTSS must stay running when selected. A running game may need restarting."),

@@ -678,6 +678,7 @@ mod tests {
         s.fps = Some(crate::fps::Request {
             provider: crate::fps::Provider::Nvidia,
             limit: Some(120),
+            vrr_safe: false,
         });
         let p = resolve(&s, &[], &[], &[]).unwrap();
         let mut b = Fake {
@@ -864,6 +865,7 @@ mod tests {
         s.fps = Some(crate::fps::Request {
             provider: crate::fps::Provider::Nvidia,
             limit: Some(120),
+            vrr_safe: false,
         });
         let p = resolve(&s, &[], &[], &[]).unwrap();
         let mut b = Fake::default();
