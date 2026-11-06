@@ -205,3 +205,11 @@ The first-run checklist sent people to Now and to each Library page before they 
 ### D064 — Windows 11 24H2 is the minimum (2026-11-06)
 
 Director declared no Windows support: no app manifest (so version APIs reported 6.2.9200), no installer check and no documented baseline. HDR switching needs display-configuration requests added in Windows 11 24H2, and only current Windows 11 is tested, so the user chose 24H2 (build 26100) as the minimum rather than a partly working Windows 10 install. The executable embeds a manifest (Windows 10/11 supportedOS, maxversiontested 10.0.26100.0, per-monitor v2 DPI), and setup.exe and the MSI refuse older builds.
+
+### D065 — CLI names, and `list` in every area (2026-11-06)
+
+Commands found items by name ignoring case, so any name with a space needed quotes, and the shortcut dialog copied commands such as `director scene apply "TV ""Gaming"""`. Lists were also inconsistent: `audio list` printed devices while `scene list` and `tv list` printed saved items, display presets were under `display presets`, and there was no way to see everything at once.
+
+Every scene, preset, TV, screen and audio device now has a CLI name derived from its name: lowercase letters and digits, with each run of other characters replaced by one dash ("Desk View" is `desk-view`). It is computed rather than stored, so no file format changed and renaming updates it. Lookups accept an exact ID first, then anything that normalizes to the same CLI name, so older quoted commands keep working. Saving a new or renamed item whose CLI name is empty or already used by another item of the same kind is refused (the user chose this over auto-numbering, which would let names shift as items come and go). Existing files with a clash still load; looking up the clashing name reports both IDs.
+
+`director list` prints every category, and each area has `list` for its saved items: `scene list`, `display list`, `audio list`, `tv list`, plus `display screens`, `audio outputs` and `audio inputs` for devices. All take `--json` with a `cli_name` field. The user accepted that `audio list` now lists audio presets instead of output devices (use `audio outputs`); `audio presets`, `display presets` and `display current` remain as aliases.

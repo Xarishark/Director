@@ -23,10 +23,11 @@ Open target/release/director.exe after a release build. Keep the generated direc
 
 ```text
 director --help
-director audio presets
-director audio apply "Desk"
+director list
 director audio list
-director audio list --json
+director audio apply desk
+director audio outputs
+director audio outputs --json
 director audio check
 director audio apply "<endpoint-id>"
 director audio apply "<endpoint-id>" --volume 40
@@ -70,7 +71,7 @@ Native UI Automation: query an open ComboBox's own descendants with a name/type 
 
 ## TV setup checks
 
-See [TVs](TVS.md) for the setup flow and `director tv list`, `director tv pair <name>`, and `director tv check <name>`. TV commands are dispatched before Windows audio initialization and do not create the WinUI window. Add/edit/remove definitions in the native TVs view. Pairing is explicit, prompts on the TV, and stores only DPAPI-protected credentials. Connection checking is read-only on the TV. No persistent control process is required.
+See [TVs](TVS.md) for the setup flow and `director tv list`, `director tv pair <tv>`, and `director tv check <tv>`. TV commands are dispatched before Windows audio initialization and do not create the WinUI window. Add/edit/remove definitions in the native TVs view. Pairing is explicit, prompts on the TV, and stores only DPAPI-protected credentials. Connection checking is read-only on the TV. No persistent control process is required.
 
 Offline tests include a loopback WebSocket mock using native WinHTTP, a silent-peer deadline test, and DPAPI tampering checks. They do not contact physical TVs. Firmware/TLS/permissions must still be validated against an on, reachable LG TV with user approval on its screen. There is no discovery or MAC/address migration yet; avoid treating mock success as a hardware compatibility claim.
 

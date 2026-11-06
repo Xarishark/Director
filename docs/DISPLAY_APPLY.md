@@ -23,9 +23,9 @@ The GUI uses ordinary Rust channels and supported Reactor background-task messag
 ## CLI
 
 ```text
-director display check "Desk monitors"
-director display apply "Desk monitors"
-director display apply "Desk monitors" --yes
+director display check desk-monitors
+director display apply desk-monitors
+director display apply desk-monitors --yes
 ```
 
 check resolves and validates through Windows without applying. apply follows the saved preference. When confirmation is enabled, it asks the terminal for yes/y with the same 15-second deadline; EOF, another answer, or no answer reverts. --yes explicitly keeps a verified layout without prompting, for automation without a window. --confirm forces confirmation even for an automatic preset. Neither option skips verification or recovery. Success/already-matching exits 0; a reverted/failed application exits 1; bad arguments, missing presets, or access/initialization errors exit 2.

@@ -23,10 +23,10 @@ On failure/cancel, stop subsequent stages and final actions. Default recovery re
 ## Headless commands
 
 - director scene list
-- director scene check "TV gaming"
-- director scene apply "TV gaming" [--yes | --confirm]
+- director scene check tv-gaming
+- director scene apply tv-gaming [--yes | --confirm]
 
-Names or IDs are accepted. Check validates saved references and executable paths only, without device mutation or live readiness claims. Apply does not start the GUI or require Director to remain resident. --yes skips display confirmation; --confirm requires it. Exit code is zero only on complete success.
+CLI names (the scene name in lowercase with dashes, as `director scene list` shows) or IDs are accepted; a quoted name such as "TV gaming" still works. Check validates saved references and executable paths only, without device mutation or live readiness claims. Apply does not start the GUI or require Director to remain resident. --yes skips display confirmation; --confirm requires it. Exit code is zero only on complete success.
 
 ## Validation and remaining work
 

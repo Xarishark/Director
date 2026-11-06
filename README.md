@@ -50,20 +50,21 @@ LG webOS is supported through local control. Samsung Tizen and TCL Android / Goo
 
 Use `director --version` or **About Director** in Options to check your installed version.
 
-Run a saved scene from a shortcut, script, or terminal with the window closed. Each scene and preset card has a **>\_** button next to its name that shows the exact command, by name or by ID, with a Copy button, ready to paste into a Stream Deck action or a shortcut. For example:
+Run a saved scene from a shortcut, script, or terminal with the window closed. Commands use each item's **CLI name**: its name in lowercase, with dashes instead of spaces and symbols, so "TV Gaming" is `tv-gaming` and needs no quotes. Each scene and preset card has a **>\_** button next to its name that shows the exact command, by CLI name or by ID, with a Copy button, ready to paste into a Stream Deck action or a shortcut. For example:
 
 ```powershell
-director scene apply "TV Gaming"
-director display apply "Desk monitors"
-director audio apply "Headphones"
+director scene apply tv-gaming
+director display apply desk-monitors
+director audio apply headphones
 ```
 
-To change an output’s volume without switching to it, use its Windows name. Run `director audio list` for the exact name or endpoint ID.
+`director list` shows every scene, preset, TV, screen and audio device with its CLI name. Each area also has its own list: `scene list`, `display list`, `display screens`, `audio list` (audio presets), `audio outputs`, `audio inputs` and `tv list`. Add `--json` for scripts. Two items of the same kind can't share a CLI name, so Director asks for a different name when saving one that would clash.
+
+To change an output's volume without switching to it, use its CLI name from `director audio outputs`, or its endpoint ID.
 
 ```powershell
-director audio volume "Speakers" 35
+director audio volume speakers 35
 ```
-
 ## Logs and backups
 
 - **View logs** in Options shows the latest scene result from the app or CLI, followed by recent log entries. If a scene stopped, look there for the failed step and whether recovery succeeded.

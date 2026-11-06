@@ -53,16 +53,16 @@ No Python, Node, ColorControl, downloaded TV helper, persistent service, or tray
 
 ```text
 director tv list
-director tv pair "Living room TV"
-director tv check "Living room TV"
-director tv learn "Living room TV"
-director tv wake "Living room TV"
-director tv status "Living room TV"
-director tv off "Living room TV"
-director tv input "Living room TV" HDMI_1
+director tv pair living-room-tv
+director tv check living-room-tv
+director tv learn living-room-tv
+director tv wake living-room-tv
+director tv status living-room-tv
+director tv off living-room-tv
+director tv input living-room-tv HDMI_1
 ```
 
-Pair stores protected pairing and attempts metadata learning. Check authenticates and reads inputs without changing the TV or saving metadata. Learn refreshes and saves input/wake information without changing the selected PC mapping or TV state. Wake dispatches packets only; exit zero does not establish physical wake. Add/edit/remove and PC/display mapping are configured in the window.
+Each TV is named by its CLI name (its name in lowercase with dashes, as `director tv list` shows) or its ID. Pair stores protected pairing and attempts metadata learning. Check authenticates and reads inputs without changing the TV or saving metadata. Learn refreshes and saves input/wake information without changing the selected PC mapping or TV state. Wake dispatches packets only; exit zero does not establish physical wake. Add/edit/remove and PC/display mapping are configured in the window.
 
 ## Validation and remaining work
 

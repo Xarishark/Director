@@ -28,7 +28,7 @@ A connected disabled output may expose no DXGI mode list. In that case, only its
 
 Display presets use schema version 1 in the Windows Local AppData known folder at %LOCALAPPDATA%\Director\display-presets.json. Audio stays in audio-presets.json, independently. A display preset has an internal ID, editable name, capture timestamp, and layout. Each monitor stores a Windows device path when available, current adapter/target locators, name, availability, enabled state, and an active desktop mode when enabled. A mode includes source identity, desktop position/dimensions, raw CCD source dimensions, exact refresh fraction, and orientation.
 
-Names are nonblank, unique ignoring case within display presets, and at most 160 UTF-8 bytes. Audio and display presets may use the same name. Shared atomic write and operation-lock mechanisms preserve corrupt/future files and reject stale writers. Capture errors never save partial layouts.
+Names are nonblank, unique ignoring case within display presets, have a CLI name (lowercase with dashes) that no other display preset uses, and at most 160 UTF-8 bytes. Audio and display presets may use the same name. Shared atomic write and operation-lock mechanisms preserve corrupt/future files and reject stale writers. Capture errors never save partial layouts.
 
 Adapter LUIDs, source IDs, and target IDs are current-session locators, not durable hardware identities. Device paths can change after hardware/driver changes; missing paths remain explicit. Apply re-enumerates, resolves device paths, and reports missing/ambiguous targets rather than applying these locators blindly or matching friendly names alone. This first schema is a captured desktop description, not a complete serialized driver configuration.
 
@@ -41,10 +41,10 @@ Buffer sizing/query races retry up to four times. Active source-mode indices, ty
 ## Headless commands
 
 ```text
-director display current
-director display current --json
-director display presets
-director display presets --json
+director display screens
+director display screens --json
+director display list
+director display list --json
 director display capture "Desk monitors"
 ```
 
