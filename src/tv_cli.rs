@@ -20,10 +20,6 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         crate::diagnostics::event("tv.cli.intent", "selected", command);
     }
     match args{
-  [command] if command=="list"=>{
-   for tv in tvs::load(&tvs::path()?)?{println!("{} — {} · {} · {}",tv.name,tv.address,if tv.credential.is_some(){"Paired"}else{"Not paired"},if tv.network.targets().is_empty(){"Wake not configured"}else{"Wake available"});}
-   Ok(0)
-  }
   [command,name] if command=="report"=>{let _lock=OperationLock::acquire()?;let saved=tvs::load(&tvs::path()?)?;let tv=find(&saved,name)?;let path=crate::samsung::export(tv)?;println!("Redacted report: {}",path.display());Ok(0)}
   [command,name,id] if command=="input"=>{
    let _lock=OperationLock::acquire()?;let tvs=tvs::load(&tvs::path()?)?;
@@ -56,6 +52,6 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     _=>unreachable!(),
    }Ok(0)
   }
-  _=>Err("Use: director tv list | pair <name> | check <name> | learn <name> | wake <name> | status <name> | off <name> | input <name> <input-id> | report <name>".into()),
+  _=>Err("Use: director tv list | pair <tv> | check <tv> | learn <tv> | wake <tv> | status <tv> | off <tv> | input <tv> <input-id> | report <tv>. Run director tv list for each TV's CLI name.".into()),
  }
 }

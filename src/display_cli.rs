@@ -19,8 +19,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 && rest != ["--confirm"])
         {
             return Err(
-                "Use display check <name-or-id> or display apply <name-or-id> [--yes | --confirm]."
-                    .into(),
+                "Use display check <preset> or display apply <preset> [--yes | --confirm].".into(),
             );
         }
         let presets = displays::load(&displays::path()?)?;
@@ -77,33 +76,6 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         return Ok(if report.succeeded() { 0 } else { 1 });
     }
     match args {
-        [command, rest @ ..] if command == "current" && (rest.is_empty() || rest == ["--json"]) => {
-            let layout = windows_displays::capture()?;
-            if rest == ["--json"] {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&layout).map_err(|e| e.to_string())?
-                );
-            } else {
-                println!("{}", layout.summary());
-                for m in &layout.monitors {
-                    println!("{} — {}", m.name, m.summary());
-                }
-            }
-        }
-        [command, rest @ ..] if command == "presets" && (rest.is_empty() || rest == ["--json"]) => {
-            let presets = displays::load(&displays::path()?)?;
-            if rest == ["--json"] {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?
-                );
-            } else {
-                for p in presets {
-                    println!("{} — {}", p.name, p.layout.summary());
-                }
-            }
-        }
         [command, name] if command == "capture" => {
             let name = name.trim();
             if name.is_empty() || name.len() > 160 {

@@ -6,6 +6,8 @@ pub mod windows_audio;
 
 #[cfg(windows)]
 pub mod cli;
+#[cfg(windows)]
+pub mod cli_list;
 
 pub mod displays;
 #[cfg(windows)]

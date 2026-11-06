@@ -104,9 +104,9 @@ pub fn set_output_volume(
             .filter(|d| !wanted.is_empty() && crate::cli_name::cli_name(&d.name) == wanted);
         let first = matches
             .next()
-            .ok_or("Output not found. Run director audio list.")?;
+            .ok_or("Output not found. Run director audio outputs.")?;
         if matches.next().is_some() {
-            return Err("More than one output has that name. Run director audio list and use the endpoint ID.".into());
+            return Err("More than one output has that name. Run director audio outputs and use the endpoint ID.".into());
         }
         first
     };
