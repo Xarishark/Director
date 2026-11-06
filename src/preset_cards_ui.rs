@@ -167,6 +167,14 @@ fn screen_lines(layout: &Layout, group: &[usize], width: f64, height: f64) -> Ve
     lines
 }
 pub(crate) fn layout_preview(layout: &Layout, height: f64) -> View {
+    preview(layout, height, true)
+}
+/// The same preview without the per-screen tooltips, for use inside a ContentDialog: the
+/// pinned Reactor closes the window when a dialog hosts a tooltip.
+pub(crate) fn layout_preview_in_dialog(layout: &Layout, height: f64) -> View {
+    preview(layout, height, false)
+}
+fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
     const WIDTH: f64 = 308.0;
     let mut seen = std::collections::BTreeSet::new();
     let active = layout
@@ -254,34 +262,38 @@ pub(crate) fn layout_preview(layout: &Layout, height: f64) -> View {
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
+            let screen = Border::new()
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .vertical_alignment(VerticalAlignment::Top)
+                .width(width)
+                .height(screen_height)
+                .padding(Thickness::new(4.0, 4.0, 4.0, 4.0))
+                .margin(Thickness::new(
+                    left + (f64::from(d.x) - min_x) * scale,
+                    top + (f64::from(d.y) - min_y) * scale,
+                    0.0,
+                    0.0,
+                ))
+                .background(Color::rgb(38, 52, 69))
+                .border_brush(if d.primary() {
+                    Color::rgb(255, 148, 113)
+                } else {
+                    Color::rgb(145, 167, 187)
+                })
+                .border_thickness(1.0)
+                .corner_radius(4.0)
+                .content(
+                    StackPanel::new()
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .keyed_children(lines),
+                );
             KeyedView::new(
                 format!("preview-screen-{i}"),
-                Border::new()
-                    .horizontal_alignment(HorizontalAlignment::Left)
-                    .vertical_alignment(VerticalAlignment::Top)
-                    .width(width)
-                    .height(screen_height)
-                    .padding(Thickness::new(4.0, 4.0, 4.0, 4.0))
-                    .margin(Thickness::new(
-                        left + (f64::from(d.x) - min_x) * scale,
-                        top + (f64::from(d.y) - min_y) * scale,
-                        0.0,
-                        0.0,
-                    ))
-                    .background(Color::rgb(38, 52, 69))
-                    .border_brush(if d.primary() {
-                        Color::rgb(255, 148, 113)
-                    } else {
-                        Color::rgb(145, 167, 187)
-                    })
-                    .border_thickness(1.0)
-                    .corner_radius(4.0)
-                    .content(
-                        StackPanel::new()
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .keyed_children(lines),
-                    )
-                    .tooltip(details),
+                if tooltips {
+                    screen.tooltip(details)
+                } else {
+                    screen
+                },
             )
         })
         .collect::<Vec<_>>();

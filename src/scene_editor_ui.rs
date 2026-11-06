@@ -644,7 +644,9 @@ impl DirectorApp {
                         d.display
                             .as_ref()
                             .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
-                            .map(|p| crate::preset_cards_ui::layout_preview(&p.layout, 124.0))
+                            .map(|p| {
+                                crate::preset_cards_ui::layout_preview_in_dialog(&p.layout, 124.0)
+                            })
                             .unwrap_or_else(View::empty),
                         Button::new()
                             .is_enabled(available)
@@ -850,7 +852,6 @@ impl DirectorApp {
                                                     .opacity(0.65)
                                                     .text_trimming(TextTrimming::CharacterEllipsis),
                                             ))
-                                            .tooltip(path.clone())
                                     } else {
                                         TextBlock::new()
                                             .grid_column(1)
@@ -971,24 +972,21 @@ impl DirectorApp {
                                                 .on_click(cx.callback(move |()| {
                                                     msg(SceneMessage::Move(list, i, true))
                                                 }))
-                                                .content(FontIcon::new().glyph("\u{e70e}"))
-                                                .tooltip("Move up"),
+                                                .content(FontIcon::new().glyph("\u{e70e}")),
                                             Button::new()
                                                 .automation_name(format!("Move action {} down", i + 1))
                                                 .is_enabled(available && i + 1 < actions.len())
                                                 .on_click(cx.callback(move |()| {
                                                     msg(SceneMessage::Move(list, i, false))
                                                 }))
-                                                .content(FontIcon::new().glyph("\u{e70d}"))
-                                                .tooltip("Move down"),
+                                                .content(FontIcon::new().glyph("\u{e70d}")),
                                             Button::new()
                                                 .automation_name(format!("Remove action {}", i + 1))
                                                 .is_enabled(available)
                                                 .on_click(cx.callback(move |()| {
                                                     msg(SceneMessage::Remove(list, i))
                                                 }))
-                                                .content(crate::icons::delete())
-                                                .tooltip("Remove action"),
+                                                .content(crate::icons::delete()),
                                         )),
                                 )),
                             body,
@@ -1140,5 +1138,87 @@ impl DirectorApp {
                             )),
                     )),
             ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The source between two markers.
+    fn region<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let from = source.find(start).expect(start);
+        let to = source[from..].find(end).expect(end) + from;
+        &source[from..to]
+    }
+    /// The pinned Reactor closes the whole window (StructureUnsupported) when a tooltip sits
+    /// inside a ContentDialog, so nothing a dialog hosts may use one.
+    #[test]
+    fn dialog_content_has_no_tooltips() {
+        let editor = include_str!("scene_editor_ui.rs");
+        let fps = include_str!("fps_ui.rs");
+        let tip = concat!(".tool", "tip(");
+        for (name, code) in [
+            (
+                "step dialogs",
+                region(
+                    editor,
+                    "pub(crate) fn step_dialog",
+                    "pub(crate) fn scene_editor(",
+                ),
+            ),
+            (
+                "FPS controls",
+                region(
+                    fps,
+                    "pub(crate) fn fps_controls",
+                    "pub(crate) static PREVIEW",
+                ),
+            ),
+            ("crash dialog", include_str!("crash_ui.rs")),
+            (
+                "command dialog",
+                region(
+                    include_str!("command_ui.rs"),
+                    "pub(crate) fn command_dialog",
+                    "#[cfg(test)]",
+                ),
+            ),
+        ] {
+            assert!(!code.contains(tip), "{name} use a tooltip inside a dialog");
+        }
+        // Shared helpers can hide a tooltip (the display preview did), so the step dialogs
+        // may only call helpers checked to be tooltip-free. Check a new one, then add it here.
+        let safe = [
+            "crate::icons::delete(",
+            "crate::preset_cards_ui::layout_preview_in_dialog(",
+        ];
+        let steps = region(
+            editor,
+            "pub(crate) fn step_dialog",
+            "pub(crate) fn scene_editor(",
+        );
+        for (at, _) in steps.match_indices("crate::") {
+            let rest = &steps[at..];
+            let path = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+                .unwrap_or(rest.len());
+            let call = &rest[..(path + 1).min(rest.len())];
+            // A call to a function in another UI module (not a type or enum path).
+            let last = call.trim_end_matches('(').rsplit("::").next().unwrap_or("");
+            if call.ends_with('(') && last.starts_with(|c: char| c.is_lowercase()) {
+                assert!(
+                    safe.contains(&call),
+                    "{call} is used inside a step dialog; check it has no tooltip"
+                );
+            }
+        }
+        let preview = region(
+            include_str!("preset_cards_ui.rs"),
+            "fn preview(",
+            "impl DirectorApp",
+        );
+        assert!(
+            preview.contains("if tooltips"),
+            "the dialog preview must skip tooltips"
+        );
     }
 }

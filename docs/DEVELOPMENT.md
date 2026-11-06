@@ -88,6 +88,7 @@ The ignored tv_controls_ui::native_preview::controls_fixture test opens the moda
 
 The pinned Reactor version rejects the tooltip wrapper on Refresh inside ContentDialog with StructureUnsupported. The refresh button retains its accessible name without that wrapper. No dependency/cache modification was made. Keep this native regression check when changing dialog content.
 
+The same rule applies to everything a dialog hosts: the scene step dialogs once had tooltips on their action rows (Move up, Move down, Remove) and on the chosen app's name, and opening a step with actions closed the window. Give those controls an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the crash dialog and the command dialog; extend it when a new dialog hosts shared controls. Shared helpers can hide a tooltip too: the display preview put one on each screen and crashed the Displays step dialog, so dialogs use `layout_preview_in_dialog`, and the test only lets the step dialogs call helpers on its checked list.
 
 ## Crash reports
 
