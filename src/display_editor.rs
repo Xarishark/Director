@@ -401,9 +401,14 @@ pub struct MapTransform {
     pub scale: f64,
     pub left: f64,
     pub top: f64,
+    /// The map box the layout is drawn into, in DIP.
+    pub width: f64,
+    pub height: f64,
 }
 impl MapTransform {
-    pub fn new(layout: &Layout) -> Self {
+    /// Scale and centre the enabled screens in a `width` × `height` box, leaving room around
+    /// them to drag a screen past the others.
+    pub fn new(layout: &Layout, width: f64, height: f64) -> Self {
         let active = layout
             .monitors
             .iter()
@@ -419,11 +424,13 @@ impl MapTransform {
             .iter()
             .map(|d| d.y as f64 + d.height as f64)
             .fold(1.0, f64::max);
-        let scale = (290.0 / (right - left)).min(100.0 / (bottom - top));
+        let scale = (width * 0.725 / (right - left)).min(height * 0.555 / (bottom - top));
         Self {
             scale,
-            left: (400.0 - (right - left) * scale) / 2.0 - left * scale,
-            top: (180.0 - (bottom - top) * scale) / 2.0 - top * scale,
+            left: (width - (right - left) * scale) / 2.0 - left * scale,
+            top: (height - (bottom - top) * scale) / 2.0 - top * scale,
+            width,
+            height,
         }
     }
 }
@@ -436,7 +443,13 @@ pub struct Drag {
     pub pointer_y: f64,
 }
 impl Drag {
-    pub fn begin(layout: &Layout, index: usize, x: f64, y: f64) -> Result<Self, String> {
+    pub fn begin(
+        layout: &Layout,
+        index: usize,
+        x: f64,
+        y: f64,
+        map: MapTransform,
+    ) -> Result<Self, String> {
         let _d = layout
             .monitors
             .get(index)
@@ -445,7 +458,7 @@ impl Drag {
         Ok(Self {
             index,
             before: layout.clone(),
-            map: MapTransform::new(layout),
+            map,
             pointer_x: x,
             pointer_y: y,
         })
@@ -456,10 +469,14 @@ impl Drag {
         }
         let mut layout = self.before.clone();
         let d = layout.monitors[self.index].desktop.as_mut().unwrap();
-        let px = (self.map.left + d.x as f64 * self.map.scale + x - self.pointer_x)
-            .clamp(6.0, (394.0 - d.width as f64 * self.map.scale).max(6.0));
-        let py = (self.map.top + d.y as f64 * self.map.scale + y - self.pointer_y)
-            .clamp(6.0, (174.0 - d.height as f64 * self.map.scale).max(6.0));
+        let px = (self.map.left + d.x as f64 * self.map.scale + x - self.pointer_x).clamp(
+            6.0,
+            (self.map.width - 6.0 - d.width as f64 * self.map.scale).max(6.0),
+        );
+        let py = (self.map.top + d.y as f64 * self.map.scale + y - self.pointer_y).clamp(
+            6.0,
+            (self.map.height - 6.0 - d.height as f64 * self.map.scale).max(6.0),
+        );
         d.x = ((px - self.map.left) / self.map.scale).round() as i32;
         d.y = ((py - self.map.top) / self.map.scale).round() as i32;
         let (dx, dy) = (d.x, d.y);
@@ -591,9 +608,20 @@ mod drag_tests {
         l
     }
     #[test]
+    fn map_centres_the_layout_and_scales_with_its_box() {
+        let l = layout();
+        let small = MapTransform::new(&l, 400.0, 180.0);
+        let big = MapTransform::new(&l, 1000.0, 450.0);
+        assert!((big.scale / small.scale - 2.5).abs() < 1e-9);
+        // Two 2560-wide screens side by side: centred horizontally in the box.
+        let width = 5120.0 * big.scale;
+        assert!((big.left - (1000.0 - width) / 2.0).abs() < 1e-9);
+        assert!(big.top > 0.0 && big.top + 1440.0 * big.scale < 450.0);
+    }
+    #[test]
     fn dragging_primary_preserves_primary_and_snaps_overlaps() {
         let l = layout();
-        let drag = Drag::begin(&l, 0, 100.0, 100.0).unwrap();
+        let drag = Drag::begin(&l, 0, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
         let moved = drag.moved(130.0, 140.0).unwrap();
         let finished = drag.finish(&moved).unwrap();
         assert!(finished.monitors[0].desktop.as_ref().unwrap().primary());
@@ -604,7 +632,7 @@ mod drag_tests {
     #[test]
     fn secondary_drag_snaps_to_edges_and_rejects_invalid_input() {
         let l = layout();
-        let drag = Drag::begin(&l, 1, 100.0, 100.0).unwrap();
+        let drag = Drag::begin(&l, 1, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
         assert!(drag.moved(f64::NAN, 0.0).is_err());
         let mut moved = l.clone();
         let d = moved.monitors[1].desktop.as_mut().unwrap();

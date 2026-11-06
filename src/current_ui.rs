@@ -263,6 +263,7 @@ impl DirectorApp {
                     event,
                     DisplayMessage::Change(..)
                         | DisplayMessage::PointerDown(..)
+                        | DisplayMessage::Select(..)
                         | DisplayMessage::PointerMove(..)
                         | DisplayMessage::PointerUp(..)
                         | DisplayMessage::CancelDrag

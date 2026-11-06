@@ -320,7 +320,14 @@ mod tests {
     fn group_drag_moves_every_output_and_detach_allocates_a_distinct_source() {
         let (mut l, mut e) = setup_for_sources();
         e.change(&mut l, 2, Change::Mirror(Some(1))).unwrap();
-        let drag = Drag::begin(&l, 1, 100.0, 100.0).unwrap();
+        let drag = Drag::begin(
+            &l,
+            1,
+            100.0,
+            100.0,
+            crate::display_editor::MapTransform::new(&l, 400.0, 180.0),
+        )
+        .unwrap();
         let moved = drag.moved(110.0, 100.0).unwrap();
         let done = drag.finish(&moved).unwrap();
         assert_eq!(

@@ -71,10 +71,15 @@ fn preview(
         EditorTarget::Preset => app.display.drag.as_ref(),
         EditorTarget::Current => app.current.display.drag.as_ref(),
     };
+    let (width, height) = app.map_size();
     let map = drag.map_or_else(
-        || director::display_editor::MapTransform::new(layout),
+        || director::display_editor::MapTransform::new(layout, width, height),
         |d| d.map,
     );
+    let selected = match target {
+        EditorTarget::Preset => app.display.selected,
+        EditorTarget::Current => app.current.display.selected,
+    };
     let cards = layout
         .monitors
         .iter()
@@ -105,7 +110,11 @@ fn preview(
                         0.0,
                         0.0,
                     ))
-                    .background(crate::ui::SCREEN_FILL)
+                    .background(if group.contains(&selected) {
+                        Brush::from(ThemeBrush::Accent)
+                    } else {
+                        Brush::from(crate::ui::SCREEN_FILL)
+                    })
                     .border_brush(Brush::Solid(if primary {
                         crate::ui::SCREEN_PRIMARY
                     } else {
@@ -136,7 +145,9 @@ fn preview(
                                     .join(" | "),
                                 if primary { " ★" } else { "" }
                             ))
-                            .font_size(18.0)
+                            .font_size(
+                                (d.height.min(d.width) as f64 * map.scale * 0.3).clamp(12.0, 28.0),
+                            )
                             .foreground(crate::ui::SCREEN_TEXT)
                             .horizontal_alignment(HorizontalAlignment::Center)
                             .vertical_alignment(VerticalAlignment::Center),
@@ -145,7 +156,7 @@ fn preview(
                         "{}{}
 {} × {} · {}
 Position: {}, {}
-Drag to move this screen.",
+Select to edit it; drag to move it.",
                         m.name,
                         if primary { " · Primary" } else { "" },
                         d.width,
@@ -165,13 +176,69 @@ Drag to move this screen.",
         .padding(Thickness::uniform(10.0))
         .content(
             Grid::new()
-                .width(400.0)
-                .height(180.0)
+                .width(width)
+                .height(height)
                 .automation_name("Display arrangement")
                 .keyed_children(cards),
         )
 }
+/// Displays that are off aren't on the map, so they're listed under it to be selected.
+fn off_displays(
+    app: &DirectorApp,
+    layout: &Layout,
+    cx: &ViewContext<DirectorApp>,
+    target: EditorTarget,
+) -> View {
+    let selected = match target {
+        EditorTarget::Preset => app.display.selected,
+        EditorTarget::Current => app.current.display.selected,
+    };
+    let off = layout
+        .monitors
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| m.desktop.is_none())
+        .map(|(i, m)| {
+            KeyedView::new(
+                format!("off-{i}"),
+                Button::new()
+                    .automation_name(format!("Select display {}", m.name))
+                    // None keeps the standard style; only the selected display is accented.
+                    .style((i == selected).then_some(ButtonStyle::Accent))
+                    .on_click(cx.message(route(target, DisplayMessage::Select(i))))
+                    .content(format!("{}. {}", i + 1, m.name)),
+            )
+        })
+        .collect::<Vec<_>>();
+    if off.is_empty() {
+        return View::empty();
+    }
+    StackPanel::new()
+        .orientation(Orientation::Horizontal)
+        .spacing(crate::ui::GAP_S)
+        .children((
+            TextBlock::new()
+                .text("Off:")
+                .opacity(crate::ui::SECONDARY)
+                .vertical_alignment(VerticalAlignment::Center),
+            StackPanel::new()
+                .orientation(Orientation::Horizontal)
+                .spacing(crate::ui::GAP_S)
+                .keyed_children(off),
+        ))
+}
+/// The arrangement map's height, as in Windows Settings › Display.
+const MAP_HEIGHT: f64 = 240.0;
+/// The widest the map gets on a large window.
+const MAP_MAX_WIDTH: f64 = 1000.0;
 impl DirectorApp {
+    /// The arrangement map's box: the editor's width (less the scroll gutter, the map's
+    /// padding and border), capped, and a fixed height.
+    pub(crate) fn map_size(&self) -> (f64, f64) {
+        let width =
+            crate::ui::page_width(self.window_width, self.pane_open) - crate::ui::GAP_L - 22.0;
+        (width.clamp(320.0, MAP_MAX_WIDTH), MAP_HEIGHT)
+    }
     pub(crate) fn monitor_editor(
         &self,
         layout: &Layout,
@@ -417,6 +484,7 @@ impl DirectorApp {
                 View::empty()
             },
             preview(self, layout, cx, target),
+            off_displays(self, layout, cx, target),
             Grid::new()
                 .columns((0..columns).map(|_| GridLength::Star(1.0)))
                 .rows((0..layout.monitors.len().div_ceil(columns)).map(|_| GridLength::Auto))

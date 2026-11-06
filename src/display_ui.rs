@@ -26,6 +26,8 @@ pub(crate) enum DisplayMessage {
     Noop,
     Create,
     PointerDown(usize, PointerEventInfo),
+    /// Select a display, from the map or the list of displays that are off.
+    Select(usize),
     PointerMove(PointerEventInfo),
     PointerUp(PointerEventInfo),
     CancelDrag,
@@ -53,6 +55,8 @@ pub(crate) struct DisplayState {
     pub drag_token: u64,
     pub orientation_revision: u64,
     pub drag: Option<director::display_editor::Drag>,
+    /// The display selected in the arrangement map.
+    pub selected: usize,
     pub editor: Option<director::display_editor::Editor>,
     pub progress: Option<Arc<Mutex<mpsc::Receiver<u64>>>>,
     pub confirmation: Option<(u64, mpsc::Sender<Decision>)>,
@@ -282,9 +286,13 @@ impl DirectorApp {
                     ))
                 });
             }
+            DisplayMessage::Select(index) => self.display.selected = index,
             DisplayMessage::PointerDown(index, point)
                 if !self.busy && point.is_left_button_pressed =>
             {
+                // A press selects the screen; moving while pressed drags it.
+                self.display.selected = index;
+                let (width, height) = self.map_size();
                 if let Some(d) = &self.display.draft
                     && point.capture_succeeded
                 {
@@ -293,6 +301,7 @@ impl DirectorApp {
                         index,
                         point.window_x,
                         point.window_y,
+                        director::display_editor::MapTransform::new(&d.layout, width, height),
                     ) {
                         Ok(drag) => {
                             self.display.drag_token = self.display.drag_token.wrapping_add(1);
