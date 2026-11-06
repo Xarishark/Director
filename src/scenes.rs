@@ -86,6 +86,15 @@ pub struct TvPreparation {
     pub id: String,
     pub wake: bool,
     pub input: Option<String>,
+    /// Turn this TV off when the scene is left (another scene applied, or End).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub off_when_leaving: bool,
+}
+impl Scene {
+    /// Whether leaving this scene does anything (leave actions or turning the TV off).
+    pub fn has_leave_work(&self) -> bool {
+        !self.leave.is_empty() || self.tv.as_ref().is_some_and(|t| t.off_when_leaving)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
@@ -456,6 +465,8 @@ pub trait Backend {
     fn fps(&mut self, plan: &Plan) -> Result<(), String>;
     /// Run an app, URI or Close action. A waited app may take up to `wait_seconds`.
     fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String>;
+    /// Turn a TV off, for scenes that do so when they're left.
+    fn tv_off(&mut self, tv: &crate::tvs::Tv) -> Result<(), String>;
     fn restore(&mut self, snapshot: &Self::Snapshot) -> Result<(), String>;
 }
 pub fn apply(
@@ -588,6 +599,7 @@ fn action_done(action: &Action) -> String {
 pub fn leave(
     backend: &mut impl Backend,
     scene: &Scene,
+    tvs: &[crate::tvs::Tv],
     policy: ScenePolicy,
     mut progress: impl FnMut(&str),
 ) -> Vec<String> {
@@ -602,6 +614,28 @@ pub fn leave(
                 scene.name,
                 action.label()
             ));
+        }
+    }
+    // Last, so apps closed above while the TV was still on.
+    if let Some(prep) = scene.tv.as_ref().filter(|t| t.off_when_leaving) {
+        match tvs.iter().find(|t| t.id == prep.id) {
+            Some(tv) => {
+                progress(&format!(
+                    "Leaving “{}”: Turning off {}",
+                    scene.name, tv.name
+                ));
+                if let Err(e) = backend.tv_off(tv) {
+                    crate::diagnostics::event("scene.leave", "error", &e);
+                    warnings.push(format!(
+                        "Leaving “{}”: couldn’t turn off {}. {e}",
+                        scene.name, tv.name
+                    ));
+                }
+            }
+            None => warnings.push(format!(
+                "Leaving “{}”: its TV was removed, so it wasn’t turned off.",
+                scene.name
+            )),
         }
     }
     warnings
@@ -677,6 +711,14 @@ mod tests {
                 _ => self.calls.push("launch"),
             }
             Ok(())
+        }
+        fn tv_off(&mut self, _: &crate::tvs::Tv) -> Result<(), String> {
+            self.calls.push("tv-off");
+            if self.fail_run {
+                Err("TV didn't answer".into())
+            } else {
+                Ok(())
+            }
         }
         fn restore(&mut self, _: &()) -> Result<(), String> {
             self.calls.push("restore");
@@ -819,6 +861,7 @@ mod tests {
     fn full_stage_order_and_cancel_after_display() {
         let mut s = scene();
         s.tv = Some(TvPreparation {
+            off_when_leaving: false,
             id: "tv".into(),
             wake: false,
             input: None,
@@ -904,7 +947,7 @@ mod tests {
             fail_run: true,
             ..Default::default()
         };
-        let warnings = leave(&mut b, &s, ScenePolicy::default(), |_| {});
+        let warnings = leave(&mut b, &s, &[], ScenePolicy::default(), |_| {});
         assert_eq!(b.calls, ["run", "close"]);
         assert_eq!(warnings.len(), 1);
     }
@@ -942,5 +985,44 @@ mod tests {
         assert_eq!(plan.audio.unwrap().volume_percent, Some(35));
         s.tv_audio = None;
         assert!(s.validate().is_err());
+    }
+    #[test]
+    fn leaving_turns_the_tv_off_after_the_leave_actions() {
+        let tv = serde_json::from_value::<crate::tvs::Tv>(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1]})).unwrap();
+        let mut s = scene();
+        s.tv = Some(TvPreparation {
+            id: "tv".into(),
+            wake: true,
+            input: None,
+            off_when_leaving: true,
+        });
+        s.leave = vec![Action::Close {
+            target: "steam.exe".into(),
+            force: false,
+        }];
+        assert!(s.has_leave_work());
+        let mut b = Fake::default();
+        assert!(
+            leave(
+                &mut b,
+                &s,
+                std::slice::from_ref(&tv),
+                ScenePolicy::default(),
+                |_| {}
+            )
+            .is_empty()
+        );
+        assert_eq!(b.calls, ["close", "tv-off"]);
+        b.calls.clear();
+        b.fail_run = true;
+        assert_eq!(
+            leave(&mut b, &s, &[tv], ScenePolicy::default(), |_| {}).len(),
+            1
+        );
+        let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(json["tv"]["off_when_leaving"], true);
+        s.tv.as_mut().unwrap().off_when_leaving = false;
+        s.leave.clear();
+        assert!(!s.has_leave_work());
     }
 }

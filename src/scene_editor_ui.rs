@@ -404,6 +404,83 @@ impl DirectorApp {
         }
     }
 
+    /// The locked "Turn off C1" entry under When leaving, set from the Prepare TV step.
+    /// Its pencil opens that step; its bin turns the setting off.
+    fn tv_off_card(&self, cx: &ViewContext<Self>, d: &Scene) -> View {
+        let Some(prep) = d.tv.as_ref().filter(|t| t.off_when_leaving) else {
+            return View::empty();
+        };
+        let available = !self.busy;
+        let name = self
+            .scene
+            .tvs
+            .iter()
+            .find(|t| t.id == prep.id)
+            .map_or("the TV".to_string(), |t| t.name.clone());
+        let header = Button::new()
+            .automation_name("Open Prepare TV from Turn off TV")
+            .style(ButtonStyle::Subtle)
+            .horizontal_alignment(HorizontalAlignment::Stretch)
+            .vertical_alignment(VerticalAlignment::Stretch)
+            .horizontal_content_alignment(HorizontalAlignment::Stretch)
+            .is_enabled(available)
+            .on_click(cx.message(msg(SceneMessage::Open(Some(Step::Tv)))))
+            .content(
+                Border::new()
+                    .padding(Thickness::new(6.0, 0.0, ACTIONS_RESERVE, 0.0))
+                    .content(
+                        Grid::new()
+                            .columns([GridLength::Auto, GridLength::Star(1.0)])
+                            .column_spacing(10.0)
+                            .children((
+                                step_icon(Step::Tv, false),
+                                StackPanel::new()
+                                    .grid_column(1)
+                                    .spacing(2.0)
+                                    .vertical_alignment(VerticalAlignment::Center)
+                                    .children((
+                                        TextBlock::new()
+                                            .text(format!("Turn off {name}"))
+                                            .font_weight(FontWeight::SEMI_BOLD),
+                                        TextBlock::new()
+                                            .text(
+                                                "Set in Prepare TV · runs after the leave actions",
+                                            )
+                                            .opacity(0.72)
+                                            .text_trimming(TextTrimming::CharacterEllipsis),
+                                    )),
+                            )),
+                    ),
+            );
+        Border::new()
+            .height(CARD_HEIGHT)
+            .corner_radius(8.0)
+            .border_thickness(1.0)
+            .border_brush(BORDER)
+            .background(Color::argb(12, 128, 128, 128))
+            .padding(1.0)
+            .margin(Thickness::new(0.0, 0.0, 0.0, 8.0))
+            .content(
+                Grid::new()
+                    .columns([GridLength::Star(1.0), GridLength::Auto])
+                    .children((
+                        Border::new()
+                            .grid_column(0)
+                            .grid_column_span(2)
+                            .content(header),
+                        crate::preset_cards_ui::card_icon_button(Button::new())
+                            .grid_column(1)
+                            .automation_name(format!("Don't turn off {name} when leaving"))
+                            .is_enabled(available)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .margin(Thickness::new(0.0, 0.0, 8.0, 0.0))
+                            .on_click(cx.message(msg(SceneMessage::TvOffWhenLeaving(false))))
+                            .content(crate::icons::delete_small())
+                            .tooltip("Don't turn the TV off when leaving"),
+                    )),
+            )
+    }
+
     /// The open step's editor as a dialog. Done keeps the changes; Cancel puts the step back.
     pub(crate) fn step_dialog(&self, cx: &ViewContext<Self>) -> View {
         let (Some(step), Some(d)) = (self.scene.open, &self.scene.draft) else {
@@ -517,6 +594,22 @@ impl DirectorApp {
                                                 cx.callback(|i| msg(SceneMessage::Input(i))),
                                             )
                                             .into()
+                                    } else {
+                                        View::empty()
+                                    },
+                                    ToggleSwitch::new()
+                                        .automation_name("Turn off the TV when you leave this scene")
+                                        .is_on(prep.off_when_leaving)
+                                        .is_enabled(available)
+                                        .on_toggled(cx.callback(|v| {
+                                            msg(SceneMessage::TvOffWhenLeaving(v))
+                                        }))
+                                        .slot(
+                                            ToggleSwitchSlot::Header,
+                                            "Turn off the TV when you leave this scene",
+                                        ),
+                                    if prep.off_when_leaving {
+                                        note("Runs after the When leaving actions, when you apply another scene or end this one.")
                                     } else {
                                         View::empty()
                                     },
@@ -977,6 +1070,7 @@ impl DirectorApp {
                         .text("When you leave this scene")
                         .font_weight(FontWeight::SEMI_BOLD)
                         .opacity(0.85),
+                    self.tv_off_card(cx, d),
                     self.step_block(cx, d, Step::Leave),
                 )),
             ));

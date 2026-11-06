@@ -30,6 +30,8 @@ pub(crate) enum SceneMessage {
     TvVolume(Option<u8>),
     Tv(Option<usize>),
     Wake(bool),
+    /// Turn the scene's TV off when the scene is left.
+    TvOffWhenLeaving(bool),
     Input(Option<usize>),
     AddUri(ActionList),
     AddApp(ActionList),
@@ -276,6 +278,7 @@ impl DirectorApp {
                     .and_then(|i| i.checked_sub(1))
                     .and_then(|i| self.scene.tvs.get(i))
                     .map(|t| TvPreparation {
+                        off_when_leaving: false,
                         id: t.id.clone(),
                         wake: t.can_wake(),
                         input: t
@@ -285,12 +288,21 @@ impl DirectorApp {
                             .map(|i| i.id.clone()),
                     });
                 if let Some(d) = &mut self.scene.draft {
-                    d.tv = selected;
+                    let off = d.tv.as_ref().is_some_and(|t| t.off_when_leaving);
+                    d.tv = selected.map(|mut t| {
+                        t.off_when_leaving = off;
+                        t
+                    });
                 }
             }
             SceneMessage::Wake(v) if !self.busy => {
                 if let Some(t) = self.scene.draft.as_mut().and_then(|d| d.tv.as_mut()) {
                     t.wake = v;
+                }
+            }
+            SceneMessage::TvOffWhenLeaving(v) if !self.busy => {
+                if let Some(t) = self.scene.draft.as_mut().and_then(|d| d.tv.as_mut()) {
+                    t.off_when_leaving = v;
                 }
             }
             SceneMessage::Input(index) if !self.busy && index.is_some() => {
@@ -635,6 +647,47 @@ impl DirectorApp {
             _ => {}
         }
     }
+    /// "End CONSOLE" next to +, only while the active scene has something to run when left.
+    fn end_scene_button(&self, cx: &ViewContext<Self>) -> View {
+        let Some(scene) = self
+            .scene
+            .active
+            .as_ref()
+            .and_then(|id| self.scene.scenes.iter().find(|s| &s.id == id))
+            .filter(|s| s.has_leave_work())
+        else {
+            return View::empty();
+        };
+        let mut work: Vec<String> = scene.leave.iter().map(|a| a.label()).collect();
+        if let Some(prep) = scene.tv.as_ref().filter(|t| t.off_when_leaving) {
+            let tv = self
+                .scene
+                .tvs
+                .iter()
+                .find(|t| t.id == prep.id)
+                .map_or("the TV".to_string(), |t| t.name.clone());
+            work.push(format!("Turn off {tv}"));
+        }
+        Button::new()
+            .automation_name(format!("End {}", scene.name))
+            .is_enabled(self.scene_ready())
+            .on_click(cx.message(msg(SceneMessage::End)))
+            .content(
+                StackPanel::new()
+                    .orientation(Orientation::Horizontal)
+                    .spacing(8.0)
+                    .children((
+                        FontIcon::new()
+                            .glyph("\u{e7e8}")
+                            .vertical_alignment(VerticalAlignment::Center),
+                        TextBlock::new().text(format!("End {}", scene.name)),
+                    )),
+            )
+            .tooltip(format!(
+                "Runs: {}. Your other settings stay as they are.",
+                work.join(", ")
+            ))
+    }
     pub(crate) fn scene_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.scene.draft {
             return self.scene_editor(cx, d);
@@ -653,23 +706,11 @@ impl DirectorApp {
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
                 let body = StackPanel::new().spacing(8.0).children((
                     if active {
-                        // End sits with the Active label so the header keeps room for the name.
-                        StackPanel::new()
-                            .orientation(Orientation::Horizontal)
-                            .spacing(12.0)
-                            .children((
-                                TextBlock::new()
-                                    .text("● Active")
-                                    .font_weight(FontWeight::SEMI_BOLD)
-                                    .foreground(Color::rgb(108, 203, 95))
-                                    .vertical_alignment(VerticalAlignment::Center),
-                                HyperlinkButton::new()
-                                    .automation_name(format!("End {}", name))
-                                    .is_enabled(self.scene_ready())
-                                    .on_click(cx.message(msg(SceneMessage::End)))
-                                    .content("End scene")
-                                    .tooltip("Run this scene’s When leaving actions. Your settings stay as they are."),
-                            ))
+                        TextBlock::new()
+                            .text("● Active")
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .foreground(Color::rgb(108, 203, 95))
+                            .into()
                     } else {
                         View::empty()
                     },
@@ -748,6 +789,7 @@ impl DirectorApp {
                     "Scenes",
                     "Switch your whole setup in one click.",
                     vec![
+                        self.end_scene_button(cx),
                         Button::new()
                             .style(ButtonStyle::Accent)
                             .automation_name("Add scene")
@@ -840,8 +882,20 @@ impl DirectorApp {
                 .map_or("Leave unchanged".into(), |r| r.label())
         ));
         lines.push(format!("After: {} action(s)", s.actions.len()));
-        if !s.leave.is_empty() {
-            lines.push(format!("When leaving: {} action(s)", s.leave.len()));
+        let tv_off = s.tv.as_ref().filter(|t| t.off_when_leaving).map(|p| {
+            self.scene
+                .tvs
+                .iter()
+                .find(|t| t.id == p.id)
+                .map_or("turn off the TV".to_string(), |t| {
+                    format!("turn off {}", t.name)
+                })
+        });
+        match (tv_off, s.leave.len()) {
+            (None, 0) => {}
+            (None, n) => lines.push(format!("When leaving: {n} action(s)")),
+            (Some(off), 0) => lines.push(format!("When leaving: {off}")),
+            (Some(off), n) => lines.push(format!("When leaving: {off} · {n} action(s)")),
         }
         lines.join("\n")
     }

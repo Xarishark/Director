@@ -90,8 +90,11 @@ pub fn run(
                 .into_iter()
                 .find(|s| s.id == id)
         });
+    let tvs = crate::tvs::path()
+        .and_then(|p| crate::tvs::load(&p))
+        .unwrap_or_default();
     let warnings = leaving.map_or_else(Vec::new, |previous| {
-        scenes::leave(backend, &previous, plan.policy, &mut progress)
+        scenes::leave(backend, &previous, &tvs, plan.policy, &mut progress)
     });
     let mut stage = String::from("Checking current settings");
     let mut report = scenes::apply(backend, plan, cancel, |step| {
@@ -136,7 +139,15 @@ pub fn end(backend: &mut impl scenes::Backend, mut progress: impl FnMut(&str)) -
     let (name, mut details) = match &scene {
         Some(scene) => (
             scene.name.clone(),
-            scenes::leave(backend, scene, policy, &mut progress),
+            scenes::leave(
+                backend,
+                scene,
+                &crate::tvs::path()
+                    .and_then(|p| crate::tvs::load(&p))
+                    .unwrap_or_default(),
+                policy,
+                &mut progress,
+            ),
         ),
         None => ("The scene".into(), vec![]),
     };
@@ -402,6 +413,13 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         self.fps_attempted = true;
         provider.set(&request)?;
         crate::fps::verify(&request, &provider.snapshot()?)
+    }
+    fn tv_off(&mut self, tv: &crate::tvs::Tv) -> Result<(), String> {
+        crate::tv_control::power(
+            &mut crate::windows_tv::WindowsTvControls::new(tv),
+            crate::tv_control::PowerAction::Off,
+        )
+        .map(|_| ())
     }
     fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String> {
         match action {

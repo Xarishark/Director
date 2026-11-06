@@ -208,6 +208,7 @@ impl DirectorApp {
                 scene.display = Some("fixture-display-1".into());
                 scene.tv_audio = Some("fixture-tv".into());
                 scene.tv = Some(director::scenes::TvPreparation {
+                    off_when_leaving: false,
                     id: "fixture-tv".into(),
                     wake: true,
                     input: Some("HDMI_1".into()),
