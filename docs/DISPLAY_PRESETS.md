@@ -26,7 +26,7 @@ A connected disabled output may expose no DXGI mode list. In that case, only its
 
 ## Storage and identity
 
-Display presets use schema version 1 in the Windows Local AppData known folder at %LOCALAPPDATA%\Director\display-presets.json. Audio stays in audio-presets.json, independently. A display preset has an internal ID, editable name, capture timestamp, and layout. Each monitor stores a Windows device path when available, current adapter/target locators, name, availability, enabled state, and an active desktop mode when enabled. A mode includes source identity, desktop position/dimensions, raw CCD source dimensions, exact refresh fraction, and orientation.
+Display presets use schema version 1 in the Windows Local AppData known folder at %LOCALAPPDATA%\Director\display-presets.json. Sound settings live in each scene's Sound step, not in a preset file. A display preset has an internal ID, editable name, capture timestamp, and layout. Each monitor stores a Windows device path when available, current adapter/target locators, name, availability, enabled state, and an active desktop mode when enabled. A mode includes source identity, desktop position/dimensions, raw CCD source dimensions, exact refresh fraction, and orientation.
 
 Names are nonblank, unique ignoring case within display presets, have a CLI name (lowercase with dashes) that no other display preset uses, and at most 160 UTF-8 bytes. Audio and display presets may use the same name. Shared atomic write and operation-lock mechanisms preserve corrupt/future files and reject stale writers. Capture errors never save partial layouts.
 

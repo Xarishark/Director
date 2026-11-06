@@ -197,3 +197,7 @@ Keep CLI and future scene power actions explicit and idempotent in intent. Modal
 
 
 TCL Android / Google TV preview: local code pairing, protected client identity, reported state, direct wake/sleep, confirmed-only HDMI inputs, report export, shared scenes and display preparation. No other TCL platform or physical model compatibility is assumed.
+
+## Audio presets superseded
+
+Audio presets were retired in D066. Requirements above that mention audio presets now apply to a scene's Sound step (saved sound) and to the live controls on Now and `director audio` (immediate changes). Saving or editing a Sound step still never changes a device.

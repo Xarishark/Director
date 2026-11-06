@@ -35,7 +35,7 @@ MACs are device metadata and wake destinations, not cryptographic identity or re
 
 ## Optional Windows display link and scene boundary
 
-A TV is independent of display/audio presets and future scenes. Its optional Windows link stores the physical target device path and last-known name. An unreported link remains selectable as unavailable. Director does not guess from friendly names, display numbers, IPs, or transient adapter/target numbers. A Windows path change requires manual relinking; multiple PC connections may eventually need multiple associations.
+A TV is independent of display presets and scenes. Its optional Windows link stores the physical target device path and last-known name. An unreported link remains selectable as unavailable. Director does not guess from friendly names, display numbers, IPs, or transient adapter/target numbers. A Windows path change requires manual relinking; multiple PC connections may eventually need multiple associations.
 
 The PC input is also a connection mapping. Which TV actions to perform—wake, select the PC input, power off, timing/readiness—belongs to the scene, not pairing/setup preferences. Scene composition is still unimplemented; manual input switching and power-off are available in TV controls. TV readiness alone must not imply Windows display/HDMI-audio readiness.
 
@@ -99,7 +99,7 @@ Selecting an input changes only the pending choice. **Switch input** validates t
 
 Control mutations run on workers under the shared operation lock and reject stale TV definitions. Status reads run independently without that mutation lock. Wake readiness and uncertain results use separate status checks; confirmed input changes and acknowledged off update directly. Closing the modal does not cancel a command already in flight; the window’s existing close protection remains active until work finishes. Errors/uncertain acknowledgments remain visible. Refresh again after wake/input settling when needed. A successful turn-off acknowledgment is not independent proof that the physical panel powered off.
 
-The modal never edits pairing, PC-input mappings, display presets, audio presets, or saved scene choices. Status/input reads do not save TV metadata. CLI and future scenes use explicit wake/off/input intents, not an alternating toggle. CLI status reads fresh state; off rechecks it; input takes the exact input ID listed by status/check. Wake remains explicit packet dispatch.
+The modal never edits pairing, PC-input mappings, display presets, or saved scene choices. Status/input reads do not save TV metadata. CLI and future scenes use explicit wake/off/input intents, not an alternating toggle. CLI status reads fresh state; off rechecks it; input takes the exact input ID listed by status/check. Wake remains explicit packet dispatch.
 
 Validation: 64 regular tests pass, including explicit power intent/state races, Unknown handling, input freshness/no-op/readback, strict acknowledgments, and native WinHTTP requests against a loopback mock. Native default/minimum-size modal checks confirm one power button, pending input selection, unknown-state behavior, Close, and guide/editor regression behavior. A read-only check on the user’s LG returned On/current PC and four external inputs; the live modal showed the same values and refreshed correctly. Original settings files and live Windows layout stayed unchanged. Physical turn-off/input-switch commands were tested only against the mock, not sent to the user’s TV.
 

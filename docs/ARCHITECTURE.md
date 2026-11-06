@@ -188,3 +188,7 @@ windows_tv dispatches setup, control, CLI, scene and display-preparation operati
 Android TV Remote v2 uses an independent Rust TLS/protocol implementation (android_tv.rs / windows_android_tv.rs) behind windows_tv. Pending pairing sessions stay in memory while entering the code; account-protected per-TV client identity is persisted only after successful confirmation. Android and Samsung maintain separate compatibility metadata but share the explicit input-test UI/report format. Shared DPAPI document helpers retain the existing LG/Samsung token validation. No new runtime process is introduced.
 
 Implemented global FPS providers: fps.rs owns requests, snapshots, verification/recovery; windows_fps.rs loads NVIDIA DRS / installed RTSS interfaces. fps_ui.rs shares controls across Current setup and scenes. Scenes snapshot FPS during preflight and apply after audio, before launch actions. Global driver profile is the explicit NVIDIA target; it is not a monitor-specific cap. Blocking calls remain worker-owned and SDK sessions are serialized.
+
+## Sound — current
+
+Audio presets are retired (D066). The domain now has display presets, scenes (with an inline Sound step), TVs and the remembered audio-device inventory. `audio::apply` stays the multi-step transaction a scene's Sound step uses; `audio_control` holds the one-change-at-a-time live controls used by Now and `director audio`. Both sit on the same `AudioBackend` (default roles, volume and mute). This supersedes the audio preset page and the preset references described above.
