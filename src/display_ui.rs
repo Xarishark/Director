@@ -26,10 +26,6 @@ pub(crate) enum DisplayMessage {
     Noop,
     Create,
     PointerDown(usize, PointerEventInfo),
-    /// Select a display, from the map or the list of displays that are off.
-    Select(usize),
-    /// TEMP: comparison. Switch the display editor between its two layouts.
-    View(EditorView),
     PointerMove(PointerEventInfo),
     PointerUp(PointerEventInfo),
     CancelDrag,
@@ -51,15 +47,6 @@ pub(crate) enum DisplayMessage {
     Delete(String),
     DeleteClosed(ContentDialogResult),
 }
-/// TEMP: comparison. The display editor's two layouts, to pick one after trying both.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EditorView {
-    /// Windows-style: select a display in the map, and its settings show below.
-    #[default]
-    One,
-    /// A card for every display.
-    All,
-}
 #[derive(Default)]
 pub(crate) struct DisplayState {
     pub setup: crate::display_setup_ui::SetupState,
@@ -68,9 +55,6 @@ pub(crate) struct DisplayState {
     pub drag: Option<director::display_editor::Drag>,
     /// The display selected in the arrangement map.
     pub selected: usize,
-    /// TEMP: comparison. The display editor's layout; read from the preset state for both
-    /// Now and presets.
-    pub view: EditorView,
     pub editor: Option<director::display_editor::Editor>,
     pub progress: Option<Arc<Mutex<mpsc::Receiver<u64>>>>,
     pub confirmation: Option<(u64, mpsc::Sender<Decision>)>,
@@ -300,8 +284,6 @@ impl DirectorApp {
                     ))
                 });
             }
-            DisplayMessage::Select(index) => self.display.selected = index,
-            DisplayMessage::View(view) => self.display.view = view,
             DisplayMessage::PointerDown(index, point)
                 if !self.busy && point.is_left_button_pressed =>
             {

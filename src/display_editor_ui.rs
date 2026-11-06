@@ -1,5 +1,5 @@
 //! Native per-monitor draft controls. All changes remain in memory until Save.
-use crate::{DirectorApp, Message, display_ui::DisplayMessage, display_ui::EditorView};
+use crate::{DirectorApp, Message, display_ui::DisplayMessage};
 use director::{
     display_editor::{Change, Editor},
     displays::{DesktopMode, Layout},
@@ -66,6 +66,7 @@ fn preview(
     layout: &Layout,
     cx: &ViewContext<DirectorApp>,
     target: EditorTarget,
+    actions: Vec<View>,
 ) -> View {
     let drag = match target {
         EditorTarget::Preset => app.display.drag.as_ref(),
@@ -168,8 +169,27 @@ Select to edit it; drag to move it.",
             ))
         })
         .collect::<Vec<_>>();
+    let mut children = cards;
+    if !actions.is_empty() {
+        // Windows keeps the display page's actions in the map's bottom-right corner.
+        children.push(KeyedView::new(
+            "map-actions",
+            StackPanel::new()
+                .orientation(Orientation::Horizontal)
+                .spacing(crate::ui::GAP_S)
+                .horizontal_alignment(HorizontalAlignment::Right)
+                .vertical_alignment(VerticalAlignment::Bottom)
+                .keyed_children(
+                    actions
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, v)| KeyedView::new(format!("action-{i}"), v))
+                        .collect::<Vec<_>>(),
+                ),
+        ));
+    }
     Border::new()
-        .horizontal_alignment(HorizontalAlignment::Left)
+        .horizontal_alignment(HorizontalAlignment::Center)
         .border_thickness(Thickness::uniform(1.0))
         .border_brush(crate::ui::OUTLINE)
         .corner_radius(crate::ui::RADIUS_L)
@@ -179,53 +199,8 @@ Select to edit it; drag to move it.",
                 .width(width)
                 .height(height)
                 .automation_name("Display arrangement")
-                .keyed_children(cards),
+                .keyed_children(children),
         )
-}
-/// Displays that are off aren't on the map, so they're listed under it to be selected.
-fn off_displays(
-    app: &DirectorApp,
-    layout: &Layout,
-    cx: &ViewContext<DirectorApp>,
-    target: EditorTarget,
-) -> View {
-    let selected = match target {
-        EditorTarget::Preset => app.display.selected,
-        EditorTarget::Current => app.current.display.selected,
-    };
-    let off = layout
-        .monitors
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.desktop.is_none())
-        .map(|(i, m)| {
-            KeyedView::new(
-                format!("off-{i}"),
-                Button::new()
-                    .automation_name(format!("Select display {}", m.name))
-                    // None keeps the standard style; only the selected display is accented.
-                    .style((i == selected).then_some(ButtonStyle::Accent))
-                    .on_click(cx.message(route(target, DisplayMessage::Select(i))))
-                    .content(format!("{}. {}", i + 1, m.name)),
-            )
-        })
-        .collect::<Vec<_>>();
-    if off.is_empty() {
-        return View::empty();
-    }
-    StackPanel::new()
-        .orientation(Orientation::Horizontal)
-        .spacing(crate::ui::GAP_S)
-        .children((
-            TextBlock::new()
-                .text("Off:")
-                .opacity(crate::ui::SECONDARY)
-                .vertical_alignment(VerticalAlignment::Center),
-            StackPanel::new()
-                .orientation(Orientation::Horizontal)
-                .spacing(crate::ui::GAP_S)
-                .keyed_children(off),
-        ))
 }
 /// The arrangement map's height, as in Windows Settings › Display.
 const MAP_HEIGHT: f64 = 240.0;
@@ -254,22 +229,18 @@ impl DirectorApp {
         cx: &ViewContext<Self>,
         target: EditorTarget,
     ) -> View {
-        let view = self.display.view;
-        let settings = match view {
-            EditorView::One => {
-                let selected = match target {
-                    EditorTarget::Preset => self.display.selected,
-                    EditorTarget::Current => self.current.display.selected,
-                }
-                .min(layout.monitors.len().saturating_sub(1));
-                if layout.monitors.is_empty() {
-                    View::empty()
-                } else {
-                    self.one_display(layout, editor, cx, target, selected)
-                }
-            }
-            EditorView::All => self.all_displays(layout, editor, cx, target),
-        };
+        self.monitor_editor_with(layout, editor, cx, target, vec![])
+    }
+    /// The editor with buttons in the map's bottom-right corner, where Windows puts its
+    /// display actions.
+    pub(crate) fn monitor_editor_with(
+        &self,
+        layout: &Layout,
+        editor: &Editor,
+        cx: &ViewContext<Self>,
+        target: EditorTarget,
+        map_actions: Vec<View>,
+    ) -> View {
         // Now's Displays section has its own heading and hint.
         let heading = matches!(target, EditorTarget::Preset);
         StackPanel::new().spacing(16.0).children((
@@ -280,81 +251,14 @@ impl DirectorApp {
             },
             if heading {
                 crate::ui::note(
-                    "Select a display to change its settings. Drag displays to rearrange them.",
+                    "Select a display to find its settings. Drag displays to rearrange them.",
                 )
             } else {
                 View::empty()
             },
-            preview(self, layout, cx, target),
-            off_displays(self, layout, cx, target),
-            view_switch(view, cx),
-            settings,
+            preview(self, layout, cx, target, map_actions),
+            self.all_displays(layout, editor, cx, target),
         ))
-    }
-    /// Windows-style: the selected display's settings as rows, grouped like Settings › Display.
-    fn one_display(
-        &self,
-        layout: &Layout,
-        editor: &Editor,
-        cx: &ViewContext<Self>,
-        target: EditorTarget,
-        i: usize,
-    ) -> View {
-        let p = self.monitor_parts(layout, editor, cx, target, i);
-        let row = |title: &str, description: &str, width: f64, control: View| {
-            crate::ui::setting_row(
-                title,
-                description,
-                Border::new().width(width).content(control),
-            )
-        };
-        let layout_rows: View = match (p.mode, p.details) {
-            (mode, Some(d)) => StackPanel::new().spacing(crate::ui::GAP_S).children((
-                crate::ui::group("Layout"),
-                match mode {
-                    Some(mode) => row(
-                        "Desktop mode",
-                        "Extend, or mirror another display.",
-                        260.0,
-                        mode,
-                    ),
-                    None => View::empty(),
-                },
-                row("Resolution", "", 200.0, d.resolution),
-                row(
-                    "Refresh rate",
-                    "Only rates for the selected resolution are listed.",
-                    200.0,
-                    d.rate,
-                ),
-                row("Orientation", "", 236.0, d.orientation),
-                crate::ui::group("Picture"),
-                row(
-                    "HDR",
-                    "Brighter, more vivid picture on HDR displays.",
-                    100.0,
-                    d.hdr,
-                ),
-            )),
-            (Some(mode), None) => StackPanel::new().spacing(crate::ui::GAP_S).children((
-                crate::ui::group("Layout"),
-                row(
-                    "Desktop mode",
-                    "Extend, or mirror another display.",
-                    260.0,
-                    mode,
-                ),
-            )),
-            (None, None) => View::empty(),
-        };
-        crate::ui::card(StackPanel::new().spacing(crate::ui::GAP_M).children((
-            p.header,
-            p.status,
-            p.linked,
-            p.warning,
-            p.setup,
-            layout_rows,
-        )))
     }
     /// A card for every display, side by side when there's room.
     fn all_displays(
@@ -375,6 +279,10 @@ impl DirectorApp {
                     Border::new().content(left),
                     Border::new().grid_column(1).content(right),
                 ))
+        };
+        let selected = match target {
+            EditorTarget::Preset => self.display.selected,
+            EditorTarget::Current => self.current.display.selected,
         };
         let cards = (0..layout.monitors.len())
             .map(|i| {
@@ -409,11 +317,22 @@ impl DirectorApp {
                         .grid_column((i % columns) as i32)
                         .grid_row((i / columns) as i32)
                         .vertical_alignment(VerticalAlignment::Top)
-                        .content(crate::ui::card(
-                            StackPanel::new().spacing(12.0).children((
-                                p.header, p.status, p.linked, p.warning, p.setup, body,
-                            )),
-                        )),
+                        .content(
+                            // The selected display's card is outlined like its screen on the map.
+                            Border::new()
+                                .padding(crate::ui::GAP_L)
+                                .corner_radius(crate::ui::RADIUS_L)
+                                .background(crate::ui::card_fill())
+                                .border_brush(if i == selected {
+                                    Brush::from(ThemeBrush::Accent)
+                                } else {
+                                    crate::ui::card_stroke()
+                                })
+                                .border_thickness(if i == selected { 2.0 } else { 1.0 })
+                                .content(StackPanel::new().spacing(12.0).children((
+                                    p.header, p.status, p.linked, p.warning, p.setup, body,
+                                ))),
+                        ),
                 )
             })
             .collect::<Vec<_>>();
@@ -746,31 +665,4 @@ struct Details {
     rate: View,
     hdr: View,
     orientation: View,
-}
-/// TEMP: comparison. Tabs between the Windows-style one-display view and a card per display.
-fn view_switch(view: EditorView, cx: &ViewContext<DirectorApp>) -> View {
-    SelectorBar::new()
-        .on_selected_text_changed(cx.callback(|text: Option<String>| {
-            Message::Display(DisplayMessage::View(match text.as_deref() {
-                Some("All displays") => EditorView::All,
-                _ => EditorView::One,
-            }))
-        }))
-        .slots([SlotView::collection(
-            SelectorBarSlot::Items,
-            [
-                KeyedView::new(
-                    "one",
-                    SelectorBarItem::new()
-                        .text("One display")
-                        .is_selected(view == EditorView::One),
-                ),
-                KeyedView::new(
-                    "all",
-                    SelectorBarItem::new()
-                        .text("All displays")
-                        .is_selected(view == EditorView::All),
-                ),
-            ],
-        )])
 }

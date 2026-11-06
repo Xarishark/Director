@@ -263,7 +263,6 @@ impl DirectorApp {
                     event,
                     DisplayMessage::Change(..)
                         | DisplayMessage::PointerDown(..)
-                        | DisplayMessage::Select(..)
                         | DisplayMessage::PointerMove(..)
                         | DisplayMessage::PointerUp(..)
                         | DisplayMessage::CancelDrag
@@ -559,22 +558,51 @@ Could not read audio outputs: {e}"
                 )),
         ))
     }
-    /// What the footer says is staged.
+    /// What Apply changes would apply, for its tooltip.
     fn staged_summary(&self) -> &'static str {
         match (self.current.display_dirty(), self.current.fps_dirty) {
-            (true, true) => "Display and FPS limit changes are ready to apply.",
-            (true, false) => "Display changes are ready to apply.",
-            (false, true) => "An FPS limit change is ready to apply.",
-            (false, false) => "",
+            (true, true) => "Apply the display and FPS limit changes",
+            (true, false) => "Apply the display changes",
+            (false, true) => "Apply the FPS limit change",
+            (false, false) => "Change a display or the FPS limit first",
         }
     }
     pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
         use crate::ui;
         let dragging = self.current.display.drag.is_some();
+        let dirty = self.current.dirty();
+        let can_apply = !self.busy
+            && self.guard_ready
+            && !dragging
+            && (self.current.display_dirty() || self.current.fps_dirty)
+            && (!self.current.fps_dirty || self.live_fps_ready());
+        // Apply and Discard sit in the map's bottom-right corner, as in Windows Settings.
+        // Apply also applies a staged FPS limit, which says so in its card.
+        let map_actions = vec![
+            Button::new()
+                .automation_name("Discard current setup edits")
+                .is_enabled(!self.busy && dirty)
+                .on_click(cx.message(msg(CurrentMessage::Load)))
+                .content("Discard")
+                .tooltip("Drop staged changes and read the current Windows setup again"),
+            Button::new()
+                .style(ButtonStyle::Accent)
+                .automation_name("Apply current changes")
+                .is_enabled(can_apply)
+                .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
+                .content("Apply changes")
+                .tooltip(self.staged_summary()),
+        ];
         let displays = if let (Some(draft), Some(editor)) =
             (&self.current.display.draft, &self.current.display.editor)
         {
-            self.monitor_editor_for(&draft.layout, editor, cx, EditorTarget::Current)
+            self.monitor_editor_with(
+                &draft.layout,
+                editor,
+                cx,
+                EditorTarget::Current,
+                map_actions,
+            )
         } else if self.busy {
             ui::loading("Reading your displays…")
         } else {
@@ -582,7 +610,7 @@ Could not read audio outputs: {e}"
         };
         let displays = ui::section(
             "Displays",
-            "Drag screens to arrange them; hover for details. Changes here and in FPS limit wait for Apply changes.",
+            "Select a display to find its settings. Drag displays to rearrange them.",
             Some(
                 Button::new()
                     .style(ButtonStyle::Subtle)
@@ -616,44 +644,17 @@ Could not read audio outputs: {e}"
         );
         // Full width, so its edges line up with the display card above.
         let fps = self.fps_controls(cx, crate::fps_ui::Target::Current);
-        let dirty = self.current.dirty();
-        let can_apply = !self.busy
-            && self.guard_ready
-            && !dragging
-            && (self.current.display_dirty() || self.current.fps_dirty)
-            && (!self.current.fps_dirty || self.live_fps_ready());
+        // No page title: the sidebar already says Now, and the sections explain themselves.
         ui::page(
-            ui::header("Now", "Changes here aren’t saved.", vec![]),
+            View::empty(),
             StackPanel::new().spacing(ui::GAP_XXL).children((
-                // Above the line waits for the Apply bar; below it applies at once.
+                // Above the line waits for Apply changes; below it applies at once.
                 displays,
                 fps,
                 ui::divider("Sound changes below apply right away"),
                 sound,
             )),
-            // The Apply bar belongs to the staged sections only, so it appears once something
-            // is staged and sound never looks like it waits for it.
-            (self.current.display_dirty() || self.current.fps_dirty).then(|| {
-                ui::footer(
-                    ui::note(self.staged_summary()),
-                    vec![
-                        Button::new()
-                            .automation_name("Discard current setup edits")
-                            .is_enabled(!self.busy && dirty)
-                            .on_click(cx.message(msg(CurrentMessage::Load)))
-                            .content("Discard")
-                            .tooltip(
-                                "Drop staged changes and read the current Windows setup again",
-                            ),
-                        Button::new()
-                            .style(ButtonStyle::Accent)
-                            .automation_name("Apply current changes")
-                            .is_enabled(can_apply)
-                            .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
-                            .content("Apply changes"),
-                    ],
-                )
-            }),
+            None,
         )
     }
 }
