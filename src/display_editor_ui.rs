@@ -169,8 +169,9 @@ Select to edit it; drag to move it.",
             ))
         })
         .collect::<Vec<_>>();
+    let has_actions = !actions.is_empty();
     let mut children = cards;
-    if !actions.is_empty() {
+    if has_actions {
         // Windows keeps the display page's actions in the map's bottom-right corner.
         children.push(KeyedView::new(
             "map-actions",
@@ -183,7 +184,16 @@ Select to edit it; drag to move it.",
                     actions
                         .into_iter()
                         .enumerate()
-                        .map(|(i, v)| KeyedView::new(format!("action-{i}"), v))
+                        .map(|(i, v)| {
+                            // Buttons are translucent; a solid backing keeps them readable.
+                            KeyedView::new(
+                                format!("action-{i}"),
+                                Border::new()
+                                    .corner_radius(crate::ui::RADIUS_S)
+                                    .background(ThemeBrush::SolidBackground)
+                                    .content(v),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 ),
         ));
@@ -197,13 +207,15 @@ Select to edit it; drag to move it.",
         .content(
             Grid::new()
                 .width(width)
-                .height(height)
+                .height(height + if has_actions { MAP_ACTIONS_HEIGHT } else { 0.0 })
                 .automation_name("Display arrangement")
                 .keyed_children(children),
         )
 }
 /// The arrangement map's height, as in Windows Settings › Display.
-const MAP_HEIGHT: f64 = 240.0;
+const MAP_HEIGHT: f64 = 280.0;
+/// A strip under the screens for the map's buttons, so screens never sit behind them.
+const MAP_ACTIONS_HEIGHT: f64 = 52.0;
 /// The widest the map gets on a large window.
 const MAP_MAX_WIDTH: f64 = 1000.0;
 impl DirectorApp {
