@@ -5,9 +5,11 @@ use director::{
     displays::{Layout, Monitor},
 };
 use windows_reactor::*;
-pub(crate) const AUDIO_CARD_HEIGHT: f64 = 300.0;
+/// Sized to the content so short cards don't end in empty space.
+pub(crate) const AUDIO_CARD_HEIGHT: f64 = 240.0;
 pub(crate) const DISPLAY_CARD_HEIGHT: f64 = 300.0;
 pub(crate) const SCENE_CARD_HEIGHT: f64 = 340.0;
+pub(crate) const TV_CARD_HEIGHT: f64 = 220.0;
 const CARD_WIDTH: f64 = 340.0;
 const CARD_GAP: f64 = 8.0;
 /// Shared height for a card's Apply, edit and delete buttons so their hover areas line up.
