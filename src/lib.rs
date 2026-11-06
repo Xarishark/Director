@@ -49,6 +49,8 @@ pub mod display_mirroring;
 
 pub mod scenes;
 #[cfg(windows)]
+pub mod windows_close;
+#[cfg(windows)]
 pub mod windows_scenes;
 
 pub mod samsung;

@@ -17,9 +17,16 @@ pub struct Scene {
     pub tv: Option<TvPreparation>,
     #[serde(default)]
     pub fps: Option<crate::fps::Request>,
+    /// Runs first, before any device changes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub before: Vec<Action>,
+    /// The After list: runs once every device step has succeeded.
     #[serde(default)]
     pub actions: Vec<Action>,
-    /// Former per-scene policy. Read so existing files load, never written; see `ScenePolicy`.
+    /// Runs when another scene is applied or this one is ended.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leave: Vec<Action>,
+    /// Version 1 per-scene policy. Read so old files load, never written; see `ScenePolicy`.
     #[serde(default, rename = "keep_on_failure", skip_serializing)]
     legacy_keep_on_failure: Option<bool>,
     #[serde(default, rename = "wait_seconds", skip_serializing)]
@@ -39,6 +46,37 @@ impl Default for ScenePolicy {
         }
     }
 }
+/// Which action list of a scene.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActionList {
+    Before,
+    After,
+    Leave,
+}
+impl Scene {
+    /// An empty scene that changes nothing yet.
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        }
+    }
+    pub fn list(&self, list: ActionList) -> &Vec<Action> {
+        match list {
+            ActionList::Before => &self.before,
+            ActionList::After => &self.actions,
+            ActionList::Leave => &self.leave,
+        }
+    }
+    pub fn list_mut(&mut self, list: ActionList) -> &mut Vec<Action> {
+        match list {
+            ActionList::Before => &mut self.before,
+            ActionList::After => &mut self.actions,
+            ActionList::Leave => &mut self.leave,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TvPreparation {
@@ -53,30 +91,58 @@ pub enum Action {
         path: String,
         args: Vec<String>,
         working_directory: Option<String>,
+        /// Wait for the program to exit (a non-zero exit or timeout fails the step).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wait: bool,
     },
     Uri {
         target: String,
     },
+    /// Close a running program by executable name (`steam.exe`) or full path.
+    Close {
+        target: String,
+        /// End the program if it hasn't closed after being asked.
+        #[serde(default)]
+        force: bool,
+    },
+}
+fn file_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
 impl Action {
     pub fn label(&self) -> String {
         match self {
-            Self::App { path, .. } => format!(
-                "Launch {}",
-                Path::new(path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
+            Self::App { path, wait, .. } => format!(
+                "{} {}",
+                if *wait { "Run" } else { "Launch" },
+                file_name(path)
             ),
             Self::Uri { target } => format!("Open {target}"),
+            Self::Close { target, .. } => format!("Close {}", file_name(target)),
         }
     }
     pub fn validate(&self) -> Result<(), String> {
         match self {
+            Self::Close { target, .. } => {
+                if target.trim().is_empty()
+                    || target.len() > 260
+                    || target.chars().any(char::is_control)
+                    || !target.to_lowercase().ends_with(".exe")
+                {
+                    return Err(
+                        "Enter the program to close, such as steam.exe or its full path.".into(),
+                    );
+                }
+            }
             Self::App {
                 path,
                 args,
                 working_directory,
+                ..
             } => {
                 if !Path::new(path).is_absolute()
                     || !path.to_lowercase().ends_with(".exe")
@@ -111,20 +177,14 @@ impl Action {
     }
 }
 impl Scene {
-    /// An empty scene that changes nothing yet.
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            ..Default::default()
-        }
-    }
     pub fn validate(&self) -> Result<(), String> {
         if self.id.is_empty()
             || self.id.len() > 200
             || self.name.trim().is_empty()
             || self.name.len() > 160
-            || self.actions.len() > 32
+            || [&self.before, &self.actions, &self.leave]
+                .iter()
+                .any(|l| l.len() > 32)
             || [&self.display, &self.audio]
                 .iter()
                 .any(|v| v.as_ref().is_some_and(|s| s.is_empty() || s.len() > 200))
@@ -155,6 +215,7 @@ impl Scene {
             && self.audio.is_none()
             && self.tv_audio.is_none()
             && self.fps.is_none()
+            && self.before.is_empty()
             && self.actions.is_empty()
         {
             return Err("Choose at least one preset or action.".into());
@@ -162,12 +223,12 @@ impl Scene {
         if let Some(fps) = &self.fps {
             fps.validate()?;
         }
-        for a in &self.actions {
+        for a in self.before.iter().chain(&self.actions).chain(&self.leave) {
             a.validate()?
         }
         Ok(())
     }
-    /// Drop the former per-scene policy fields once they have been read.
+    /// Drop version 1 per-scene policy fields once they have been read.
     fn normalize(&mut self) {
         self.legacy_keep_on_failure = None;
         self.legacy_wait_seconds = None;
@@ -289,7 +350,7 @@ const STORAGE_LIMIT: usize = 2 * 1024 * 1024;
 pub(crate) fn validate_backup(scenes: &[Scene]) -> Result<(), String> {
     validate(scenes)?;
     let bytes = serde_json::to_vec_pretty(&Document {
-        version: 1,
+        version: VERSION,
         scenes: scenes.to_vec(),
     })
     .map_err(|e| e.to_string())?;
@@ -310,8 +371,10 @@ pub fn load(path: &Path) -> Result<Vec<Scene>, String> {
     }
     let mut doc: Document = serde_json::from_slice(&data)
         .map_err(|_| "Could not read scenes. The file was left unchanged.")?;
-    if doc.version != 1 {
-        return Err("Unsupported scenes version.".into());
+    if doc.version != 1 && doc.version != VERSION {
+        return Err(
+            "These scenes require a newer Director version. The file was left unchanged.".into(),
+        );
     }
     doc.scenes.iter_mut().for_each(Scene::normalize);
     validate(&doc.scenes)?;
@@ -325,11 +388,14 @@ pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), Strin
     crate::presets::write_document(
         path,
         &Document {
-            version: 1,
+            version: VERSION,
             scenes: next.to_vec(),
         },
     )
 }
+/// Version 2 adds Before/Leave actions, waited apps and Close actions, and drops the
+/// per-scene failure policy. Version 1 files still load.
+const VERSION: u32 = 2;
 pub fn references(kind: &str, id: &str) -> Result<Vec<String>, String> {
     Ok(load(&path()?)?
         .into_iter()
@@ -376,7 +442,8 @@ pub trait Backend {
         progress: &mut dyn FnMut(&str),
     ) -> Result<(), String>;
     fn fps(&mut self, plan: &Plan) -> Result<(), String>;
-    fn launch(&mut self, action: &Action) -> Result<(), String>;
+    /// Run an app, URI or Close action. A waited app may take up to `wait_seconds`.
+    fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String>;
     fn restore(&mut self, snapshot: &Self::Snapshot) -> Result<(), String>;
 }
 pub fn apply(
@@ -399,6 +466,14 @@ pub fn apply(
     let mut details = vec![];
     let result =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<(), String> {
+            for action in &plan.scene.before {
+                if cancel.load(Ordering::Acquire) {
+                    return Err("Scene canceled.".into());
+                }
+                progress(&action.label());
+                backend.launch(action, plan.policy.wait_seconds)?;
+                details.push(action_done(action));
+            }
             for (enabled, stage) in [
                 (plan.tv.is_some(), 0),
                 (plan.display.is_some(), 1),
@@ -446,8 +521,8 @@ pub fn apply(
                     return Err("Scene canceled.".into());
                 }
                 progress(&action.label());
-                backend.launch(action)?;
-                details.push(format!("{} dispatched.", action.label()));
+                backend.launch(action, plan.policy.wait_seconds)?;
+                details.push(action_done(action));
             }
             Ok(())
         }))
@@ -476,7 +551,8 @@ pub fn apply(
                     }
                 }
             };
-            if plan.tv.is_some() || !plan.scene.actions.is_empty() {
+            if plan.tv.is_some() || !plan.scene.actions.is_empty() || !plan.scene.before.is_empty()
+            {
                 details
                     .push("TV power/input changes and dispatched apps/URIs are not undone.".into())
             }
@@ -486,6 +562,13 @@ pub fn apply(
                 details,
             }
         }
+    }
+}
+fn action_done(action: &Action) -> String {
+    match action {
+        Action::App { wait: true, .. } => format!("{} finished.", action.label()),
+        Action::Close { .. } => format!("{}: done.", action.label()),
+        _ => format!("{} dispatched.", action.label()),
     }
 }
 #[cfg(test)]
@@ -506,9 +589,11 @@ mod tests {
             ..Default::default()
         }
     }
+    #[derive(Default)]
     struct Fake {
         calls: Vec<&'static str>,
         fail: bool,
+        fail_run: bool,
     }
     impl Backend for Fake {
         type Snapshot = ();
@@ -545,8 +630,17 @@ mod tests {
                 Ok(())
             }
         }
-        fn launch(&mut self, _: &Action) -> Result<(), String> {
-            self.calls.push("launch");
+        fn launch(&mut self, action: &Action, _: u16) -> Result<(), String> {
+            match action {
+                Action::App { wait: true, .. } => {
+                    self.calls.push("run");
+                    if self.fail_run {
+                        return Err("exited with code 1".into());
+                    }
+                }
+                Action::Close { .. } => self.calls.push("close"),
+                _ => self.calls.push("launch"),
+            }
             Ok(())
         }
         fn restore(&mut self, _: &()) -> Result<(), String> {
@@ -564,8 +658,8 @@ mod tests {
         });
         let p = resolve(&s, &[], &[], &[]).unwrap();
         let mut b = Fake {
-            calls: vec![],
             fail: false,
+            ..Default::default()
         };
         assert!(apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "fps", "launch"]);
@@ -623,8 +717,8 @@ mod tests {
     fn actions_only_and_cancel_restore() {
         let p = resolve(&scene(), &[], &[], &[]).unwrap();
         let mut b = Fake {
-            calls: vec![],
             fail: false,
+            ..Default::default()
         };
         assert!(apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "launch"]);
@@ -653,8 +747,8 @@ mod tests {
             captured_at_unix_seconds: 0,
         });
         let mut b = Fake {
-            calls: vec![],
             fail: true,
+            ..Default::default()
         };
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "display", "audio", "restore"]);
@@ -703,8 +797,8 @@ mod tests {
             captured_at_unix_seconds: 0,
         });
         let mut b = Fake {
-            calls: vec![],
             fail: false,
+            ..Default::default()
         };
         assert!(apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "tv", "display", "audio", "launch"]);
@@ -731,5 +825,55 @@ mod tests {
         s.audio = Some("preset".into());
         s.tv_audio = Some("tv".into());
         assert!(s.validate().is_err());
+    }
+    fn run(path: &str) -> Action {
+        Action::App {
+            path: path.into(),
+            args: vec![],
+            working_directory: None,
+            wait: true,
+        }
+    }
+    #[test]
+    fn before_runs_first_and_a_failed_wait_stops_and_restores() {
+        let mut s = scene();
+        s.before = vec![run("C:/setup.exe")];
+        s.fps = Some(crate::fps::Request {
+            provider: crate::fps::Provider::Nvidia,
+            limit: Some(120),
+        });
+        let p = resolve(&s, &[], &[], &[]).unwrap();
+        let mut b = Fake::default();
+        assert!(apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
+        assert_eq!(b.calls, ["snapshot", "run", "fps", "launch"]);
+        b.calls.clear();
+        b.fail_run = true;
+        let r = apply(&mut b, &p, &AtomicBool::new(false), |_| {});
+        assert!(!r.success);
+        assert_eq!(b.calls, ["snapshot", "run", "restore"]);
+    }
+    #[test]
+    fn version_one_files_load_and_save_as_version_two_without_policy_fields() {
+        let path =
+            std::env::temp_dir().join(format!("director-scenes-v1-{}.json", std::process::id()));
+        let v1 = serde_json::json!({"version":1,"scenes":[{"id":"s","name":"Desk","display":null,"audio":null,"tv":null,"actions":[{"kind":"uri","target":"steam://close/bigpicture"}],"keep_on_failure":true,"wait_seconds":45}]});
+        fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded[0].legacy_keep_on_failure, None);
+        save(&path, &loaded, &loaded).unwrap();
+        let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(written["version"], 2);
+        let scene = &written["scenes"][0];
+        assert!(scene.get("keep_on_failure").is_none() && scene.get("wait_seconds").is_none());
+        assert_eq!(load(&path).unwrap(), loaded);
+        let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn close_actions_need_an_executable() {
+        let bad = Action::Close {
+            target: "steam".into(),
+            force: false,
+        };
+        assert!(bad.validate().is_err());
     }
 }

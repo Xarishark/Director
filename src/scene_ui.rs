@@ -300,17 +300,19 @@ impl DirectorApp {
                         path: String::new(),
                         args: vec![],
                         working_directory: None,
+                        wait: false,
                     });
                 }
             }
             SceneMessage::ActionText(i, field, value) if !self.busy => {
                 if let Some(a) = self.scene.draft.as_mut().and_then(|d| d.actions.get_mut(i)) {
                     match a {
-                        Action::Uri { target } => *target = value,
+                        Action::Uri { target } | Action::Close { target, .. } => *target = value,
                         Action::App {
                             path,
                             args,
                             working_directory,
+                            ..
                         } => match field {
                             0 => *path = value,
                             1 => {
@@ -829,7 +831,7 @@ impl DirectorApp {
  Button::new().automation_name(format!("Move action {} down",i+1)).is_enabled(available&&i+1<d.actions.len()).on_click(cx.callback(move|()|msg(SceneMessage::Move(i,false)))).content(FontIcon::new().glyph("")).tooltip("Move down"),
  Button::new().automation_name(format!("Remove action {}",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Remove(i)))).content(crate::icons::delete()).tooltip("Remove action"),
  )))),
- match a{Action::Uri{target}=>View::from(TextBox::new().automation_name(format!("Action {} URI",i+1)).placeholder_text("steam://open/bigpicture").text(target.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s))))),Action::App{path,args,working_directory}=>StackPanel::new().spacing(8.0).children((
+ match a{Action::Uri{target}=>View::from(TextBox::new().automation_name(format!("Action {} URI",i+1)).placeholder_text("steam://open/bigpicture").text(target.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s))))),Action::Close{target,..}=>View::from(TextBox::new().automation_name(format!("Action {} program to close",i+1)).placeholder_text("steam.exe").text(target.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s))))),Action::App{path,args,working_directory,..}=>StackPanel::new().spacing(8.0).children((
  StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((Button::new().automation_name(format!("Browse action {} executable",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Browse(i,false)))).content("Choose app…"),Button::new().automation_name(format!("Browse action {} folder",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Browse(i,true)))).content("Working folder…"))),
  TextBox::new().automation_name(format!("Action {} executable",i+1)).placeholder_text("Full path to an .exe").text(path.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s)))),
  TextBox::new().automation_name(format!("Action {} arguments",i+1)).placeholder_text("Optional arguments · one per line").accepts_return(true).text(args.join("\n")).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,1,s)))),

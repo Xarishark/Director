@@ -32,7 +32,7 @@ pub fn load_plan(id: &str) -> Result<Plan, String> {
         .ok_or("The scene was removed. Reopen Scenes.")?;
     let mut plan = scenes::resolve(scene, &d, &a, &t)?;
     plan.policy = crate::preferences::current().scene_policy();
-    for action in &scene.actions {
+    for action in scene.before.iter().chain(&scene.actions) {
         if let Action::App {
             path,
             working_directory,
@@ -89,8 +89,9 @@ pub fn run(
             || step.starts_with("Applying FPS limit")
             || plan
                 .scene
-                .actions
+                .before
                 .iter()
+                .chain(&plan.scene.actions)
                 .any(|action| action.label() == step)
         {
             stage = step.to_owned();
@@ -342,12 +343,14 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         provider.set(request)?;
         crate::fps::verify(request, &provider.snapshot()?)
     }
-    fn launch(&mut self, action: &Action) -> Result<(), String> {
+    fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String> {
         match action {
+            Action::Close { target, force } => crate::windows_close::close(target, *force),
             Action::App {
                 path,
                 args,
                 working_directory,
+                wait,
             } => {
                 let mut command = std::process::Command::new(path);
                 command
@@ -358,10 +361,32 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
                 if let Some(dir) = working_directory {
                     command.current_dir(dir);
                 }
-                command
+                let mut child = command
                     .spawn()
                     .map_err(|e| format!("Could not launch application: {e}"))?;
-                Ok(())
+                if !*wait {
+                    return Ok(());
+                }
+                let name = action.label();
+                let deadline = Instant::now() + Duration::from_secs(u64::from(wait_seconds));
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) if status.success() => return Ok(()),
+                        Ok(Some(status)) => {
+                            return Err(format!(
+                                "{name} failed (exit code {}).",
+                                status.code().map_or("unknown".into(), |c| c.to_string())
+                            ));
+                        }
+                        Ok(None) if Instant::now() >= deadline => {
+                            return Err(format!(
+                                "{name} didn’t finish within {wait_seconds} seconds. It is still running."
+                            ));
+                        }
+                        Ok(None) => std::thread::sleep(Duration::from_millis(200)),
+                        Err(e) => return Err(format!("Could not wait for {name}: {e}")),
+                    }
+                }
             }
             Action::Uri { target } => {
                 use windows::{
