@@ -4,8 +4,14 @@
 //! they didn't wake it. A guard watches the TV on its own thread, so the scene carries on,
 //! and switches back whenever the TV reports another input. Only TVs that report their
 //! current input get one; without readback a guard couldn't tell a steal from success.
+//!
+//! A guard must never fight the user. Every other TV power or input request stops it, from
+//! any Director process (a Stream Deck `director tv input`, a CLI scene): the running guard
+//! writes its token to a marker file, a request deletes the file, and a guard whose token
+//! is gone stops at its next poll.
 use crate::tv_control::Backend;
 use std::{
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -26,30 +32,90 @@ struct Active {
     cancel: Arc<AtomicBool>,
     handle: JoinHandle<()>,
 }
+
+/// Tells a running guard to end: stopped in this process, or its marker gone or replaced.
+pub struct Stop {
+    flag: Arc<AtomicBool>,
+    /// None when the marker couldn't be written; then only this process can stop it.
+    token: Option<String>,
+}
+impl Stop {
+    pub fn is_set(&self) -> bool {
+        self.flag.load(Ordering::Acquire)
+            || self.token.as_ref().is_some_and(|token| {
+                marker()
+                    .is_none_or(|path| std::fs::read_to_string(path).ok().as_ref() != Some(token))
+            })
+    }
+}
+
+/// The marker shared by every Director process. Tests use their own, per process.
+fn marker() -> Option<PathBuf> {
+    #[cfg(test)]
+    {
+        Some(std::env::temp_dir().join(format!(
+            "director-tv-input-guard-{}.txt",
+            std::process::id()
+        )))
+    }
+    #[cfg(not(test))]
+    {
+        crate::storage::settings_path("tv-input-guard.txt").ok()
+    }
+}
 static ACTIVE: Mutex<Option<Active>> = Mutex::new(None);
 
 fn take() -> Option<Active> {
     ACTIVE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
-/// Run `body` as the only guard, stopping one that's running. `body` gets the cancel flag
-/// and the time the guard ends.
-pub fn start(seconds: u16, body: impl FnOnce(&AtomicBool, Instant) + Send + 'static) {
+/// Run `body` as the only guard, stopping one that's running in any process. `body` gets
+/// its stop signal and the time the guard ends.
+pub fn start(seconds: u16, body: impl FnOnce(&Stop, Instant) + Send + 'static) {
     stop();
     if seconds == 0 {
         return;
     }
     let until = Instant::now() + Duration::from_secs(u64::from(seconds.min(MAX_SECONDS)));
     let cancel = Arc::new(AtomicBool::new(false));
-    let flag = cancel.clone();
-    let handle = std::thread::spawn(move || body(&flag, until));
+    let token = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    );
+    let token = match marker().map(|path| std::fs::write(path, &token)) {
+        Some(Ok(())) => Some(token),
+        result => {
+            let error = result.map_or("no settings folder".into(), |r| format!("{r:?}"));
+            crate::diagnostics::event("tv.input.guard.marker", "error", &error);
+            None
+        }
+    };
+    let signal = Stop {
+        flag: cancel.clone(),
+        token,
+    };
+    let handle = std::thread::spawn(move || {
+        body(&signal, until);
+        // Clear the marker unless another guard or a stop already replaced it.
+        if let (Some(token), Some(path)) = (&signal.token, marker())
+            && std::fs::read_to_string(&path).ok().as_ref() == Some(token)
+        {
+            let _ = std::fs::remove_file(path);
+        }
+    });
     *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Active { cancel, handle });
 }
 
-/// Stop a running guard and wait for it, so it sends nothing after this returns. Called
-/// before any other TV power or input request, so a guard never fights the user or
-/// another scene.
+/// Stop a running guard and wait for it, so it sends nothing after this returns; a guard
+/// in another process stops at its next poll. Called before any other TV power or input
+/// request, so a guard never fights the user or another scene.
 pub fn stop() {
+    if let Some(path) = marker() {
+        let _ = std::fs::remove_file(path);
+    }
     if let Some(active) = take() {
         active.cancel.store(true, Ordering::Release);
         if active.handle.thread().id() != std::thread::current().id() {
@@ -73,16 +139,16 @@ pub fn active() -> bool {
         .is_some_and(|a| !a.handle.is_finished())
 }
 
-/// Sleep for one poll unless canceled first; false when the guard should end.
-pub fn sleep_until(cancel: &AtomicBool, until: Instant) -> bool {
+/// Sleep for one poll unless stopped first; false when the guard should end.
+pub fn sleep_until(stop: &Stop, until: Instant) -> bool {
     let end = (Instant::now() + POLL).min(until);
     while Instant::now() < end {
-        if cancel.load(Ordering::Acquire) {
+        if stop.flag.load(Ordering::Acquire) {
             return false;
         }
         std::thread::sleep(Duration::from_millis(50).min(end - Instant::now()));
     }
-    !cancel.load(Ordering::Acquire) && Instant::now() < until
+    !stop.is_set() && Instant::now() < until
 }
 
 /// Keep `id` selected until `next` says stop (it waits one poll and returns whether to go
@@ -92,7 +158,7 @@ pub fn sleep_until(cancel: &AtomicBool, until: Instant) -> bool {
 pub fn hold<B: Backend>(
     mut connect: impl FnMut() -> B,
     id: &str,
-    cancel: &AtomicBool,
+    stopped: impl Fn() -> bool,
     mut next: impl FnMut() -> bool,
 ) -> usize {
     let mut backend = connect();
@@ -100,7 +166,7 @@ pub fn hold<B: Backend>(
     let mut since_switch = RESEND_POLLS;
     let mut switches = 0;
     loop {
-        if cancel.load(Ordering::Acquire) {
+        if stopped() {
             break;
         }
         if !listed {
@@ -122,7 +188,8 @@ pub fn hold<B: Backend>(
             Ok(current) => {
                 if since_switch >= RESEND_POLLS {
                     let from = current.unwrap_or_else(|| "an app".into());
-                    if cancel.load(Ordering::Acquire) {
+                    // Checked again right before sending: a stop may have come meanwhile.
+                    if stopped() {
                         break;
                     }
                     match backend.switch_input(id) {
@@ -212,7 +279,7 @@ mod tests {
                 Fake(state.clone(), false)
             },
             "HDMI_1",
-            &AtomicBool::new(false),
+            || false,
             || {
                 left -= 1;
                 left > 0
@@ -263,12 +330,7 @@ mod tests {
             reads: vec![on("HDMI_2")],
             ..Default::default()
         }));
-        let switched = hold(
-            || Fake(state.clone(), false),
-            "HDMI_1",
-            &AtomicBool::new(true),
-            || true,
-        );
+        let switched = hold(|| Fake(state.clone(), false), "HDMI_1", || true, || true);
         assert_eq!(switched, 0);
         assert!(state.borrow().switches.is_empty());
     }
@@ -290,5 +352,21 @@ mod tests {
         start(1, |cancel, until| while sleep_until(cancel, until) {});
         assert!(wait());
         assert!(!wait());
+        let path = marker().unwrap();
+        assert!(!path.exists(), "a finished guard clears its marker");
+        // Another process's TV request deletes the marker: the guard ends at its next poll.
+        let begun = Instant::now();
+        start(30, |stop, until| while sleep_until(stop, until) {});
+        assert!(path.exists());
+        std::fs::remove_file(&path).unwrap();
+        assert!(wait());
+        assert!(begun.elapsed() < Duration::from_secs(5));
+        // So does a newer guard's token.
+        start(30, |stop, until| while sleep_until(stop, until) {});
+        std::fs::write(&path, "another-guard").unwrap();
+        assert!(wait());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "another-guard");
+        stop();
+        assert!(!path.exists());
     }
 }

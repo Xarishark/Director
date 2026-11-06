@@ -359,12 +359,12 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
                     let (tv, id) = (tv.clone(), id.clone());
                     crate::tv_input_guard::start(
                         plan.policy.input_guard_seconds,
-                        move |cancel, until| {
+                        move |stop, until| {
                             crate::tv_input_guard::hold(
                                 || crate::windows_tv::WindowsTvControls::new(&tv),
                                 &id,
-                                cancel,
-                                || crate::tv_input_guard::sleep_until(cancel, until),
+                                || stop.is_set(),
+                                || crate::tv_input_guard::sleep_until(stop, until),
                             );
                         },
                     );
