@@ -166,7 +166,7 @@ struct Document {
     presets: Vec<Preset>,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("display-presets.json")
+    crate::storage::settings_path("display-presets.json")
 }
 pub fn validate(presets: &[Preset]) -> Result<(), String> {
     for (i, p) in presets.iter().enumerate() {
@@ -206,7 +206,7 @@ pub fn save(path: &Path, expected: &[Preset], next: &[Preset]) -> Result<(), Str
             "Display presets changed in another window. Refresh before saving again.".into(),
         );
     }
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: 1,

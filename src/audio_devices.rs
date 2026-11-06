@@ -178,7 +178,7 @@ fn read_inventory(path: &std::path::Path) -> Result<Inventory, String> {
 }
 
 fn update(edit: impl FnOnce(&mut Inventory) -> Result<(), String>) -> Result<Inventory, String> {
-    let path = crate::presets::settings_path("audio-devices.json")?;
+    let path = crate::storage::settings_path("audio-devices.json")?;
     fs::create_dir_all(path.parent().ok_or("Missing settings directory.")?)
         .map_err(|e| e.to_string())?;
     let lock = OpenOptions::new()
@@ -193,7 +193,7 @@ fn update(edit: impl FnOnce(&mut Inventory) -> Result<(), String>) -> Result<Inv
     let mut next = old.clone();
     edit(&mut next)?;
     if next != old {
-        crate::presets::write_document(&path, &next)?;
+        crate::storage::write_document(&path, &next)?;
     }
     Ok(next)
 }

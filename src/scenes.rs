@@ -349,7 +349,7 @@ struct Document {
     scenes: Vec<Scene>,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("scenes.json")
+    crate::storage::settings_path("scenes.json")
 }
 pub(crate) fn validate(scenes: &[Scene]) -> Result<(), String> {
     if scenes.len() > 256 {
@@ -407,7 +407,7 @@ pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), Strin
     if load(path)? != expected {
         return Err("Scenes changed in another window. Reopen Scenes before saving.".into());
     }
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: VERSION,

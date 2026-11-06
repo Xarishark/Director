@@ -260,7 +260,7 @@ pub fn export(tv: &crate::tvs::Tv) -> Result<std::path::PathBuf, String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| "The system clock could not timestamp the report.")?
         .as_nanos();
-    let path = crate::presets::settings_path("Reports")?.join(format!(
+    let path = crate::storage::settings_path("Reports")?.join(format!(
         "{}-compatibility-{now}.json",
         if tv.brand == crate::tvs::Brand::TclAndroid {
             "android-tv"
@@ -268,7 +268,7 @@ pub fn export(tv: &crate::tvs::Tv) -> Result<std::path::PathBuf, String> {
             "samsung"
         }
     ));
-    crate::presets::write_document(&path, &data)?;
+    crate::storage::write_document(&path, &data)?;
     Ok(path)
 }
 #[cfg(test)]

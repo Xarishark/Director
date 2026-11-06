@@ -189,7 +189,7 @@ impl DirectorApp {
                         device_path: "preview-2".into(),
                         name: "Living room TV".into(),
                     }),
-                    audio: Some(director::presets::DeviceSelection {
+                    audio: Some(director::audio::DeviceSelection {
                         id: "fixture-tv-output".into(),
                         name: "TV HDMI audio".into(),
                     }),

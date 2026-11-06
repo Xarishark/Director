@@ -1070,11 +1070,11 @@ impl DirectorApp {
             .on_selection_changed(cx.callback(|i| msg(TvMessage::PcInput(i))))
             .into()
     }
-    fn tv_audio_links(&self) -> Vec<director::presets::DeviceSelection> {
+    fn tv_audio_links(&self) -> Vec<director::audio::DeviceSelection> {
         let mut links = self
             .outputs
             .iter()
-            .map(|o| director::presets::DeviceSelection {
+            .map(|o| director::audio::DeviceSelection {
                 id: o.id.clone(),
                 name: o.name.clone(),
             })

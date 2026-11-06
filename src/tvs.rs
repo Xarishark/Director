@@ -52,7 +52,7 @@ pub struct Tv {
     pub connection: Connection,
     pub display: Option<DisplayLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub audio: Option<crate::presets::DeviceSelection>,
+    pub audio: Option<crate::audio::DeviceSelection>,
     // DPAPI-encrypted key and peer certificate pin; never log or export this field.
     pub credential: Option<Vec<u8>>,
     #[serde(default)]
@@ -171,7 +171,7 @@ struct Document {
     tvs: Vec<Tv>,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("tvs.json")
+    crate::storage::settings_path("tvs.json")
 }
 pub fn load(path: &Path) -> Result<Vec<Tv>, String> {
     let data = match fs::read(path) {
@@ -212,7 +212,7 @@ pub fn save(path: &Path, expected: &[Tv], next: &[Tv]) -> Result<(), String> {
             "Saved TVs changed in another window. Reopen the TVs page before saving.".into(),
         );
     }
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: 1,
@@ -337,7 +337,7 @@ mod compatibility_tests {
     fn audio_link_roundtrips_without_repairing_or_changing_display() {
         let mut t:Tv=serde_json::from_value(serde_json::json!({"id":"link","name":"TV","address":"192.0.2.50","display":null,"credential":[4,8]})).unwrap();
         let old = t.clone();
-        t.audio = Some(crate::presets::DeviceSelection {
+        t.audio = Some(crate::audio::DeviceSelection {
             id: "remembered-hdmi".into(),
             name: "TV audio".into(),
         });

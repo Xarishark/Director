@@ -18,7 +18,7 @@ struct Document {
 const SAME_BOOT_SECONDS: u64 = 120;
 
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("active-scene.json")
+    crate::storage::settings_path("active-scene.json")
 }
 
 /// When Windows started, in Unix seconds.
@@ -42,7 +42,7 @@ fn read(path: &Path, booted_at: u64) -> Option<String> {
 
 fn write(path: &Path, scene_id: Option<&str>, booted_at: u64) -> Result<(), String> {
     match scene_id {
-        Some(id) => crate::presets::write_document(
+        Some(id) => crate::storage::write_document(
             path,
             &Document {
                 version: 1,

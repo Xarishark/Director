@@ -23,6 +23,13 @@ pub struct Output {
     pub volume_percent: Option<u8>,
 }
 
+/// A device chosen by endpoint ID, with the name it had when chosen.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceSelection {
+    pub id: String,
+    pub name: String,
+}
 #[derive(Clone, Debug)]
 pub struct Request {
     pub output_id: String,

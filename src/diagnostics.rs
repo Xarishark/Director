@@ -25,7 +25,7 @@ enum Item {
     Flush(mpsc::Sender<()>),
 }
 pub fn folder() -> Result<PathBuf, String> {
-    crate::presets::settings_path("Logs")
+    crate::storage::settings_path("Logs")
 }
 pub fn written() -> u64 {
     WRITTEN.load(Ordering::Relaxed)
@@ -316,7 +316,7 @@ impl LastRun {
     }
 
     pub fn save(&self) -> Result<(), String> {
-        crate::presets::write_document(&folder()?.join("last-run.json"), self)
+        crate::storage::write_document(&folder()?.join("last-run.json"), self)
     }
 
     pub fn read() -> Result<Option<Self>, String> {

@@ -60,7 +60,7 @@ struct Document {
     preferences: Preferences,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("preferences.json")
+    crate::storage::settings_path("preferences.json")
 }
 pub fn load(path: &Path) -> Result<Preferences, String> {
     let data = match std::fs::read(path) {
@@ -84,7 +84,7 @@ pub fn save(path: &Path, expected: &Preferences, next: &Preferences) -> Result<(
             "Preferences changed in another window. Reopen Director before changing them.".into(),
         );
     }
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: 1,
