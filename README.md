@@ -12,7 +12,7 @@ Moving from your desk to the living room? A **TV Gaming** scene can wake the TV,
 Director’s sidebar has four pages, with Options at the bottom:
 
 - **Scenes** is where Director opens. Run a scene, or create one.
-- **Now** changes what’s active right now without saving anything. Sound changes apply as you make them; display and FPS edits wait until you press **Apply changes** at the bottom of the page. Use **Save as display preset…** or **Save as scene…** to keep what you’ve set up.
+- **Now** changes what’s active right now without saving anything. Sound changes apply as you make them; display and FPS edits wait until you press **Apply changes** in the corner of the display map. Use **Save as display preset…** or **Save as scene…** to keep what you’ve set up.
 - **Displays** and **TVs** hold your saved building blocks: display layouts and paired TVs.
 
 A **scene** is everything you want to switch together: its display preset, its sound, its TV, an FPS limit and actions. Display presets and TVs are saved once and reused across scenes; sound is set in each scene.
