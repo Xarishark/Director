@@ -614,11 +614,8 @@ Could not read audio outputs: {e}"
                     .children((self.sound_row(cx, false), self.sound_row(cx, true))),
             ),),
         );
-        let fps = ui::column(
-            ui::FORM_WIDTH,
-            0.0,
-            (self.fps_controls(cx, crate::fps_ui::Target::Current),),
-        );
+        // Full width, so its edges line up with the display card above.
+        let fps = self.fps_controls(cx, crate::fps_ui::Target::Current);
         let dirty = self.current.dirty();
         let can_apply = !self.busy
             && self.guard_ready
