@@ -217,6 +217,38 @@ pub(crate) fn loading(text: &str) -> View {
         ))
 }
 
+/// A bordered card in the system card colours.
+pub(crate) fn card_padded(padding: Thickness, body: impl Into<View>) -> View {
+    Border::new()
+        .padding(padding)
+        .corner_radius(RADIUS_L)
+        .background(card_fill())
+        .border_brush(card_stroke())
+        .border_thickness(1.0)
+        .content(body)
+}
+
+/// A settings row in a card, as in Windows Settings: title and description on the left,
+/// the control on the right.
+pub(crate) fn setting(title: &str, description: &str, control: impl Into<View>) -> View {
+    card_padded(
+        Thickness::new(GAP_L, GAP_M, GAP_L, GAP_M),
+        Grid::new()
+            .columns([GridLength::Star(1.0), GridLength::Auto])
+            .column_spacing(GAP_L)
+            .children((
+                StackPanel::new()
+                    .spacing(2.0)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .children((label(title), caption(description))),
+                Border::new()
+                    .grid_column(1)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .content(control),
+            )),
+    )
+}
+
 /// An editor footer: a hint on the left, the buttons (Cancel, then the accent action) on the right.
 pub(crate) fn footer(hint: View, actions: Vec<View>) -> View {
     Grid::new()

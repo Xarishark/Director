@@ -282,76 +282,182 @@ impl DirectorApp {
         });
     }
     pub(crate) fn options_view(&self, cx: &ViewContext<Self>) -> View {
-        ScrollViewer::new().horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(20.0).children((
-            TextBlock::new().text("Options").font_size(crate::ui::TITLE).font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new().text("Setup tips").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            ToggleSwitch::new().automation_name("Show TV setup tips").is_on(self.tip.show_tips())
-                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
-                .on_toggled(cx.callback(|show| Message::Tip(crate::tv_tip_ui::TipMessage::Show(show))))
-                .slot(ToggleSwitchSlot::Header, "Show TV setup tips"),
-            if let Some(error) = &self.tip.error { TextBlock::new().text(format!("Could not update setup tips: {error}")).text_wrapping(TextWrapping::Wrap).into() } else { View::empty() },
-            StackPanel::new().spacing(12.0).children((
-            TextBlock::new().text("When applying scenes and presets").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            ToggleSwitch::new().automation_name("Keep changes that finished if a later step fails")
-                .is_on(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).is_some_and(|p| p.keep_completed_changes))
-                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
-                .on_toggled(cx.callback(|keep| Message::Tip(crate::tv_tip_ui::TipMessage::KeepCompleted(keep))))
-                .slot(ToggleSwitchSlot::Header, "Keep changes that finished if a later step fails"),
-            TextBlock::new().text("Off: Director restores your previous display, audio and FPS settings when a scene or audio preset fails. TV power, inputs and opened apps can’t be undone either way.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left),
-            NumberBox::new().automation_name("Device wait seconds").minimum(1.0).maximum(120.0).horizontal_alignment(HorizontalAlignment::Left).min_width(220.0)
-                .value(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).map(|p| f64::from(p.device_wait_seconds)))
-                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
-                .on_value_changed(cx.callback(|v| Message::Tip(crate::tv_tip_ui::TipMessage::DeviceWait(v))))
-                .slot(NumberBoxSlot::Header, "Wait for TVs, audio devices and setup apps (seconds)"),
-            NumberBox::new().automation_name("TV input protection seconds").minimum(0.0).maximum(f64::from(director::tv_input_guard::MAX_SECONDS)).horizontal_alignment(HorizontalAlignment::Left).min_width(220.0)
-                .value(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).map(|p| f64::from(p.tv_input_guard_seconds)))
-                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
-                .on_value_changed(cx.callback(|v| Message::Tip(crate::tv_tip_ui::TipMessage::InputGuard(v))))
-                .slot(NumberBoxSlot::Header, "TV input protection (seconds)"),
-            TextBlock::new().text("TV boxes and consoles often take over the TV’s input while it turns on, even when they didn’t turn it on. After a scene selects the TV input, Director keeps switching back to it for this long, while the rest of the scene carries on. Works with TVs that report their current input, such as LG. 0 turns it off.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left),
+        use crate::ui;
+        let prefs = self.tip.pending.as_ref().or(self.tip.preferences.as_ref());
+        let editable = !self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none();
+        let seconds =
+            |value: Option<u16>, min: f64, max: f64, name: &str, on: fn(Option<f64>) -> Message| {
+                NumberBox::new()
+                    .automation_name(name)
+                    .minimum(min)
+                    .maximum(max)
+                    .width(140.0)
+                    .value(value.map(f64::from))
+                    .is_enabled(editable)
+                    .on_value_changed(cx.callback(on))
+            };
+        let applying = ui::section(
+            "Applying scenes",
+            "How scenes behave when something goes wrong or a device is slow.",
+            None,
+            StackPanel::new()
+                .spacing(4.0)
+                .children((
+                    ui::setting(
+                        "Keep changes that finished if a later step fails",
+                        "Off: Director restores your previous displays, sound and FPS limit. TV power, inputs and opened apps can’t be undone either way.",
+                        ToggleSwitch::new()
+                            .automation_name("Keep changes that finished if a later step fails")
+                            .is_on(prefs.is_some_and(|p| p.keep_completed_changes))
+                            .is_enabled(editable)
+                            .on_toggled(cx.callback(|keep| {
+                                Message::Tip(crate::tv_tip_ui::TipMessage::KeepCompleted(keep))
+                            })),
+                    ),
+                    ui::setting(
+                        "Device wait (seconds)",
+                        "How long to wait for TVs, audio devices and setup apps to appear.",
+                        seconds(
+                            prefs.map(|p| p.device_wait_seconds),
+                            1.0,
+                            120.0,
+                            "Device wait seconds",
+                            |v| Message::Tip(crate::tv_tip_ui::TipMessage::DeviceWait(v)),
+                        ),
+                    ),
+                    ui::setting(
+                        "TV input protection (seconds)",
+                        "Switches the TV back to the scene’s input if a box or console takes it over. LG only; 0 turns it off.",
+                        seconds(
+                            prefs.map(|p| p.tv_input_guard_seconds),
+                            0.0,
+                            f64::from(director::tv_input_guard::MAX_SECONDS),
+                            "TV input protection seconds",
+                            |v| Message::Tip(crate::tv_tip_ui::TipMessage::InputGuard(v)),
+                        ),
+                    ),
+                    ui::setting(
+                        "Notify when CLI scenes fail",
+                        "Needs the installed version. Select the notification to see that run’s details.",
+                        ToggleSwitch::new()
+                            .automation_name("Notify when CLI scenes fail")
+                            .is_on(prefs.is_some_and(|p| p.notify_scene_failures))
+                            .is_enabled(editable)
+                            .on_toggled(cx.callback(|enabled| {
+                                Message::Tip(crate::tv_tip_ui::TipMessage::NotifySceneFailures(
+                                    enabled,
+                                ))
+                            })),
+                    ),
+                    ui::setting(
+                        "Show TV setup tips",
+                        "Suggests adding a TV when you make a display preset.",
+                        ToggleSwitch::new()
+                            .automation_name("Show TV setup tips")
+                            .is_on(self.tip.show_tips())
+                            .is_enabled(
+                                !self.busy
+                                    && self.tip.preferences.is_some()
+                                    && self.tip.pending.is_none(),
+                            )
+                            .on_toggled(cx.callback(|show| {
+                                Message::Tip(crate::tv_tip_ui::TipMessage::Show(show))
+                            })),
+                    ),
+                    match &self.tip.error {
+                        Some(error) => TextBlock::new()
+                            .text(format!("Could not update this setting: {error}"))
+                            .foreground(ui::critical())
+                            .text_wrapping(TextWrapping::Wrap)
+                            .into(),
+                        None => View::empty(),
+                    },
+                )),
+        );
+        let backup = ui::section(
+            "Backup",
+            "Save your scenes and presets to one local file. TV pairing stays on this PC.",
+            None,
+            StackPanel::new()
+                .orientation(Orientation::Horizontal)
+                .spacing(ui::GAP_S)
+                .children((
+                    Button::new()
+                        .is_enabled(self.ready())
+                        .on_click(cx.message(msg(OptionsMessage::Backup(true))))
+                        .content("Export backup"),
+                    Button::new()
+                        .is_enabled(self.ready())
+                        .on_click(cx.message(msg(OptionsMessage::Backup(false))))
+                        .content("Restore backup"),
+                )),
+        );
+        let diagnostics = ui::section(
+            "Diagnostics",
+            "Local logs explain what happened during an operation. Pairing keys and raw TV messages are never logged.",
+            None,
+            StackPanel::new()
+                .spacing(ui::GAP_S)
+                .children((
+                    StackPanel::new()
+                        .orientation(Orientation::Horizontal)
+                        .spacing(ui::GAP_S)
+                        .children((
+                            Button::new()
+                                .is_enabled(!self.busy)
+                                .on_click(cx.message(msg(OptionsMessage::Logs(None))))
+                                .content("View logs"),
+                            Button::new()
+                                .automation_name("Open logs folder")
+                                .is_enabled(!self.busy)
+                                .on_click(cx.message(Message::OpenLogs))
+                                .content("Open logs folder"),
+                            Button::new()
+                                .automation_name("Report a problem")
+                                .on_click(cx.message(Message::Crash(
+                                    crate::crash_ui::CrashMessage::ReportProblem,
+                                )))
+                                .content("Report a problem"),
+                        )),
+                    ui::caption(
+                        "Report a problem opens a new GitHub issue in your browser; nothing is sent unless you submit it. After a crash, Director saves a report in the logs folder and offers to report it next time.",
+                    ),
+                    match director::diagnostics::failure() {
+                        Some(error) => TextBlock::new()
+                            .text(format!("Logging is unavailable: {error}"))
+                            .foreground(ui::critical())
+                            .text_wrapping(TextWrapping::Wrap)
+                            .into(),
+                        None => View::empty(),
+                    },
+                )),
+        );
+        let about = ui::section(
+            "About",
+            "",
+            None,
+            StackPanel::new().spacing(2.0).children((
+                ui::label(concat!("Director ", env!("CARGO_PKG_VERSION"))),
+                ui::note(env!("CARGO_PKG_DESCRIPTION")),
+                ui::caption(concat!(
+                    env!("CARGO_PKG_AUTHORS"),
+                    " · Requires Windows 11, version 24H2 or newer."
+                )),
             )),
-            StackPanel::new().spacing(12.0).children((
-            TextBlock::new().text("Notifications").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            ToggleSwitch::new().automation_name("Notify when CLI scenes fail")
-                .is_on(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).is_some_and(|p| p.notify_scene_failures))
-                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
-                .on_toggled(cx.callback(|enabled| Message::Tip(crate::tv_tip_ui::TipMessage::NotifySceneFailures(enabled))))
-                .slot(ToggleSwitchSlot::Header, "Notify when CLI scenes fail"),
-            TextBlock::new().text("Requires the MSI installation. Click a Windows notification to open that run’s details.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72),
-            )),
-            TextBlock::new().text("Diagnostics").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new().text("Director keeps local logs to help explain what happened during an operation. Old logs are replaced automatically. Pairing keys and raw TV messages are excluded.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72),
-            StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
-                Button::new().is_enabled(!self.busy).on_click(cx.message(msg(OptionsMessage::Logs(None)))).content("View logs"),
-                Button::new().automation_name("Open logs folder").is_enabled(!self.busy)
-                .on_click(cx.message(Message::OpenLogs)).content("Open logs folder"),
-                Button::new().automation_name("Report a problem")
-                .on_click(cx.message(Message::Crash(crate::crash_ui::CrashMessage::ReportProblem))).content("Report a problem"),
-            )),
-            TextBlock::new().text("Report a problem opens a new GitHub issue in your browser. If Director closes unexpectedly, it saves a crash report in the logs folder and offers to report it the next time it starts. Nothing is sent unless you submit the issue.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72).font_size(crate::ui::CAPTION),
-            TextBlock::new().text("Backup").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new().text("Save your scenes and presets to one local file. TV pairing stays on this PC.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72),
-            StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
-                Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(true)))).content("Export backup"),
-                Button::new().is_enabled(self.ready()).on_click(cx.message(msg(OptionsMessage::Backup(false)))).content("Restore backup"),
-            )),
-            TextBlock::new().text("About Director").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
-            StackPanel::new().spacing(4.0).children((
-                TextBlock::new().text(concat!("Version ", env!("CARGO_PKG_VERSION"))),
-                TextBlock::new().text("Requires Windows 11, version 24H2 or newer.").opacity(0.72),
-                TextBlock::new().text(env!("CARGO_PKG_AUTHORS")).text_wrapping(TextWrapping::Wrap),
-                TextBlock::new().text(env!("CARGO_PKG_DESCRIPTION")).text_wrapping(TextWrapping::Wrap).opacity(0.72),
-            )),
-            if let Some(error) = director::diagnostics::failure() {
-                TextBlock::new().text(format!("Logging is unavailable: {error}")).text_wrapping(TextWrapping::Wrap).into()
-            } else { View::empty() },
-        )))
+        );
+        ui::page(
+            ui::header(
+                "Options",
+                "How Director behaves. Device controls live on their own pages.",
+                vec![],
+            ),
+            ui::column(
+                ui::FORM_WIDTH + 150.0,
+                ui::GAP_XXL,
+                (applying, backup, diagnostics, about),
+            ),
+            None,
+        )
     }
 }
 pub(crate) fn open_folder(folder: &std::path::Path) -> Result<(), String> {

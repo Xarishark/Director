@@ -162,18 +162,17 @@ impl DirectorApp {
     /// styled like a navigation item, with the same selection pill when it's the open page.
     fn options_item(&self, cx: &ViewContext<Self>) -> View {
         let selected = self.page == Page::Options;
-        Button::new()
-            .automation_name("Options")
-            .style(ButtonStyle::Subtle)
-            .horizontal_alignment(HorizontalAlignment::Stretch)
-            .horizontal_content_alignment(HorizontalAlignment::Left)
-            .is_enabled(!self.busy)
-            .on_click(cx.message(Message::Navigate(Some("options".into()))))
+        // The pill and the selected fill sit outside the button, which clips its content.
+        Border::new()
+            .corner_radius(crate::ui::RADIUS_S)
+            .background(if selected {
+                Brush::from(crate::ui::SUBTLE_FILL)
+            } else {
+                Brush::from(Color::transparent())
+            })
             .content(
                 Grid::new()
-                    .columns([GridLength::Pixel(3.0), GridLength::Auto, GridLength::Auto])
-                    .column_spacing(12.0)
-                    .margin(Thickness::new(-16.0, 0.0, 0.0, 0.0))
+                    .columns([GridLength::Pixel(3.0), GridLength::Star(1.0)])
                     .children((
                         Border::new()
                             .height(16.0)
@@ -184,11 +183,25 @@ impl DirectorApp {
                             } else {
                                 Brush::from(Color::transparent())
                             }),
-                        FontIcon::new().grid_column(1).glyph("\u{e713}"),
-                        TextBlock::new()
-                            .grid_column(2)
-                            .text("Options")
-                            .vertical_alignment(VerticalAlignment::Center),
+                        Button::new()
+                            .grid_column(1)
+                            .automation_name("Options")
+                            .style(ButtonStyle::Subtle)
+                            .horizontal_alignment(HorizontalAlignment::Stretch)
+                            .horizontal_content_alignment(HorizontalAlignment::Left)
+                            .is_enabled(!self.busy)
+                            .on_click(cx.message(Message::Navigate(Some("options".into()))))
+                            .content(
+                                StackPanel::new()
+                                    .orientation(Orientation::Horizontal)
+                                    .spacing(12.0)
+                                    .children((
+                                        FontIcon::new().glyph("\u{e713}"),
+                                        TextBlock::new()
+                                            .text("Options")
+                                            .vertical_alignment(VerticalAlignment::Center),
+                                    )),
+                            ),
                     )),
             )
     }
