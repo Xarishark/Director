@@ -123,13 +123,11 @@ pub fn run(args: &[String]) -> i32 {
                 Ok(0)
             }
             [area, command, target, percent] if area == "audio" && command == "volume" => {
-                let percent = percent
-                    .parse::<u8>()
-                    .map_err(|_| "Enter a whole-number percentage from 0 to 100.")?;
+                let level = crate::audio_control::Level::parse(percent)?;
                 let _lock = OperationLock::acquire()?;
                 println!(
                     "{}",
-                    audio::set_output_volume(&mut backend, target, percent)?
+                    crate::audio_control::set_volume(&mut backend, Some(target), false, level)?
                 );
                 Ok(0)
             }

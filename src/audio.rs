@@ -102,63 +102,11 @@ pub trait AudioBackend {
     }
 }
 
-/// Changes one output level without calling the routing or mute APIs.
-pub fn set_output_volume(
+pub(crate) fn verify_volume(
     backend: &mut impl AudioBackend,
-    target: &str,
-    percent: u8,
-) -> Result<String> {
-    if percent > 100 {
-        return Err("Volume must be between 0 and 100%.".into());
-    }
-    let outputs = backend.outputs()?;
-    let resolved = backend.resolve_id(target, false);
-    let device = if let Some(exact) = outputs.iter().find(|d| d.id == resolved) {
-        exact
-    } else {
-        let wanted = crate::cli_name::cli_name(target);
-        let mut matches = outputs
-            .iter()
-            .filter(|d| !wanted.is_empty() && crate::cli_name::cli_name(&d.name) == wanted);
-        let first = matches
-            .next()
-            .ok_or("Output not found. Run director audio outputs.")?;
-        if matches.next().is_some() {
-            return Err("More than one output has that name. Run director audio outputs and use the endpoint ID.".into());
-        }
-        first
-    };
-    if !device.active {
-        return Err(format!("{} is offline.", device.name));
-    }
-    let previous = backend.volume(&device.id)?;
-    if !previous.is_finite() || !(0.0..=1.0).contains(&previous) {
-        return Err("Windows returned an invalid device volume.".into());
-    }
-    let scalar = f32::from(percent) / 100.0;
-    let verify = |backend: &mut _, expected: f32| -> Result<()> {
-        verify_volume(backend, &device.id, expected)
-    };
-    if (previous - scalar).abs() > 0.005 {
-        let result = backend
-            .set_volume(&device.id, scalar)
-            .and_then(|()| verify(backend, scalar));
-        if let Err(error) = result {
-            return match backend
-                .set_volume(&device.id, previous)
-                .and_then(|()| verify(backend, previous))
-            {
-                Ok(()) => Err(format!("{error} Previous volume restored.")),
-                Err(recovery) => Err(format!(
-                    "{error} Could not restore the previous volume: {recovery}"
-                )),
-            };
-        }
-    }
-    Ok(format!("{} volume: {percent}%.", device.name))
-}
-
-fn verify_volume(backend: &mut impl AudioBackend, id: &str, expected: f32) -> Result<()> {
+    id: &str,
+    expected: f32,
+) -> Result<()> {
     let actual = backend.volume(id)?;
     if actual.is_finite() && (actual - expected).abs() <= 0.01 {
         Ok(())
