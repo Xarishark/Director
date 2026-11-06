@@ -8,7 +8,7 @@ use crate::{
     work,
 };
 use director::{
-    audio::{AudioBackend, Output},
+    audio::{AudioBackend, Output, Role},
     audio_control::{self, Level, MuteChange},
     display_apply,
     display_editor::{Editor, Options},
@@ -23,10 +23,20 @@ type Displays = Result<(Layout, Vec<Options>), String>;
 type Devices = Result<(Vec<Output>, Vec<Output>), String>;
 /// How long a volume slider must rest before the level is sent to Windows.
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
+/// Which Windows roles an output change sets.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Roles {
+    /// Apps, media and calls.
+    All,
+    /// Apps and media, leaving a separate calls device as it is.
+    Media,
+    /// Calls only.
+    Calls,
+}
 /// A live sound change, applied right away.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum SoundChange {
-    Use { input: bool },
+    Use { input: bool, roles: Roles },
     Volume { input: bool, percent: u8 },
     ToggleMute { input: bool },
 }
@@ -46,6 +56,10 @@ pub(crate) enum CurrentMessage {
     /// A slider has rested since change u64; send its level if nothing newer came in.
     VolumeSettled(bool, u64),
     ToggleMute(bool),
+    /// Use a separate output for calls (true), or the main output for calls too (false).
+    SplitCalls(bool),
+    /// Pick the calls output, by its index in the shown outputs.
+    CallsDevice(Option<usize>),
     /// A live sound change finished, with the devices read afterwards.
     SoundDone(Result<String, String>, Devices),
     /// Open a new display preset from what Now has staged.
@@ -68,6 +82,8 @@ pub(crate) struct CurrentState {
     mic_token: u64,
     /// A live sound change is running.
     sound_pending: bool,
+    /// The calls switch is on, even while calls still use the main output.
+    calls_split: bool,
     /// The slider tokens when that change started; a slider moved since then keeps its place.
     tokens_at_start: (u64, u64),
     pub(crate) fps_dirty: bool,
@@ -101,12 +117,30 @@ impl CurrentState {
         let list = if input { &self.inputs } else { &self.outputs };
         list.iter().find(|o| o.console && o.active)
     }
-    /// The devices a picker offers: the connected ones, plus the default if it isn't.
+    /// The output Windows uses for calls (the communications role).
+    fn calls_device(&self) -> Option<&Output> {
+        self.outputs.iter().find(|o| o.communications && o.active)
+    }
+    /// Calls use their own output: the switch is on, or Windows already has one set.
+    fn calls_separate(&self) -> bool {
+        self.calls_split
+            || self
+                .calls_device()
+                .zip(self.default_device(false))
+                .is_some_and(|(calls, main)| calls.id != main.id)
+    }
+    /// The devices a picker offers: the connected ones, plus the default (and, for outputs,
+    /// the calls device) if they aren't.
     fn shown(&self, input: bool) -> Vec<&Output> {
         let list = if input { &self.inputs } else { &self.outputs };
         let current = self.default_device(input).map(|d| d.id.clone());
+        let calls = (!input)
+            .then(|| self.calls_device().map(|d| d.id.clone()))
+            .flatten();
         list.iter()
-            .filter(|o| o.active || current.as_ref() == Some(&o.id))
+            .filter(|o| {
+                o.active || current.as_ref() == Some(&o.id) || calls.as_ref() == Some(&o.id)
+            })
             .collect()
     }
     /// A scene Sound step holding what Now shows: the output and microphone with their volume
@@ -123,6 +157,13 @@ impl CurrentState {
             }),
             volume: percent(self.volume),
             mute: output.muted,
+            calls: self
+                .calls_device()
+                .filter(|c| self.calls_separate() && c.id != output.id)
+                .map(|c| director::audio::DeviceSelection {
+                    id: c.id.clone(),
+                    name: c.name.clone(),
+                }),
             mic: self.default_device(true).map(|mic| director::scenes::Mic {
                 device: director::audio::DeviceSelection {
                     id: mic.id.clone(),
@@ -131,7 +172,6 @@ impl CurrentState {
                 volume: percent(self.mic_volume),
                 mute: mic.muted,
             }),
-            ..Default::default()
         }
     }
     /// Take fresh device lists; the sliders follow the devices again.
@@ -180,11 +220,15 @@ impl DirectorApp {
                 let _lock = OperationLock::acquire()?;
                 let mut audio = WindowsAudio::new()?;
                 match change {
-                    SoundChange::Use { input } => audio_control::use_device(
+                    SoundChange::Use { input, roles } => audio_control::use_device(
                         &mut audio,
                         target.as_deref().unwrap_or_default(),
                         input,
-                        &[],
+                        match roles {
+                            Roles::All => &[],
+                            Roles::Media => &[Role::Console, Role::Multimedia],
+                            Roles::Calls => &[Role::Communications],
+                        },
                     ),
                     SoundChange::Volume { input, percent } => {
                         audio_control::set_volume(&mut audio, None, input, Level::Absolute(percent))
@@ -357,7 +401,49 @@ Could not read audio outputs: {e}"
                     && self.current.default_device(input).map(|d| &d.id) != Some(&device.id)
                 {
                     let id = device.id.clone();
-                    self.sound_change(SoundChange::Use { input }, Some(id), cx);
+                    // With a separate calls device, the main output leaves calls alone.
+                    let roles = if !input && self.current.calls_separate() {
+                        Roles::Media
+                    } else {
+                        Roles::All
+                    };
+                    self.sound_change(SoundChange::Use { input, roles }, Some(id), cx);
+                }
+            }
+            CurrentMessage::SplitCalls(on) if !self.busy && !self.current.sound_pending => {
+                // Re-renders report the switch's current state; only act on a real change.
+                if on == self.current.calls_separate() {
+                    return;
+                }
+                self.current.calls_split = on;
+                if !on
+                    && let Some(main) = self.current.default_device(false)
+                    && self.current.calls_device().map(|c| &c.id) != Some(&main.id)
+                {
+                    let id = main.id.clone();
+                    self.sound_change(
+                        SoundChange::Use {
+                            input: false,
+                            roles: Roles::Calls,
+                        },
+                        Some(id),
+                        cx,
+                    );
+                }
+            }
+            CurrentMessage::CallsDevice(Some(index)) if !self.busy => {
+                if let Some(device) = self.current.shown(false).get(index)
+                    && self.current.calls_device().map(|d| &d.id) != Some(&device.id)
+                {
+                    let id = device.id.clone();
+                    self.sound_change(
+                        SoundChange::Use {
+                            input: false,
+                            roles: Roles::Calls,
+                        },
+                        Some(id),
+                        cx,
+                    );
                 }
             }
             CurrentMessage::Volume(input, value) if !self.busy && value.is_finite() => {
@@ -463,6 +549,35 @@ Could not read audio outputs: {e}"
             }
             _ => {}
         }
+    }
+    /// The optional separate calls output: a switch, and its picker while on.
+    fn calls_row(&self, cx: &ViewContext<Self>) -> View {
+        let state = &self.current;
+        let available = !self.busy && !state.sound_pending && self.guard_ready;
+        let on = state.calls_separate();
+        let devices = state.shown(false);
+        let current = state.calls_device();
+        StackPanel::new().spacing(8.0).children((
+            ToggleSwitch::new()
+                .automation_name("Use a different device for calls")
+                .is_on(on)
+                .is_enabled(available && state.default_device(false).is_some())
+                .on_toggled(cx.callback(|v| msg(CurrentMessage::SplitCalls(v))))
+                .slot(ToggleSwitchSlot::Header, "Use a different device for calls"),
+            if on {
+                ComboBox::new()
+                    .automation_name("Calls output")
+                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .items_source(devices.iter().map(|o| o.name.clone()).collect::<Vec<_>>())
+                    .selected_index(current.and_then(|c| devices.iter().position(|o| o.id == c.id)))
+                    .placeholder_text("Choose the calls output")
+                    .is_enabled(available)
+                    .on_selection_changed(cx.callback(|i| msg(CurrentMessage::CallsDevice(i))))
+                    .slot(ComboBoxSlot::Header, "Calls output")
+            } else {
+                crate::ui::caption("Off: calls use the output above.")
+            },
+        ))
     }
     /// The output (false) or microphone (true): device picker, mute button and volume slider.
     fn sound_row(&self, cx: &ViewContext<Self>, input: bool) -> View {
@@ -627,7 +742,7 @@ Could not read audio outputs: {e}"
             0.0,
             (ui::section(
                 "Sound",
-                "Changes apply as you make them. The output becomes the default for apps, media and calls.",
+                "Changes apply as you make them. The output becomes the default for apps and media, and for calls unless you pick a calls device below.",
                 Some(
                     Button::new()
                         .style(ButtonStyle::Subtle)
@@ -637,9 +752,11 @@ Could not read audio outputs: {e}"
                         .content("Save as scene…")
                         .tooltip("Open a new scene whose Sound step uses this output and volume"),
                 ),
-                StackPanel::new()
-                    .spacing(ui::GAP_L)
-                    .children((self.sound_row(cx, false), self.sound_row(cx, true))),
+                StackPanel::new().spacing(ui::GAP_L).children((
+                    self.sound_row(cx, false),
+                    self.sound_row(cx, true),
+                    self.calls_row(cx),
+                )),
             ),),
         );
         // Full width, so its edges line up with the display card above.
@@ -758,6 +875,37 @@ mod tests {
         let mic = sound.mic.unwrap();
         assert_eq!(mic.device.id, "mic");
         assert_eq!((mic.volume, mic.mute), (Some(80), Some(true)));
+    }
+    #[test]
+    fn a_separate_calls_device_is_detected_and_saved_with_the_scene() {
+        let mut state = CurrentState::default();
+        let mut desk = output("desk", true);
+        desk.communications = true;
+        state.set_devices(vec![desk, output("headset", false)], vec![]);
+        // Calls follow the main output: no separate device, none saved.
+        assert!(!state.calls_separate());
+        let main = state.default_device(false).unwrap().clone();
+        assert!(state.sound_now(&main).calls.is_none());
+        // Windows already sends calls to the headset.
+        let mut desk = output("desk", true);
+        desk.communications = false;
+        let mut headset = output("headset", false);
+        headset.communications = true;
+        state.set_devices(vec![desk, headset], vec![]);
+        assert!(state.calls_separate());
+        let main = state.default_device(false).unwrap().clone();
+        assert_eq!(
+            state.sound_now(&main).calls.map(|c| c.id),
+            Some("headset".to_string())
+        );
+        // The switch alone turns the picker on before a different device is chosen.
+        let mut desk = output("desk", true);
+        desk.communications = true;
+        state.set_devices(vec![desk, output("headset", false)], vec![]);
+        state.calls_split = true;
+        assert!(state.calls_separate());
+        let main = state.default_device(false).unwrap().clone();
+        assert!(state.sound_now(&main).calls.is_none());
     }
     #[test]
     fn sliders_follow_the_default_devices_and_pickers_hide_disconnected_ones() {
