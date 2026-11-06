@@ -30,8 +30,9 @@ pub fn load_plan(id: &str) -> Result<Plan, String> {
         .iter()
         .find(|s| s.id == id)
         .ok_or("The scene was removed. Reopen Scenes.")?;
-    let plan = scenes::resolve(scene, &d, &a, &t)?;
-    for action in &scene.actions {
+    let mut plan = scenes::resolve(scene, &d, &a, &t)?;
+    plan.policy = crate::preferences::current().scene_policy();
+    for action in scene.before.iter().chain(&scene.actions) {
         if let Action::App {
             path,
             working_directory,
@@ -80,24 +81,89 @@ pub fn run(
     notify: bool,
     mut progress: impl FnMut(&str),
 ) -> scenes::Report {
+    // Leave the previous scene first. Its leave actions can't block this scene.
+    let leaving = crate::scene_session::active()
+        .filter(|id| *id != plan.scene.id)
+        .and_then(|id| {
+            scenes::load(&scenes::path().ok()?)
+                .ok()?
+                .into_iter()
+                .find(|s| s.id == id)
+        });
+    let tvs = crate::tvs::path()
+        .and_then(|p| crate::tvs::load(&p))
+        .unwrap_or_default();
+    let warnings = leaving.map_or_else(Vec::new, |previous| {
+        scenes::leave(backend, &previous, &tvs, plan.policy, &mut progress)
+    });
     let mut stage = String::from("Checking current settings");
-    let report = scenes::apply(backend, plan, cancel, |step| {
+    let mut report = scenes::apply(backend, plan, cancel, |step| {
         if step.starts_with("Preparing TV")
             || step.starts_with("Applying displays")
             || step.starts_with("Waiting for audio devices")
             || step.starts_with("Applying FPS limit")
             || plan
                 .scene
-                .actions
+                .before
                 .iter()
+                .chain(&plan.scene.actions)
                 .any(|action| action.label() == step)
         {
             stage = step.to_owned();
         }
         progress(step);
     });
+    report.details.splice(0..0, warnings);
+    let active = report.success.then_some(plan.scene.id.as_str());
+    if let Err(e) = crate::scene_session::set(active) {
+        report.details.push(e);
+    }
     save_result(&plan.scene.name, &stage, &report, notify);
     report
+}
+
+/// End the active scene: run its When leaving actions and forget it. Settings it changed
+/// stay as they are.
+pub fn end(backend: &mut impl scenes::Backend, mut progress: impl FnMut(&str)) -> scenes::Report {
+    let Some(id) = crate::scene_session::active() else {
+        return scenes::Report {
+            success: true,
+            message: "No scene is active.".into(),
+            details: vec![],
+        };
+    };
+    let scene = scenes::load(&scenes::path().unwrap_or_default())
+        .ok()
+        .and_then(|all| all.into_iter().find(|s| s.id == id));
+    let policy = crate::preferences::current().scene_policy();
+    let (name, mut details) = match &scene {
+        Some(scene) => (
+            scene.name.clone(),
+            scenes::leave(
+                backend,
+                scene,
+                &crate::tvs::path()
+                    .and_then(|p| crate::tvs::load(&p))
+                    .unwrap_or_default(),
+                policy,
+                &mut progress,
+            ),
+        ),
+        None => ("The scene".into(), vec![]),
+    };
+    let success = details.is_empty();
+    if let Err(e) = crate::scene_session::set(None) {
+        details.push(e);
+    }
+    scenes::Report {
+        success,
+        message: if success {
+            format!("“{name}” ended.")
+        } else {
+            format!("“{name}” ended, but some leave actions failed.")
+        },
+        details,
+    }
 }
 
 pub struct Snapshot {
@@ -213,7 +279,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         self.tv_attempted = true;
         let tv = plan.tv.as_ref().ok_or("Missing TV.")?;
         let prep = plan.scene.tv.as_ref().ok_or("Missing TV preparation.")?;
-        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.scene.wait_seconds));
+        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
         let mut next_wake = Instant::now();
         let mut wakes = 0;
         loop {
@@ -270,7 +336,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
     ) -> Result<(), String> {
         let p = plan.audio.as_ref().ok_or("Missing audio preset.")?;
         let audio = self.audio.as_mut().ok_or("Audio snapshot unavailable.")?;
-        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.scene.wait_seconds));
+        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
         loop {
             if cancel.load(Ordering::Acquire) {
                 return Err("Scene canceled.".into());
@@ -320,7 +386,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         let report = audio::apply(
             audio,
             &p.request(),
-            if plan.scene.keep_on_failure {
+            if plan.policy.keep_completed {
                 audio::FailurePolicy::KeepChanges
             } else {
                 audio::FailurePolicy::Revert
@@ -335,18 +401,34 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
     }
     fn fps(&mut self, plan: &Plan) -> Result<(), String> {
         use crate::fps::Backend;
-        let request = plan.scene.fps.as_ref().ok_or("Missing FPS request.")?;
+        let wanted = plan.scene.fps.as_ref().ok_or("Missing FPS request.")?;
+        // Displays run first, so this reads the refresh rate the scene switched to.
+        let refresh = if wanted.vrr_safe {
+            crate::windows_displays::capture()?.primary_refresh_hz()
+        } else {
+            None
+        };
+        let request = wanted.resolved(refresh)?;
         let provider = self.fps.as_mut().ok_or("Missing FPS provider.")?;
         self.fps_attempted = true;
-        provider.set(request)?;
-        crate::fps::verify(request, &provider.snapshot()?)
+        provider.set(&request)?;
+        crate::fps::verify(&request, &provider.snapshot()?)
     }
-    fn launch(&mut self, action: &Action) -> Result<(), String> {
+    fn tv_off(&mut self, tv: &crate::tvs::Tv) -> Result<(), String> {
+        crate::tv_control::power(
+            &mut crate::windows_tv::WindowsTvControls::new(tv),
+            crate::tv_control::PowerAction::Off,
+        )
+        .map(|_| ())
+    }
+    fn launch(&mut self, action: &Action, wait_seconds: u16) -> Result<(), String> {
         match action {
+            Action::Close { target, force } => crate::windows_close::close(target, *force),
             Action::App {
                 path,
                 args,
                 working_directory,
+                wait,
             } => {
                 let mut command = std::process::Command::new(path);
                 command
@@ -357,10 +439,32 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
                 if let Some(dir) = working_directory {
                     command.current_dir(dir);
                 }
-                command
+                let mut child = command
                     .spawn()
                     .map_err(|e| format!("Could not launch application: {e}"))?;
-                Ok(())
+                if !*wait {
+                    return Ok(());
+                }
+                let name = action.label();
+                let deadline = Instant::now() + Duration::from_secs(u64::from(wait_seconds));
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) if status.success() => return Ok(()),
+                        Ok(Some(status)) => {
+                            return Err(format!(
+                                "{name} failed (exit code {}).",
+                                status.code().map_or("unknown".into(), |c| c.to_string())
+                            ));
+                        }
+                        Ok(None) if Instant::now() >= deadline => {
+                            return Err(format!(
+                                "{name} didn’t finish within {wait_seconds} seconds. It is still running."
+                            ));
+                        }
+                        Ok(None) => std::thread::sleep(Duration::from_millis(200)),
+                        Err(e) => return Err(format!("Could not wait for {name}: {e}")),
+                    }
+                }
             }
             Action::Uri { target } => {
                 use windows::{
@@ -466,12 +570,13 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
 }
 pub fn cli(args: &[String]) -> Result<i32, String> {
     match args{
- [command]if command=="list"=>{for scene in scenes::load(&scenes::path()?)?{println!("{} — {}",scene.id,scene.name);}Ok(0)},
+ [command]if command=="list"=>{let active=crate::scene_session::active();for scene in scenes::load(&scenes::path()?)?{println!("{} — {}{}",scene.id,scene.name,if active.as_deref()==Some(scene.id.as_str()){"  (active)"}else{""});}Ok(0)},
+ [command]if command=="end"=>{let _lock=crate::windows_audio::OperationLock::acquire()?;let mut backend=WindowsScene::new(|_:&crate::displays::Preset|false);let report=end(&mut backend,|s|eprintln!("{s}"));println!("{}",report.message);for detail in report.details{println!("{detail}")}Ok(if report.success{0}else{1})},
  [command,name,rest @ ..]if (command=="apply"||command=="check")&&(rest.is_empty()||rest==["--yes"]||rest==["--confirm"])=>{
  let _lock=crate::windows_audio::OperationLock::acquire()?;let all=scenes::load(&scenes::path()?)?;let scene=all.iter().find(|s|s.id==*name||s.name.eq_ignore_ascii_case(name)).ok_or("No scene with that name or ID.")?;let mut plan=if command=="check"{load_plan(&scene.id)?}else{load_run_plan(&scene.id,&scene.name,true)?};
  if let Some(p)=&mut plan.display { if rest==["--yes"]{p.confirm_changes=false;}else if rest==["--confirm"]{p.confirm_changes=true;} }
  if command=="check"{println!("Scene references and launch paths are valid. No devices changed; live TV/display/audio readiness is checked during Apply.");return Ok(0)}
  let mut backend=WindowsScene::new(|_:&crate::displays::Preset|{let(tx,rx)=std::sync::mpsc::channel();std::thread::spawn(move||{let mut line=String::new();let keep=std::io::stdin().read_line(&mut line).is_ok()&&matches!(line.trim().to_lowercase().as_str(),"yes"|"y");let _=tx.send(if keep{display_apply::Decision::Keep}else{display_apply::Decision::Revert});});eprintln!("Keep display changes? Type yes within 15 seconds.");display_apply::wait_for_confirmation(&rx,Duration::from_secs(15),|_|true)});
  let report=run(&mut backend,&plan,&AtomicBool::new(false),true,|s|eprintln!("{s}"));println!("{}",report.message);for detail in report.details{println!("{detail}")}Ok(if report.success{0}else{1})
- },_=>Err("Use director scene list | check <name-or-id> | apply <name-or-id> [--yes | --confirm].".into())}
+ },_=>Err("Use director scene list | end | check <name-or-id> | apply <name-or-id> [--yes | --confirm].".into())}
 }

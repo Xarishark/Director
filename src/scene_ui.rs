@@ -1,7 +1,7 @@
 //! Native scene cards and editor; device work stays on the shared worker runner.
 use crate::{DirectorApp, Message, work};
 use director::{
-    scenes::{self, Action, Scene, TvPreparation},
+    scenes::{self, Action, ActionList, Scene, TvPreparation},
     windows_audio::OperationLock,
 };
 use std::sync::{
@@ -26,17 +26,31 @@ pub(crate) enum SceneMessage {
     Name(String),
     Display(Option<usize>),
     Audio(Option<usize>),
+    /// Volume for a TV's linked audio; none keeps the current volume.
+    TvVolume(Option<u8>),
     Tv(Option<usize>),
     Wake(bool),
+    /// Turn the scene's TV off when the scene is left.
+    TvOffWhenLeaving(bool),
     Input(Option<usize>),
-    Wait(Option<f64>),
-    Keep(bool),
-    AddUri,
-    AddApp,
-    Browse(usize, bool),
-    ActionText(usize, u8, String),
-    Move(usize, bool),
-    Remove(usize),
+    AddUri(ActionList),
+    AddApp(ActionList),
+    AddClose(ActionList),
+    Browse(ActionList, usize, bool),
+    ActionText(ActionList, usize, u8, String),
+    /// Wait for an app, or force-close for a Close action.
+    ActionToggle(ActionList, usize, bool),
+    Move(ActionList, usize, bool),
+    Remove(ActionList, usize),
+    /// Open or close an app action's Advanced options.
+    ActionAdvanced(ActionList, usize, bool),
+    /// Open a step's editor dialog (`None` closes it, keeping the changes).
+    Open(Option<crate::scene_editor_ui::Step>),
+    /// The step dialog closed: Done keeps the changes, anything else restores them.
+    StepClosed(ContentDialogResult),
+    /// Reset a step to "leave unchanged".
+    ClearStep(crate::scene_editor_ui::Step),
+    End,
     Save,
     Saved(Result<Vec<Scene>, String>),
     Delete(String),
@@ -46,6 +60,8 @@ pub(crate) enum SceneMessage {
     Progress(u64, Option<Event>),
     Confirm(ContentDialogResult),
     Finished(u64, Result<scenes::Report, String>),
+    /// The first-run card that saves the current setup as a scene.
+    Starter(crate::starter_ui::StarterMessage),
 }
 #[derive(Clone)]
 pub(crate) enum Event {
@@ -66,6 +82,16 @@ pub(crate) struct SceneState {
     events: Option<Arc<Mutex<mpsc::Receiver<Event>>>>,
     confirm: Option<mpsc::Sender<director::display_apply::Decision>>,
     remaining: Option<u64>,
+    /// The step whose editor dialog is open.
+    pub(crate) open: Option<crate::scene_editor_ui::Step>,
+    /// The draft as it was when the step dialog opened, for Cancel.
+    pub(crate) snapshot: Option<Scene>,
+    /// The scene applied last during this Windows session.
+    pub(crate) active: Option<String>,
+    /// App actions whose Advanced options section is open.
+    pub(crate) advanced: Vec<(ActionList, usize)>,
+    /// The first-run card: what it read and what's ticked.
+    pub(crate) starter: crate::starter_ui::StarterState,
 }
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
@@ -75,13 +101,6 @@ fn note(s: impl Into<String>) -> View {
         .text(s)
         .text_wrapping(TextWrapping::Wrap)
         .opacity(0.72)
-        .into()
-}
-fn heading(s: &str) -> View {
-    TextBlock::new()
-        .text(s)
-        .font_size(20.0)
-        .font_weight(FontWeight::SEMI_BOLD)
         .into()
 }
 fn id() -> String {
@@ -96,7 +115,7 @@ fn id() -> String {
 }
 
 impl DirectorApp {
-    fn scene_ready(&self) -> bool {
+    pub(crate) fn scene_ready(&self) -> bool {
         !self.busy && self.guard_ready && self.scene.ready
     }
     fn scene_save(&mut self, next: Vec<Scene>, cx: &ComponentContext<Self>) {
@@ -113,6 +132,7 @@ impl DirectorApp {
             self.scene.draft = None;
             self.scene.delete = None;
             self.status = "Scenes saved. Preview only; no settings changed.".into();
+            self.announce(cx);
             return;
         }
         let expected = self.scene.scenes.clone();
@@ -149,6 +169,25 @@ impl DirectorApp {
             self.update_fps(crate::fps_ui::FpsMessage::Discover, cx);
         }
         let ready = self.scene_ready();
+        // The last item of each section's dropdown creates a new Library item in place.
+        if ready && self.scene.draft.is_some() {
+            use crate::library_flow::{LibraryMessage, Slot};
+            let linked = self.scene.tvs.iter().filter(|t| t.audio.is_some()).count();
+            let create = match &m {
+                SceneMessage::Display(Some(i)) if *i == self.scene.displays.len() + 1 => {
+                    Some(Slot::Display)
+                }
+                SceneMessage::Audio(Some(i)) if *i == self.scene.audio.len() + linked + 1 => {
+                    Some(Slot::Audio)
+                }
+                SceneMessage::Tv(Some(i)) if *i == self.scene.tvs.len() + 1 => Some(Slot::Tv),
+                _ => None,
+            };
+            if let Some(slot) = create {
+                self.update_library(LibraryMessage::FromScene(slot), cx);
+                return;
+            }
+        }
         match m {
             SceneMessage::Load if !self.busy => {
                 self.begin("Reading scenes and presets…");
@@ -165,7 +204,10 @@ impl DirectorApp {
                         self.scene.audio = a;
                         self.scene.tvs = t;
                         self.scene.ready = true;
+                        self.scene.active = director::scene_session::active();
                         self.status = "Ready.".into();
+                        self.library_select_in_scene(cx);
+                        self.starter_loaded(cx);
                     }
                     Err(e) => {
                         self.scene.ready = false;
@@ -173,24 +215,16 @@ impl DirectorApp {
                     }
                 }
             }
+            SceneMessage::Starter(m) => self.update_starter(m, cx),
             SceneMessage::Add if ready => {
-                self.scene.draft = Some(Scene {
-                    id: id(),
-                    name: String::new(),
-                    display: None,
-                    audio: None,
-                    tv_audio: None,
-                    tv: None,
-                    fps: None,
-                    actions: vec![],
-                    keep_on_failure: false,
-                    wait_seconds: 30,
-                });
+                self.scene.draft = Some(Scene::new(id(), ""));
+                self.scene.open = None;
                 self.status =
                     "Choose what this scene changes. Saving leaves your setup untouched.".into();
             }
             SceneMessage::Edit(id) if ready => {
                 self.scene.draft = self.scene.scenes.iter().find(|s| s.id == id).cloned();
+                self.scene.open = None;
                 self.error = false;
                 self.details.clear();
             }
@@ -224,8 +258,18 @@ impl DirectorApp {
                     .and_then(|i| self.scene.tvs.iter().filter(|t| t.audio.is_some()).nth(i))
                     .map(|t| t.id.clone());
                 if let Some(d) = &mut self.scene.draft {
+                    if d.tv_audio != linked {
+                        d.tv_audio_volume = None;
+                    }
                     d.audio = preset;
                     d.tv_audio = linked;
+                }
+            }
+            SceneMessage::TvVolume(volume) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft
+                    && d.tv_audio.is_some()
+                {
+                    d.tv_audio_volume = volume;
                 }
             }
             SceneMessage::Tv(index) if !self.busy && index.is_some() => {
@@ -233,6 +277,7 @@ impl DirectorApp {
                     .and_then(|i| i.checked_sub(1))
                     .and_then(|i| self.scene.tvs.get(i))
                     .map(|t| TvPreparation {
+                        off_when_leaving: false,
                         id: t.id.clone(),
                         wake: t.can_wake(),
                         input: t
@@ -242,12 +287,21 @@ impl DirectorApp {
                             .map(|i| i.id.clone()),
                     });
                 if let Some(d) = &mut self.scene.draft {
-                    d.tv = selected;
+                    let off = d.tv.as_ref().is_some_and(|t| t.off_when_leaving);
+                    d.tv = selected.map(|mut t| {
+                        t.off_when_leaving = off;
+                        t
+                    });
                 }
             }
             SceneMessage::Wake(v) if !self.busy => {
                 if let Some(t) = self.scene.draft.as_mut().and_then(|d| d.tv.as_mut()) {
                     t.wake = v;
+                }
+            }
+            SceneMessage::TvOffWhenLeaving(v) if !self.busy => {
+                if let Some(t) = self.scene.draft.as_mut().and_then(|d| d.tv.as_mut()) {
+                    t.off_when_leaving = v;
                 }
             }
             SceneMessage::Input(index) if !self.busy && index.is_some() => {
@@ -267,54 +321,55 @@ impl DirectorApp {
                     t.input = selected;
                 }
             }
-            SceneMessage::Wait(value) if !self.busy => {
-                if let Some(d) = &mut self.scene.draft {
-                    d.wait_seconds = value
-                        .filter(|v| v.is_finite() && v.fract() == 0.0 && (1.0..=120.0).contains(v))
-                        .unwrap_or(0.0) as u16;
-                }
-            }
-            SceneMessage::Keep(v) if !self.busy => {
-                if let Some(d) = &mut self.scene.draft {
-                    d.keep_on_failure = v;
-                }
-            }
-            SceneMessage::AddUri if !self.busy => {
-                if let Some(d) = &mut self.scene.draft
-                    && d.actions.len() < 32
-                {
-                    d.actions.push(Action::Uri {
+            SceneMessage::AddUri(list)
+            | SceneMessage::AddApp(list)
+            | SceneMessage::AddClose(list)
+                if !self.busy =>
+            {
+                let action = match m {
+                    SceneMessage::AddUri(_) => Action::Uri {
                         target: String::new(),
-                    });
+                    },
+                    SceneMessage::AddClose(_) => Action::Close {
+                        target: String::new(),
+                        force: false,
+                    },
+                    _ => Action::App {
+                        path: String::new(),
+                        args: vec![],
+                        working_directory: None,
+                        // A setup step usually has to finish before devices change.
+                        wait: list == ActionList::Before,
+                    },
+                };
+                if let Some(d) = &mut self.scene.draft
+                    && d.list(list).len() < 32
+                {
+                    d.list_mut(list).push(action);
                 }
             }
-            SceneMessage::Browse(i, folder) if !self.busy => match pick_path(folder) {
+            SceneMessage::Browse(list, i, folder) if !self.busy => match pick_path(folder) {
                 Ok(Some(path)) => self.update_scene(
-                    SceneMessage::ActionText(i, if folder { 2 } else { 0 }, path),
+                    SceneMessage::ActionText(list, i, if folder { 2 } else { 0 }, path),
                     cx,
                 ),
                 Ok(None) => {}
                 Err(e) => self.failure(e),
             },
-            SceneMessage::AddApp if !self.busy => {
-                if let Some(d) = &mut self.scene.draft
-                    && d.actions.len() < 32
+            SceneMessage::ActionText(list, i, field, value) if !self.busy => {
+                if let Some(a) = self
+                    .scene
+                    .draft
+                    .as_mut()
+                    .and_then(|d| d.list_mut(list).get_mut(i))
                 {
-                    d.actions.push(Action::App {
-                        path: String::new(),
-                        args: vec![],
-                        working_directory: None,
-                    });
-                }
-            }
-            SceneMessage::ActionText(i, field, value) if !self.busy => {
-                if let Some(a) = self.scene.draft.as_mut().and_then(|d| d.actions.get_mut(i)) {
                     match a {
-                        Action::Uri { target } => *target = value,
+                        Action::Uri { target } | Action::Close { target, .. } => *target = value,
                         Action::App {
                             path,
                             args,
                             working_directory,
+                            ..
                         } => match field {
                             0 => *path = value,
                             1 => {
@@ -335,27 +390,101 @@ impl DirectorApp {
                     }
                 }
             }
-            SceneMessage::Move(i, up) if !self.busy => {
+            SceneMessage::ActionToggle(list, i, on) if !self.busy => {
+                if let Some(a) = self
+                    .scene
+                    .draft
+                    .as_mut()
+                    .and_then(|d| d.list_mut(list).get_mut(i))
+                {
+                    match a {
+                        Action::App { wait, .. } => *wait = on,
+                        Action::Close { force, .. } => *force = on,
+                        Action::Uri { .. } => {}
+                    }
+                }
+            }
+            SceneMessage::Move(list, i, up) if !self.busy => {
                 if let Some(d) = &mut self.scene.draft {
+                    let actions = d.list_mut(list);
                     let other = if up {
                         i.checked_sub(1)
                     } else {
                         i.checked_add(1)
                     };
                     if let Some(j) = other
-                        && i < d.actions.len()
-                        && j < d.actions.len()
+                        && i < actions.len()
+                        && j < actions.len()
                     {
-                        d.actions.swap(i, j);
+                        actions.swap(i, j);
+                        self.scene.advanced.clear();
                     }
                 }
             }
-            SceneMessage::Remove(i) if !self.busy => {
+            SceneMessage::Remove(list, i) if !self.busy => {
                 if let Some(d) = &mut self.scene.draft
-                    && i < d.actions.len()
+                    && i < d.list(list).len()
                 {
-                    d.actions.remove(i);
+                    d.list_mut(list).remove(i);
                 }
+                // Positions shift, so forget which sections were open.
+                self.scene.advanced.clear();
+            }
+            SceneMessage::ActionAdvanced(list, i, open) => {
+                self.scene.advanced.retain(|k| *k != (list, i));
+                if open {
+                    self.scene.advanced.push((list, i));
+                }
+            }
+            SceneMessage::Open(step) => {
+                self.scene.snapshot = step.and(self.scene.draft.clone());
+                self.scene.open = step;
+            }
+            SceneMessage::StepClosed(result) => {
+                self.scene.open = None;
+                if let Some(before) = self.scene.snapshot.take()
+                    && result != ContentDialogResult::Primary
+                {
+                    self.scene.draft = Some(before);
+                }
+            }
+            SceneMessage::ClearStep(step) if !self.busy => {
+                use crate::scene_editor_ui::Step;
+                if let Some(d) = &mut self.scene.draft {
+                    match step {
+                        Step::Before => d.before.clear(),
+                        Step::Tv => d.tv = None,
+                        Step::Displays => d.display = None,
+                        Step::Audio => {
+                            d.audio = None;
+                            d.tv_audio = None;
+                        }
+                        Step::Fps => d.fps = None,
+                        Step::After => d.actions.clear(),
+                        Step::Leave => d.leave.clear(),
+                    }
+                }
+                if self.scene.open == Some(step) {
+                    self.scene.open = None;
+                    self.scene.snapshot = None;
+                }
+            }
+            SceneMessage::End if ready => {
+                self.scene.token = self.scene.token.wrapping_add(1);
+                let token = self.scene.token;
+                self.begin("Ending scene…");
+                work(cx, move || {
+                    msg(SceneMessage::Finished(
+                        token,
+                        (|| {
+                            let _lock = OperationLock::acquire()?;
+                            let mut backend = director::windows_scenes::WindowsScene::new(
+                                |_: &director::displays::Preset| false,
+                            );
+                            Ok(director::windows_scenes::end(&mut backend, |_| {}))
+                        })(),
+                    ))
+                });
             }
             SceneMessage::Save if ready => {
                 if let Some(mut d) = self.scene.draft.clone() {
@@ -388,7 +517,10 @@ impl DirectorApp {
                         self.scene.delete = None;
                         self.error = false;
                         self.status = "Scenes saved. Your setup is unchanged.".into();
+                        self.guard_saved(true, cx);
+                        self.starter_probe_if_needed(cx);
                         self.details.clear();
+                        self.announce(cx);
                     }
                     Err(e) => self.failure(e),
                 }
@@ -496,11 +628,13 @@ impl DirectorApp {
                 self.scene.cancel = None;
                 self.scene.confirm = None;
                 self.scene.remaining = None;
+                self.scene.active = director::scene_session::active();
                 match result {
                     Ok(r) => {
                         self.error = !r.success;
                         self.status = r.message;
                         self.details = r.details.join("\n");
+                        self.announce(cx);
                         director::diagnostics::event(
                             "scene.result",
                             if r.success { "ok" } else { "error" },
@@ -512,6 +646,47 @@ impl DirectorApp {
             }
             _ => {}
         }
+    }
+    /// "End CONSOLE" next to +, only while the active scene has something to run when left.
+    fn end_scene_button(&self, cx: &ViewContext<Self>) -> View {
+        let Some(scene) = self
+            .scene
+            .active
+            .as_ref()
+            .and_then(|id| self.scene.scenes.iter().find(|s| &s.id == id))
+            .filter(|s| s.has_leave_work())
+        else {
+            return View::empty();
+        };
+        let mut work: Vec<String> = scene.leave.iter().map(|a| a.label()).collect();
+        if let Some(prep) = scene.tv.as_ref().filter(|t| t.off_when_leaving) {
+            let tv = self
+                .scene
+                .tvs
+                .iter()
+                .find(|t| t.id == prep.id)
+                .map_or("the TV".to_string(), |t| t.name.clone());
+            work.push(format!("Turn off {tv}"));
+        }
+        Button::new()
+            .automation_name(format!("End {}", scene.name))
+            .is_enabled(self.scene_ready())
+            .on_click(cx.message(msg(SceneMessage::End)))
+            .content(
+                StackPanel::new()
+                    .orientation(Orientation::Horizontal)
+                    .spacing(8.0)
+                    .children((
+                        FontIcon::new()
+                            .glyph("\u{e7e8}")
+                            .vertical_alignment(VerticalAlignment::Center),
+                        TextBlock::new().text(format!("End {}", scene.name)),
+                    )),
+            )
+            .tooltip(format!(
+                "Runs: {}. Your other settings stay as they are.",
+                work.join(", ")
+            ))
     }
     pub(crate) fn scene_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.scene.draft {
@@ -528,7 +703,17 @@ impl DirectorApp {
                 let resolved =
                     scenes::resolve(s, &self.scene.displays, &self.scene.audio, &self.scene.tvs);
                 let name = s.name.clone();
+                let active = self.scene.active.as_deref() == Some(s.id.as_str());
                 let body = StackPanel::new().spacing(8.0).children((
+                    if active {
+                        TextBlock::new()
+                            .text("● Active")
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .foreground(Color::rgb(108, 203, 95))
+                            .into()
+                    } else {
+                        View::empty()
+                    },
                     s.display
                         .as_ref()
                         .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
@@ -553,6 +738,15 @@ impl DirectorApp {
                     s.id.clone(),
                     crate::preset_cards_ui::card(
                         &name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Scene,
+                                name: s.name.clone(),
+                                id: s.id.clone(),
+                                can_end: s.has_leave_work(),
+                            },
+                        ),
                         body,
                         vec![
                             crate::preset_cards_ui::apply_button(
@@ -597,11 +791,53 @@ impl DirectorApp {
                 )
             })
             .collect::<Vec<_>>();
-        Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
- crate::preset_ui::header("Scenes","Bring your presets and actions together.",vec![Button::new().style(ButtonStyle::Accent).automation_name("Add scene").is_enabled(self.scene_ready()).on_click(cx.message(msg(SceneMessage::Add))).content(FontIcon::new().glyph("")).tooltip("Add scene")]),
- if self.scene.scenes.is_empty(){Border::new().grid_row(1).padding(20.0).content(StackPanel::new().spacing(12.0).children((heading("Your setup, ready in one scene"),note("Choose displays, audio and optional TV preparation. Add apps or URIs to open after setup succeeds."))))}else{crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::SCENE_CARD_HEIGHT, cards)},
- if self.scene.cancel.is_some(){Button::new().grid_row(2).horizontal_alignment(HorizontalAlignment::Left).automation_name("Cancel scene").on_click(cx.message(msg(SceneMessage::Stop))).content("Cancel scene")}else{View::empty()},
- ))
+        Grid::new()
+            .rows([
+                GridLength::Auto,
+                GridLength::Auto,
+                GridLength::Star(1.0),
+                GridLength::Auto,
+            ])
+            .children((
+                crate::preset_ui::header(
+                    "Scenes",
+                    "Switch your whole setup in one click.",
+                    vec![
+                        self.end_scene_button(cx),
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .automation_name("Add scene")
+                            .is_enabled(self.scene_ready())
+                            .on_click(cx.message(msg(SceneMessage::Add)))
+                            .content(FontIcon::new().glyph(""))
+                            .tooltip("Add scene"),
+                    ],
+                ),
+                Border::new().grid_row(1).content(self.next_scene_tip(cx)),
+                if self.scene.scenes.is_empty() {
+                    ScrollViewer::new().grid_row(2).content(
+                        Border::new()
+                            .padding(Thickness::new(0.0, 4.0, 0.0, 20.0))
+                            .content(self.starter_card(cx)),
+                    )
+                } else {
+                    crate::preset_cards_ui::card_grid(
+                        2,
+                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                        cards,
+                    )
+                },
+                if self.scene.cancel.is_some() {
+                    Button::new()
+                        .grid_row(3)
+                        .horizontal_alignment(HorizontalAlignment::Left)
+                        .automation_name("Cancel scene")
+                        .on_click(cx.message(msg(SceneMessage::Stop)))
+                        .content("Cancel scene")
+                } else {
+                    View::empty()
+                },
+            ))
     }
     fn scene_summary(&self, s: &Scene) -> String {
         let display = s
@@ -648,161 +884,41 @@ impl DirectorApp {
                         .map_or("Missing TV", |t| t.name.as_str())
                 })
                 .unwrap_or("None");
-        format!(
-            "TV: {tv}\nDisplays: {display}\nAudio: {audio}\nFPS: {}\nAfter setup: {} action(s)",
+        let mut lines = vec![];
+        if !s.before.is_empty() {
+            lines.push(format!("Before: {} action(s)", s.before.len()));
+        }
+        lines.push(format!("TV: {tv}"));
+        lines.push(format!("Displays: {display}"));
+        lines.push(format!("Audio: {audio}"));
+        lines.push(format!(
+            "FPS: {}",
             s.fps
                 .as_ref()
-                .map_or("Leave unchanged".into(), |r| r.label()),
-            s.actions.len()
-        )
-    }
-    fn scene_editor(&self, cx: &ViewContext<Self>, d: &Scene) -> View {
-        let available = !self.busy;
-        let wide = self.window_width >= 1150.0;
-        let display_labels = std::iter::once("Leave displays unchanged".into())
-            .chain(self.scene.displays.iter().map(|p| p.name.clone()))
-            .collect::<Vec<String>>();
-        let audio_labels = std::iter::once("Leave audio unchanged".into())
-            .chain(
-                self.scene
-                    .audio
-                    .iter()
-                    .map(|p| format!("{} · {}", p.name, p.output_name)),
-            )
-            .chain(self.scene.tvs.iter().filter_map(|t| {
-                t.audio
-                    .as_ref()
-                    .map(|a| format!("{} linked audio · {}", t.name, a.name))
-            }))
-            .collect::<Vec<String>>();
-        let ai = d
-            .audio
-            .as_ref()
-            .and_then(|id| self.scene.audio.iter().position(|p| &p.id == id))
-            .map(|i| i + 1)
-            .or_else(|| {
-                d.tv_audio
-                    .as_ref()
-                    .and_then(|id| {
-                        self.scene
-                            .tvs
-                            .iter()
-                            .filter(|t| t.audio.is_some())
-                            .position(|t| &t.id == id)
-                    })
-                    .map(|i| i + 1 + self.scene.audio.len())
-            })
-            .unwrap_or(0);
-        let tv =
-            d.tv.as_ref()
-                .and_then(|p| self.scene.tvs.iter().find(|t| t.id == p.id));
-        let tv_labels = std::iter::once("No TV preparation".into())
-            .chain(self.scene.tvs.iter().map(|t| t.name.clone()))
-            .collect::<Vec<String>>();
-        let fields=StackPanel::new().spacing(20.0).children((
- StackPanel::new().spacing(8.0).children((TextBlock::new().text("Scene name").font_weight(FontWeight::SEMI_BOLD),TextBox::new().automation_name("Scene name").text(d.name.clone()).is_enabled(available).on_text_changed(cx.callback(|s|msg(SceneMessage::Name(s)))))),
- StackPanel::new().spacing(10.0).children((heading("1 · Prepare TV"),note("Optional. Wait for your TV, then select its input."),ComboBox::new().automation_name("Scene TV").items_source(tv_labels).selected_index(Some(d.tv.as_ref().and_then(|p|self.scene.tvs.iter().position(|t|t.id==p.id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Tv(i)))),
- if let (Some(tv),Some(prep))=(tv,&d.tv){StackPanel::new().spacing(10.0).children((
- if tv.can_wake(){ToggleSwitch::new().automation_name("Wake TV if needed").is_on(prep.wake).is_enabled(available).on_toggled(cx.callback(|v|msg(SceneMessage::Wake(v)))).slot(ToggleSwitchSlot::Header,"Wake TV if needed")}else{View::empty()},
- if tv.brand==director::tvs::Brand::Lg || !tv.control_inputs().is_empty(){ComboBox::new().automation_name("Scene TV input").items_source(std::iter::once("Leave input unchanged".into()).chain(tv.control_inputs().iter().map(|i|i.label.clone())).collect::<Vec<String>>()).selected_index(Some(prep.input.as_ref().and_then(|id|tv.control_inputs().iter().position(|i|&i.id==id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Input(i)))).into()}else{View::empty()},
- ))}else{View::empty()},
- )),
- StackPanel::new().spacing(10.0).children((heading("2 · Displays"),ComboBox::new().automation_name("Scene display preset").items_source(display_labels).selected_index(Some(d.display.as_ref().and_then(|id|self.scene.displays.iter().position(|p|&p.id==id)).map_or(0,|i|i+1))).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Display(i)))),d.display.as_ref().and_then(|id|self.scene.displays.iter().find(|p|&p.id==id)).map(|p|crate::preset_cards_ui::layout_preview(&p.layout, 124.0)).unwrap_or_else(View::empty),Button::new().is_enabled(available).on_click(cx.message(Message::Navigate(Some("displays".into())))).content("Manage display presets"))),
- StackPanel::new().spacing(10.0).children((heading("3 · Audio"),ComboBox::new().automation_name("Scene audio preset").items_source(audio_labels).selected_index(Some(ai)).is_enabled(available).horizontal_alignment(HorizontalAlignment::Stretch).on_selection_changed(cx.callback(|i|msg(SceneMessage::Audio(i)))),note("Audio applies after displays. A linked TV output changes all three output roles, leaving volume and microphone unchanged. Choose an audio preset for more control."),Button::new().is_enabled(available).on_click(cx.message(Message::Navigate(Some("audio".into())))).content("Manage audio presets"))),
- self.fps_controls(cx,crate::fps_ui::Target::Scene),
- StackPanel::new().spacing(10.0).children((heading("5 · After setup"),note("These run in order, only after setup succeeds."),
- StackPanel::new().spacing(12.0).keyed_children(d.actions.iter().enumerate().map(|(i,a)|KeyedView::new(format!("action-{i}"),Border::new().padding(14.0).corner_radius(8.0).border_thickness(1.0).border_brush(Color::rgb(75,75,75)).content(StackPanel::new().spacing(10.0).children((
- Grid::new().columns([GridLength::Star(1.0),GridLength::Auto]).children((TextBlock::new().text(format!("{} · {}",i+1,if matches!(a,Action::Uri{..}){"Open URI"}else{"Launch app"})).font_weight(FontWeight::SEMI_BOLD),StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).children((
- Button::new().automation_name(format!("Move action {} up",i+1)).is_enabled(available&&i>0).on_click(cx.callback(move|()|msg(SceneMessage::Move(i,true)))).content(FontIcon::new().glyph("")).tooltip("Move up"),
- Button::new().automation_name(format!("Move action {} down",i+1)).is_enabled(available&&i+1<d.actions.len()).on_click(cx.callback(move|()|msg(SceneMessage::Move(i,false)))).content(FontIcon::new().glyph("")).tooltip("Move down"),
- Button::new().automation_name(format!("Remove action {}",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Remove(i)))).content(crate::icons::delete()).tooltip("Remove action"),
- )))),
- match a{Action::Uri{target}=>View::from(TextBox::new().automation_name(format!("Action {} URI",i+1)).placeholder_text("steam://open/bigpicture").text(target.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s))))),Action::App{path,args,working_directory}=>StackPanel::new().spacing(8.0).children((
- StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((Button::new().automation_name(format!("Browse action {} executable",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Browse(i,false)))).content("Choose app…"),Button::new().automation_name(format!("Browse action {} folder",i+1)).is_enabled(available).on_click(cx.callback(move|()|msg(SceneMessage::Browse(i,true)))).content("Working folder…"))),
- TextBox::new().automation_name(format!("Action {} executable",i+1)).placeholder_text("Full path to an .exe").text(path.clone()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,0,s)))),
- TextBox::new().automation_name(format!("Action {} arguments",i+1)).placeholder_text("Optional arguments · one per line").accepts_return(true).text(args.join("\n")).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,1,s)))),
- TextBox::new().automation_name(format!("Action {} working folder",i+1)).placeholder_text("Optional working folder").text(working_directory.clone().unwrap_or_default()).is_enabled(available).on_text_changed(cx.callback(move|s|msg(SceneMessage::ActionText(i,2,s)))),
- ))},
- ))))).collect::<Vec<_>>()),
- StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((Button::new().automation_name("Add app action").is_enabled(available&&d.actions.len()<32).on_click(cx.message(msg(SceneMessage::AddApp))).content("Add app"),Button::new().automation_name("Add URI action").is_enabled(available&&d.actions.len()<32).on_click(cx.message(msg(SceneMessage::AddUri))).content("Add URI"))),
- )),
- StackPanel::new().spacing(10.0).children((heading("Readiness and recovery"),NumberBox::new().automation_name("Device wait seconds").value(Some(f64::from(d.wait_seconds))).minimum(1.0).maximum(120.0).is_enabled(available).on_value_changed(cx.callback(|v|msg(SceneMessage::Wait(v)))).slot(NumberBoxSlot::Header,"Device wait timeout (seconds)"),
- ToggleSwitch::new().automation_name("Keep completed scene changes on failure").is_on(d.keep_on_failure).is_enabled(available).on_toggled(cx.callback(|v|msg(SceneMessage::Keep(v)))).slot(ToggleSwitchSlot::Header,"Keep completed changes if a step fails"),note("Off: restore the previous display, audio and selected FPS settings. TV power/input changes and opened apps cannot be undone automatically."))),
- ));
-        let summary = Border::new()
-            .padding(20.0)
-            .corner_radius(8.0)
-            .border_thickness(1.0)
-            .border_brush(Color::rgb(65, 65, 65))
-            .content(StackPanel::new().spacing(16.0).children((
-                heading("Your scene"),
-                note(self.scene_summary(d)),
-                note("TV → Displays → Audio → FPS → Apps & URIs"),
-                note(format!("CLI: director scene apply \"{}\"", d.id)),
-                if let Err(e) =
-                    scenes::resolve(d, &self.scene.displays, &self.scene.audio, &self.scene.tvs)
-                {
-                    note(e)
-                } else {
-                    note("Ready to save. Saving applies nothing.")
-                },
-            )));
-        let content: View = if wide {
-            Grid::new()
-                .columns([GridLength::Star(1.7), GridLength::Star(1.0)])
-                .column_spacing(36.0)
-                .children((
-                    Border::new().content(fields),
-                    Border::new()
-                        .grid_column(1)
-                        .vertical_alignment(VerticalAlignment::Top)
-                        .content(summary),
-                ))
-        } else {
-            StackPanel::new().spacing(24.0).children((fields, summary))
-        };
-        Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-            .children((
-                crate::preset_ui::header(
-                    "Scene editor",
-                    "Choose only what you want this scene to change.",
-                    vec![],
-                ),
-                ScrollViewer::new()
-                    .grid_row(1)
-                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                    .content(content),
-                StackPanel::new()
-                    .grid_row(2)
-                    .horizontal_alignment(HorizontalAlignment::Right)
-                    .orientation(Orientation::Horizontal)
-                    .spacing(8.0)
-                    .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
-                    .children((
-                        Button::new()
-                            .is_enabled(available)
-                            .on_click(cx.message(msg(SceneMessage::Cancel)))
-                            .content("Cancel"),
-                        Button::new()
-                            .automation_name("Save scene")
-                            .style(ButtonStyle::Accent)
-                            .is_enabled(
-                                self.scene_ready()
-                                    && scenes::resolve(
-                                        d,
-                                        &self.scene.displays,
-                                        &self.scene.audio,
-                                        &self.scene.tvs,
-                                    )
-                                    .is_ok(),
-                            )
-                            .on_click(cx.message(msg(SceneMessage::Save)))
-                            .content("Save scene"),
-                    )),
-            ))
+                .map_or("Leave unchanged".into(), |r| r.label())
+        ));
+        lines.push(format!("After: {} action(s)", s.actions.len()));
+        let tv_off = s.tv.as_ref().filter(|t| t.off_when_leaving).map(|p| {
+            self.scene
+                .tvs
+                .iter()
+                .find(|t| t.id == p.id)
+                .map_or("turn off the TV".to_string(), |t| {
+                    format!("turn off {}", t.name)
+                })
+        });
+        match (tv_off, s.leave.len()) {
+            (None, 0) => {}
+            (None, n) => lines.push(format!("When leaving: {n} action(s)")),
+            (Some(off), 0) => lines.push(format!("When leaving: {off}")),
+            (Some(off), n) => lines.push(format!("When leaving: {off} · {n} action(s)")),
+        }
+        lines.join("\n")
     }
     pub(crate) fn scene_dialog(&self, cx: &ViewContext<Self>) -> View {
+        if self.scene.open.is_some() && self.scene.draft.is_some() {
+            return self.step_dialog(cx);
+        }
         if let Some(seconds) = self.scene.remaining {
             return ContentDialog::new()
                 .is_open(true)

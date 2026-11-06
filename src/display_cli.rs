@@ -19,12 +19,13 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 && rest != ["--confirm"])
         {
             return Err(
-                "Use display check <name> or display apply <name> [--yes | --confirm].".into(),
+                "Use display check <name-or-id> or display apply <name-or-id> [--yes | --confirm]."
+                    .into(),
             );
         }
         let preset = displays::load(&displays::path()?)?
             .into_iter()
-            .find(|p| p.name.to_lowercase() == name.to_lowercase())
+            .find(|p| p.id == *name || p.name.to_lowercase() == name.to_lowercase())
             .ok_or_else(|| format!("No display preset named “{name}”."))?;
         let _lock = OperationLock::acquire()?;
         let mut backend = WindowsDisplays::default();

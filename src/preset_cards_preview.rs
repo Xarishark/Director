@@ -113,7 +113,6 @@ impl DirectorApp {
         match message {
             Message::Loaded(_) => {
                 self.end();
-                self.page = Page::Audio;
                 self.store_ready = true;
                 self.display.store_ready = true;
                 self.outputs = vec![Output {
@@ -205,24 +204,22 @@ impl DirectorApp {
                     }),
                     network: Default::default(),
                 }];
-                self.scene.scenes = vec![director::scenes::Scene {
-                    id: "fixture-scene".into(),
-                    name: "TV gaming scene".into(),
-                    display: Some("fixture-display-1".into()),
-                    audio: None,
-                    tv_audio: Some("fixture-tv".into()),
-                    fps: None,
-                    tv: Some(director::scenes::TvPreparation {
-                        id: "fixture-tv".into(),
-                        wake: true,
-                        input: Some("HDMI_1".into()),
-                    }),
-                    actions: vec![director::scenes::Action::Uri {
-                        target: "steam://open/bigpicture".into(),
-                    }],
-                    keep_on_failure: false,
-                    wait_seconds: 30,
+                let mut scene = director::scenes::Scene::new("fixture-scene", "TV gaming scene");
+                scene.display = Some("fixture-display-1".into());
+                scene.tv_audio = Some("fixture-tv".into());
+                scene.tv = Some(director::scenes::TvPreparation {
+                    off_when_leaving: false,
+                    id: "fixture-tv".into(),
+                    wake: true,
+                    input: Some("HDMI_1".into()),
+                });
+                scene.actions = vec![director::scenes::Action::Uri {
+                    target: "steam://open/bigpicture".into(),
                 }];
+                scene.leave = vec![director::scenes::Action::Uri {
+                    target: "steam://close/bigpicture".into(),
+                }];
+                self.scene.scenes = vec![scene];
                 self.scene.ready = true;
                 self.fps = crate::fps_ui::FpsState::fixture();
                 self.tv.tvs = self.scene.tvs.clone();

@@ -1,13 +1,57 @@
 //! Small per-user preferences, separate from device presets.
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Preferences {
     #[serde(default)]
     pub hide_tv_setup_tip: bool,
     #[serde(default)]
     pub notify_scene_failures: bool,
+    /// Keep steps that finished when a later scene or audio preset step fails.
+    #[serde(default)]
+    pub keep_completed_changes: bool,
+    /// How long scenes wait for a TV or audio device, and for waited apps (1–120 s).
+    #[serde(default = "default_wait")]
+    pub device_wait_seconds: u16,
+    /// The Scenes page's "make your next scene" tip was dismissed. Written only when set, so
+    /// older builds keep reading the file until the tip is dismissed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_next_scene_tip: bool,
+}
+fn default_wait() -> u16 {
+    30
+}
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            hide_tv_setup_tip: false,
+            notify_scene_failures: false,
+            keep_completed_changes: false,
+            device_wait_seconds: default_wait(),
+            hide_next_scene_tip: false,
+        }
+    }
+}
+impl Preferences {
+    pub fn scene_policy(&self) -> crate::scenes::ScenePolicy {
+        crate::scenes::ScenePolicy {
+            keep_completed: self.keep_completed_changes,
+            wait_seconds: self.device_wait_seconds.clamp(1, 120),
+        }
+    }
+    pub fn audio_policy(&self) -> crate::audio::FailurePolicy {
+        if self.keep_completed_changes {
+            crate::audio::FailurePolicy::KeepChanges
+        } else {
+            crate::audio::FailurePolicy::Revert
+        }
+    }
+}
+/// The saved preferences, or the defaults when they can't be read (a run must not fail
+/// because the preferences file is unreadable).
+pub fn current() -> Preferences {
+    path().and_then(|p| load(&p)).unwrap_or_default()
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,9 +106,22 @@ mod tests {
                 .as_nanos()
         ));
         let initial = load(&path).unwrap();
+        assert_eq!(initial.device_wait_seconds, 30);
+        assert!(!initial.hide_next_scene_tip);
+        std::fs::write(
+            &path,
+            br#"{"version":1,"preferences":{"hide_tv_setup_tip":false,"notify_scene_failures":false,"keep_completed_changes":false,"device_wait_seconds":30}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(&path).unwrap(), initial, "older files still load");
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(initial.audio_policy(), crate::audio::FailurePolicy::Revert);
         let hidden = Preferences {
             hide_tv_setup_tip: true,
             notify_scene_failures: true,
+            keep_completed_changes: true,
+            device_wait_seconds: 45,
+            hide_next_scene_tip: true,
         };
         save(&path, &initial, &hidden).unwrap();
         assert_eq!(load(&path).unwrap(), hidden);

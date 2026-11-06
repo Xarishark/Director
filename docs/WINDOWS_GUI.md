@@ -10,7 +10,11 @@ The GUI uses native NavigationView, ListView, Button, TextBox, ComboBox, NumberB
 
 ## Deployment
 
-The GUI is framework-dependent. windows-reactor 0.100.0 requires the x64 Microsoft.WindowsAppRuntime.2 framework package, version 2.4 or newer. If it is missing, it shows a download prompt at startup. The CLI does not need the runtime. Setup installs the pinned 2.6.5 runtime when needed (see below). This is not a portable self-contained distribution. The supported Windows baseline, licensing notices, and validation on a clean PC are still required.
+The GUI is framework-dependent. windows-reactor 0.100.0 requires the x64 Microsoft.WindowsAppRuntime.2 framework package, version 2.4 or newer. If it is missing, it shows a download prompt at startup. The CLI does not need the runtime. Setup installs the pinned 2.6.5 runtime when needed (see below). This is not a portable self-contained distribution. Licensing notices and validation on a clean PC are still required.
+
+## Supported Windows
+
+Director supports **Windows 11, version 24H2 (build 26100) or newer**, x64. HDR switching uses the display-configuration requests for advanced colour info and HDR state that Windows added in 24H2, and only current Windows 11 is tested. Most other features (layouts, audio, FPS, TVs, apps) use long-standing APIs, but older Windows isn't supported or tested. setup.exe (Burn `WindowsBuildNumber`) and the MSI (a launch condition on the registry `CurrentBuildNumber`) both refuse older builds with a message pointing to Windows Update. The executable embeds `build/director.manifest`, which declares Windows 10/11 support (so version APIs report the real build), `maxversiontested` 10.0.26100.0 and per-monitor v2 DPI awareness (WinUI sets the same at startup; the manifest makes CLI runs match). Raise `maxversiontested` when testing on a newer Windows release.
 
 Keep director.ico beside director.exe for the title-bar icon; the executable also embeds the same artwork. The requested local Director desktop shortcut points to this main executable. Build instructions are in [development](DEVELOPMENT.md).
 

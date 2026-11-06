@@ -177,3 +177,31 @@ The user requested short nontechnical Samsung/TCL instructions and a report with
 ### D057 — NVIDIA/RTSS global FPS controls (2026-11-03)
 
 The user approved global NVIDIA and optional RTSS providers, scene placement after audio and before launches, and direct Current setup/CLI application. Switch off means unchanged; disabling the global cap is an explicit selected action. Never fall back to another provider or alter competing limiters/game-specific overrides. Use direct installed DLL interfaces, snapshot/readback/restore and the existing scene failure policy. Driver configuration verification is distinct from measuring a game. Per-game targets remain later work.
+
+### D058 — Scenes / Now / Library navigation (2026-11-06)
+
+The user found the flat navigation (Scenes, Current setup, Audio presets, Display presets, TVs) disorganized and chose grouping into three areas. Scenes becomes the start page, Current setup is renamed Now, and the presets and TVs sit under an expandable Library item. Now can seed new Library presets, and the scene editor can create a missing preset or TV in place and return with it selected. Storage formats, CLI names and scene execution are unchanged.
+
+### D059 — Step-flow scene editor, Before/Leave actions and global failure policy (2026-11-06)
+
+The user found the scene form indistinguishable from Now, the side summary redundant, and per-scene recovery settings out of place. Scenes are now edited as a vertical flow of step blocks. Scenes gain Before actions (apps can wait for completion) and When leaving actions, plus a Close app action. Leave actions run when another scene is applied or the active scene is ended. Director remembers the active scene across the window and the CLI until the PC restarts. "Keep completed changes" and the device wait became one global Options setting shared by scenes and audio presets. The scenes file moved to version 2; version 1 still loads.
+
+### D060 — VRR-safe FPS cap, linked TV audio volume and a Windows 11 title bar (2026-11-06)
+
+The user asked for a VRR-safe FPS cap and chose the Reflex-style formula refresh − refresh²/3600, read from the primary display when applied (after a scene's Displays step). The FPS editor shows only the selected method's current value and names its choices "Set a frame rate limit" and "Remove the global limit". A scene's linked TV audio can now set a volume. The app name and pane toggle moved into a WinUI 3 TitleBar, so the navigation pane starts with the pages.
+
+### D061 — TV off when leaving, End beside +, shortcut commands and Save only on change (2026-11-06)
+
+The user wanted scenes to switch the TV off, chose a switch in the Prepare TV step that shows a locked "Turn off" card under When leaving, and asked that End appear only when leaving does something, next to + as a global action. Cards gain a ">_" button with copyable commands by name and by ID (for Stream Deck and shortcuts, using `director` on PATH); display and audio CLI commands accept IDs. The audio editor no longer shows the device ID. Save is enabled only for changed, valid drafts.
+
+### D062 — Local crash reports offered as GitHub issues (2026-11-06)
+
+Opening a scene step with actions closed the window: the pinned Reactor rejects tooltips inside a ContentDialog, and nothing recorded the failure beyond one log line. The user asked why crashes aren't collected so people can report them. Director now saves a local crash report for panics and fatal window errors and offers it once on the next start. Report on GitHub opens a pre-filled issue in the browser, so nothing is uploaded without the user submitting it; the log lines stay in the file for the user to attach. A test keeps tooltips out of dialog content.
+
+### D063 — Onboarding starts from the current setup (2026-11-06)
+
+The first-run checklist sent people to Now and to each Library page before they knew what a scene was, and its buttons were mismatched page names. The user asked for a better start that explains a scene for the everyday setup. The empty Scenes page now saves the current screens, sound and FPS limit as one scene (checkboxes, default name Default), reusing matching presets and changing no device, then shows a dismissible tip for making the next scene in the step editor, which can create presets in place.
+
+### D064 — Windows 11 24H2 is the minimum (2026-11-06)
+
+Director declared no Windows support: no app manifest (so version APIs reported 6.2.9200), no installer check and no documented baseline. HDR switching needs display-configuration requests added in Windows 11 24H2, and only current Windows 11 is tested, so the user chose 24H2 (build 26100) as the minimum rather than a partly working Windows 10 install. The executable embeds a manifest (Windows 10/11 supportedOS, maxversiontested 10.0.26100.0, per-monitor v2 DPI), and setup.exe and the MSI refuse older builds.

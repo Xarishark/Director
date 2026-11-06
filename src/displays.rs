@@ -12,6 +12,13 @@ pub struct RefreshRate {
     pub denominator: u32,
 }
 impl RefreshRate {
+    pub fn hz(&self) -> f64 {
+        if self.denominator == 0 {
+            0.0
+        } else {
+            self.numerator as f64 / self.denominator as f64
+        }
+    }
     pub fn label(&self) -> String {
         format!("{:.2} Hz", self.numerator as f64 / self.denominator as f64)
     }
@@ -30,6 +37,18 @@ pub struct DesktopMode {
     pub source_height: u32,
     pub refresh_rate: RefreshRate,
     pub rotation_degrees: u16,
+}
+impl Layout {
+    /// The refresh rate of the primary display, if one is on.
+    pub fn primary_refresh_hz(&self) -> Option<f64> {
+        self.monitors
+            .iter()
+            .filter(|m| m.enabled)
+            .filter_map(|m| m.desktop.as_ref())
+            .find(|d| d.primary())
+            .map(|d| d.refresh_rate.hz())
+            .filter(|hz| *hz > 0.0)
+    }
 }
 impl DesktopMode {
     pub fn primary(&self) -> bool {

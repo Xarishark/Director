@@ -169,6 +169,7 @@ impl DirectorApp {
                         self.status = format!("Relinked to {name}.");
                         self.error = false;
                         self.details.clear();
+                        self.announce(cx);
                         let devices = if input {
                             &mut self.inputs
                         } else {

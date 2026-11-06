@@ -5,9 +5,11 @@ use director::{
     displays::{Layout, Monitor},
 };
 use windows_reactor::*;
-pub(crate) const AUDIO_CARD_HEIGHT: f64 = 300.0;
+/// Sized to the content so short cards don't end in empty space.
+pub(crate) const AUDIO_CARD_HEIGHT: f64 = 240.0;
 pub(crate) const DISPLAY_CARD_HEIGHT: f64 = 300.0;
 pub(crate) const SCENE_CARD_HEIGHT: f64 = 340.0;
+pub(crate) const TV_CARD_HEIGHT: f64 = 220.0;
 const CARD_WIDTH: f64 = 340.0;
 const CARD_GAP: f64 = 8.0;
 /// Shared height for a card's Apply, edit and delete buttons so their hover areas line up.
@@ -38,7 +40,8 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
                 .keyed_children(cards),
         )
 }
-pub(crate) fn card(name: &str, body: View, actions: Vec<View>, height: f64) -> View {
+/// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
+pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, height: f64) -> View {
     Border::new()
         .automation_name(name)
         .horizontal_alignment(HorizontalAlignment::Left)
@@ -53,17 +56,24 @@ pub(crate) fn card(name: &str, body: View, actions: Vec<View>, height: f64) -> V
         .content(
             StackPanel::new().spacing(12.0).children((
                 Grid::new()
-                    .columns([GridLength::Star(1.0), GridLength::Auto])
-                    .column_spacing(8.0)
+                    .columns([
+                        GridLength::Auto,
+                        GridLength::Auto,
+                        GridLength::Star(1.0),
+                        GridLength::Auto,
+                    ])
+                    .column_spacing(4.0)
                     .children((
                         TextBlock::new()
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
+                            .max_width(150.0)
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
-                        Border::new().grid_column(1).content(action_row(actions)),
+                        Border::new().grid_column(1).content(command),
+                        Border::new().grid_column(3).content(action_row(actions)),
                     )),
                 body,
             )),
@@ -157,6 +167,14 @@ fn screen_lines(layout: &Layout, group: &[usize], width: f64, height: f64) -> Ve
     lines
 }
 pub(crate) fn layout_preview(layout: &Layout, height: f64) -> View {
+    preview(layout, height, true)
+}
+/// The same preview without the per-screen tooltips, for use inside a ContentDialog: the
+/// pinned Reactor closes the window when a dialog hosts a tooltip.
+pub(crate) fn layout_preview_in_dialog(layout: &Layout, height: f64) -> View {
+    preview(layout, height, false)
+}
+fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
     const WIDTH: f64 = 308.0;
     let mut seen = std::collections::BTreeSet::new();
     let active = layout
@@ -244,34 +262,38 @@ pub(crate) fn layout_preview(layout: &Layout, height: f64) -> View {
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
+            let screen = Border::new()
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .vertical_alignment(VerticalAlignment::Top)
+                .width(width)
+                .height(screen_height)
+                .padding(Thickness::new(4.0, 4.0, 4.0, 4.0))
+                .margin(Thickness::new(
+                    left + (f64::from(d.x) - min_x) * scale,
+                    top + (f64::from(d.y) - min_y) * scale,
+                    0.0,
+                    0.0,
+                ))
+                .background(Color::rgb(38, 52, 69))
+                .border_brush(if d.primary() {
+                    Color::rgb(255, 148, 113)
+                } else {
+                    Color::rgb(145, 167, 187)
+                })
+                .border_thickness(1.0)
+                .corner_radius(4.0)
+                .content(
+                    StackPanel::new()
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .keyed_children(lines),
+                );
             KeyedView::new(
                 format!("preview-screen-{i}"),
-                Border::new()
-                    .horizontal_alignment(HorizontalAlignment::Left)
-                    .vertical_alignment(VerticalAlignment::Top)
-                    .width(width)
-                    .height(screen_height)
-                    .padding(Thickness::new(4.0, 4.0, 4.0, 4.0))
-                    .margin(Thickness::new(
-                        left + (f64::from(d.x) - min_x) * scale,
-                        top + (f64::from(d.y) - min_y) * scale,
-                        0.0,
-                        0.0,
-                    ))
-                    .background(Color::rgb(38, 52, 69))
-                    .border_brush(if d.primary() {
-                        Color::rgb(255, 148, 113)
-                    } else {
-                        Color::rgb(145, 167, 187)
-                    })
-                    .border_thickness(1.0)
-                    .corner_radius(4.0)
-                    .content(
-                        StackPanel::new()
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .keyed_children(lines),
-                    )
-                    .tooltip(details),
+                if tooltips {
+                    screen.tooltip(details)
+                } else {
+                    screen
+                },
             )
         })
         .collect::<Vec<_>>();
@@ -360,6 +382,15 @@ impl DirectorApp {
                     p.id.clone(),
                     card(
                         &p.name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Audio,
+                                name: p.name.clone(),
+                                id: p.id.clone(),
+                                can_end: false,
+                            },
+                        ),
                         body,
                         vec![
                             apply_button(
@@ -410,6 +441,15 @@ impl DirectorApp {
                     p.id.clone(),
                     card(
                         &p.name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Display,
+                                name: p.name.clone(),
+                                id: p.id.clone(),
+                                can_end: false,
+                            },
+                        ),
                         body,
                         vec![
                             apply_button(

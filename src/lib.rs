@@ -33,6 +33,7 @@ pub mod tv_cli;
 
 #[cfg(windows)]
 pub mod backup;
+pub mod crash;
 pub mod diagnostics;
 pub mod display_capabilities;
 pub mod display_detection;
@@ -47,7 +48,11 @@ pub mod windows_display_detection;
 
 pub mod display_mirroring;
 
+pub mod scene_session;
 pub mod scenes;
+pub mod starter;
+#[cfg(windows)]
+pub mod windows_close;
 #[cfg(windows)]
 pub mod windows_scenes;
 

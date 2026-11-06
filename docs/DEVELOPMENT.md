@@ -88,6 +88,12 @@ The ignored tv_controls_ui::native_preview::controls_fixture test opens the moda
 
 The pinned Reactor version rejects the tooltip wrapper on Refresh inside ContentDialog with StructureUnsupported. The refresh button retains its accessible name without that wrapper. No dependency/cache modification was made. Keep this native regression check when changing dialog content.
 
+The same rule applies to everything a dialog hosts: the scene step dialogs once had tooltips on their action rows (Move up, Move down, Remove) and on the chosen app's name, and opening a step with actions closed the window. Give those controls an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the crash dialog and the command dialog; extend it when a new dialog hosts shared controls. Shared helpers can hide a tooltip too: the display preview put one on each screen and crashed the Displays step dialog, so dialogs use `layout_preview_in_dialog`, and the test only lets the step dialogs call helpers on its checked list.
+
+## Crash reports
+
+`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, backtrace for panics and the newest 40 log records. On the next start the newest unoffered report is shown once; dismissing it renames it to `.seen.txt`. Report on GitHub opens `issues/new` with only the summary, version and backtrace in the URL: the log lines stay in the file for the user to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well, since each one is a bug. Native faults that bypass the panic hook (fail-fast, access violations) still appear only in Windows' Application event log.
+
 
 ## Action SVG assets
 

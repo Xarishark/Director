@@ -1,6 +1,6 @@
 # HDR control
 
-HDR is an optional per-monitor setting in display presets and Current setup. New captures include Windows' reported HDR preference when the display/API supports it. The toggle is disabled with an explanation when that state is unavailable.
+HDR is an optional per-monitor setting in display presets and Now. New captures include Windows' reported HDR preference when the display/API supports it. The toggle is disabled with an explanation when that state is unavailable.
 
 ## Storage and application
 

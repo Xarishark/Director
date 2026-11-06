@@ -142,22 +142,29 @@ pub fn cli(args: &[String]) -> Result<i32, String> {
             Ok(0)
         }
         [command, provider, limit] if command == "set" => {
+            let vrr_safe = limit == "vrr";
             let request = Request {
                 provider: Provider::parse(provider)?,
-                limit: if limit == "off" {
+                limit: if limit == "off" || vrr_safe {
                     None
                 } else {
                     Some(
                         limit
                             .parse()
-                            .map_err(|_| "Use an integer FPS value or off.")?,
+                            .map_err(|_| "Use an integer FPS value, vrr or off.")?,
                     )
                 },
+                vrr_safe,
             };
-            println!("{}", apply(&request, false)?);
+            let refresh = if vrr_safe {
+                crate::windows_displays::capture()?.primary_refresh_hz()
+            } else {
+                None
+            };
+            println!("{}", apply(&request.resolved(refresh)?, false)?);
             Ok(0)
         }
-        _ => Err("Use: director fps status | director fps set <nvidia|rtss> <FPS|off>".into()),
+        _ => Err("Use: director fps status | director fps set <nvidia|rtss> <FPS|vrr|off>".into()),
     }
 }
 type Handle = *mut c_void;
@@ -534,6 +541,7 @@ mod tests {
             let request = crate::fps::Request {
                 provider,
                 limit: Some(61),
+                vrr_safe: false,
             };
             let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 backend.set(&request)?;

@@ -220,6 +220,7 @@ impl DirectorApp {
                 self.error = matches!(report.outcome, Outcome::Failed | Outcome::RecoveryFailed);
                 self.status = report.message;
                 self.details = report.details.join("\n");
+                self.announce(cx);
                 match current {
                     Ok(layout) => self.display.current = Some(layout),
                     Err(e) => {
@@ -266,6 +267,7 @@ impl DirectorApp {
                 }
                 .into();
                 self.details = errors.join("\n");
+                self.library_resume(cx);
             }
             DisplayMessage::Create if self.display_ready() && self.display.draft.is_none() => {
                 self.begin("Reading monitors and supported display modes…");
@@ -387,6 +389,7 @@ impl DirectorApp {
                             draft.layout = layout;
                         }
                         self.status="Configure your layout, then save the preset. Your screens stay unchanged.".into();
+                        self.rebase_display();
                     }
                     Err(e) => self.failure(e),
                 }
@@ -475,6 +478,7 @@ impl DirectorApp {
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
+                self.library_cancelled(crate::library_flow::Slot::Display, cx);
             }
             DisplayMessage::Save if self.display_ready() && self.display.drag.is_none() => {
                 if let Some(mut preset) = self.display.draft.clone() {
@@ -498,12 +502,19 @@ impl DirectorApp {
             DisplayMessage::Saved(result) => match result {
                 Ok(p) => {
                     self.end();
+                    let added = crate::library_flow::added_id(
+                        self.display.presets.iter().map(|p| p.id.as_str()),
+                        p.iter().map(|p| p.id.as_str()),
+                    );
                     self.display.presets = p;
                     self.display.draft = None;
                     self.display.editor = None;
                     self.display.drag = None;
                     self.display.pending_delete = None;
                     self.status = "Display presets saved. Your screens are unchanged.".into();
+                    self.guard_saved(true, cx);
+                    self.announce(cx);
+                    self.library_saved(crate::library_flow::Slot::Display, added, cx);
                 }
                 Err(e) => self.failure(e),
             },
@@ -599,7 +610,7 @@ impl DirectorApp {
                         TextBlock::new().grid_column(0).text("Saving won’t change your screens.").text_wrapping(TextWrapping::Wrap).opacity(0.72).vertical_alignment(VerticalAlignment::Center),
                         StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
                             Button::new().is_enabled(!self.busy && self.display.setup.recovery.is_none()).on_click(cx.message(msg(DisplayMessage::Cancel))).content("Cancel"),
-                            Button::new().style(ButtonStyle::Accent).automation_name("Save display preset").is_enabled(self.display_ready() && self.display.drag.is_none() && !d.name.trim().is_empty() && d.name.trim().len()<=160).on_click(cx.message(msg(DisplayMessage::Save))).content("Save preset"),
+                            Button::new().style(ButtonStyle::Accent).automation_name("Save display preset").is_enabled(self.display_ready() && self.display.drag.is_none() && !d.name.trim().is_empty() && d.name.trim().len()<=160 && self.draft_changed(crate::Page::Displays)).on_click(cx.message(msg(DisplayMessage::Save))).content("Save preset"),
                         )),
                     )),
                 ));
@@ -607,7 +618,7 @@ impl DirectorApp {
         let rows = self.display_preset_cards(cx);
         let list = if rows.is_empty() {
             Border::new()
-                .grid_row(2)
+                .grid_row(1)
                 .padding(Thickness::xy(8.0, 24.0))
                 .content(
                     StackPanel::new().spacing(10.0).children((
@@ -620,21 +631,32 @@ impl DirectorApp {
                             .font_size(20.0)
                             .text_wrapping(TextWrapping::Wrap),
                         TextBlock::new()
-                            .text("Create a custom preset, or capture the layout you already use.")
+                            .text("Create a custom preset, capture the layout you already use, or arrange your screens in Now and save them from there.")
                             .text_wrapping(TextWrapping::Wrap)
                             .opacity(0.72),
+                        Button::new()
+                            .is_enabled(!self.busy)
+                            .on_click(cx.message(crate::Message::Navigate(Some("current".into()))))
+                            .content("Open Now"),
                     )),
                 )
         } else {
-            crate::preset_cards_ui::card_grid(2, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
+            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
         };
         Grid::new()
-            .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
+            .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
-                    "Display presets",
-                    "Your monitor layouts, remembered.",
+                    "Displays",
+                    "Saved monitor layouts you can use in scenes.",
                     vec![
+                        crate::preset_ui::current(
+                            "CURRENT LAYOUT",
+                            self.display
+                                .current
+                                .as_ref()
+                                .map_or("Current layout unavailable".into(), Layout::summary),
+                        ),
                         Button::new()
                             .automation_name("Capture current layout")
                             .is_enabled(self.display_ready())
@@ -650,24 +672,6 @@ impl DirectorApp {
                             .tooltip("Add display preset"),
                     ],
                 ),
-                StackPanel::new()
-                    .grid_row(1)
-                    .spacing(5.0)
-                    .margin(Thickness::new(0.0, 0.0, 0.0, 20.0))
-                    .children((
-                        TextBlock::new()
-                            .text("CURRENT LAYOUT")
-                            .font_size(10.0)
-                            .opacity(0.65),
-                        TextBlock::new()
-                            .text(
-                                self.display
-                                    .current
-                                    .as_ref()
-                                    .map_or("Current layout unavailable".into(), Layout::summary),
-                            )
-                            .text_wrapping(TextWrapping::Wrap),
-                    )),
                 list,
             ))
     }

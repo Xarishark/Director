@@ -26,6 +26,16 @@ impl Provider {
 pub struct Request {
     pub provider: Provider,
     pub limit: Option<u32>,
+    /// Cap a little below the primary display's refresh rate, worked out when applied.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vrr_safe: bool,
+}
+/// A VRR-safe FPS cap for a refresh rate: refresh − refresh²/3600, the curve NVIDIA Reflex
+/// uses (240 Hz → 224, 144 Hz → 138, 120 Hz → 116).
+pub fn vrr_safe_cap(refresh_hz: f64) -> u32 {
+    (refresh_hz - refresh_hz * refresh_hz / 3600.0)
+        .floor()
+        .max(1.0) as u32
 }
 impl Request {
     pub fn validate(&self) -> Result<(), String> {
@@ -33,7 +43,7 @@ impl Request {
             Provider::Nvidia => 1023,
             Provider::Rtss => 1000,
         };
-        if self.limit.is_some_and(|n| n == 0 || n > max) {
+        if !self.vrr_safe && self.limit.is_some_and(|n| n == 0 || n > max) {
             return Err(format!(
                 "{} global FPS limit must be 1–{max}, or choose Disable limit.",
                 self.provider.label()
@@ -45,11 +55,29 @@ impl Request {
         format!(
             "{} · {}",
             self.provider.label(),
-            self.limit
-                .map_or("global limit disabled".into(), |v| format!(
-                    "{v} FPS, global"
-                ))
+            if self.vrr_safe {
+                "VRR-safe cap, global".into()
+            } else {
+                self.limit.map_or("global limit removed".into(), |v| {
+                    format!("{v} FPS, global")
+                })
+            }
         )
+    }
+    /// The concrete request to apply. A VRR-safe cap needs the primary display's refresh
+    /// rate, read just before applying.
+    pub fn resolved(&self, refresh_hz: Option<f64>) -> Result<Request, String> {
+        if !self.vrr_safe {
+            return Ok(self.clone());
+        }
+        let hz = refresh_hz.ok_or(
+            "The VRR-safe cap needs the primary display's refresh rate, which couldn't be read.",
+        )?;
+        Ok(Request {
+            provider: self.provider,
+            limit: Some(vrr_safe_cap(hz)),
+            vrr_safe: false,
+        })
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +191,7 @@ mod tests {
         let r = Request {
             provider: Provider::Rtss,
             limit: Some(60),
+            vrr_safe: false,
         };
         assert!(apply(&mut b, &r, false).unwrap_err().contains("restored"));
         assert_eq!(b.value, before);
@@ -176,6 +205,7 @@ mod tests {
         let r = Request {
             provider: Provider::Rtss,
             limit: None,
+            vrr_safe: false,
         };
         let mut s = Snapshot {
             provider: Provider::Rtss,
@@ -198,7 +228,8 @@ mod tests {
         assert!(
             Request {
                 provider: Provider::Nvidia,
-                limit: Some(1024)
+                limit: Some(1024),
+                vrr_safe: false,
             }
             .validate()
             .is_err()
@@ -206,10 +237,30 @@ mod tests {
         assert!(
             Request {
                 provider: Provider::Rtss,
-                limit: Some(0)
+                limit: Some(0),
+                vrr_safe: false,
             }
             .validate()
             .is_err()
         );
+    }
+    #[test]
+    fn vrr_safe_cap_follows_the_reflex_curve_and_resolves_at_apply_time() {
+        assert_eq!(vrr_safe_cap(240.0), 224);
+        assert_eq!(vrr_safe_cap(144.0), 138);
+        assert_eq!(vrr_safe_cap(120.0), 116);
+        assert_eq!(vrr_safe_cap(60.0), 59);
+        let r = Request {
+            provider: Provider::Rtss,
+            limit: None,
+            vrr_safe: true,
+        };
+        assert!(r.validate().is_ok());
+        assert_eq!(r.resolved(Some(239.99)).unwrap().limit, Some(223));
+        assert!(r.resolved(None).is_err());
+        let json = serde_json::to_value(&r).unwrap();
+        assert_eq!(json["vrr_safe"], true);
+        let old: Request = serde_json::from_str(r#"{"provider":"rtss","limit":228}"#).unwrap();
+        assert!(!old.vrr_safe);
     }
 }

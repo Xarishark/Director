@@ -377,7 +377,7 @@ impl DirectorApp {
                                     Grid::new().columns([GridLength::Star(1.0), GridLength::Auto]).column_spacing(8.0).children((
                                         TextBlock::new().text(format!("Linked TV: {}", tv.name)).font_size(12.0).opacity(0.72).vertical_alignment(VerticalAlignment::Center).text_wrapping(TextWrapping::Wrap),
                                         Button::new().grid_column(1).style(ButtonStyle::Subtle).automation_name(format!("View linked TV {}", tv.name)).is_enabled(!self.busy)
-                                            .on_click(cx.message(Message::Navigate(Some("tvs".into())))).content("View TV"),
+                                            .on_click(cx.message(Message::Go("tvs".into()))).content("View TV"),
                                     ))
                                 }).unwrap_or_else(View::empty),
                                 options

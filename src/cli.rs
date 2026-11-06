@@ -13,7 +13,7 @@ pub fn run(args: &[String]) -> i32 {
         }
         if args == ["--help"] || args == ["help"] {
             println!(
-                "Director — setup presets preview\n\n  director --version\n  director fps status\n  director fps set <nvidia|rtss> <FPS|off>\n  director tv list\n  director tv pair <name>\n  director tv check <name>\n  director tv learn <name>\n  director tv wake <name>\n  director tv status <name>\n  director tv off <name>\n  director tv input <name> <input-id>\n  director tv report <name>\n  director audio presets\n  director display current [--json]\n  director display presets [--json]\n  director display capture <name>\n  director display check <name>\n  director display apply <name> [--yes | --confirm]\n  director audio list [--json]\n  director audio inputs [--json]\n  director audio check\n  director audio volume <output-name-or-endpoint-id> <0..100>\n  director audio apply <preset-name-or-endpoint-id> [--volume 0..100] [--keep-on-failure]\n\nWithout arguments, opens the window. Output Apply changes Console, Multimedia and Communications, unless the saved preset selects a separate communications output. Microphones change only when enabled in the preset.\nCreate named audio presets in the window. Display capture only saves your layout; it does not change your screens. Display Apply follows the saved confirmation preference; --yes skips the prompt and --confirm requires it. Verification and recovery always run. Scenes combine independent presets and actions. Use director scene list | check <name-or-id> | apply <name-or-id> [--yes | --confirm]."
+                "Director — setup presets preview\n\n  director --version\n  director fps status\n  director fps set <nvidia|rtss> <FPS|vrr|off>\n  director tv list\n  director tv pair <name>\n  director tv check <name>\n  director tv learn <name>\n  director tv wake <name>\n  director tv status <name>\n  director tv off <name>\n  director tv input <name> <input-id>\n  director tv report <name>\n  director audio presets\n  director display current [--json]\n  director display presets [--json]\n  director display capture <name>\n  director display check <name-or-id>\n  director display apply <name-or-id> [--yes | --confirm]\n  director audio list [--json]\n  director audio inputs [--json]\n  director audio check\n  director audio volume <output-name-or-endpoint-id> <0..100>\n  director audio apply <preset-name-id-or-endpoint-id> [--volume 0..100] [--keep-on-failure]\n\nWithout arguments, opens the window. Output Apply changes Console, Multimedia and Communications, unless the saved preset selects a separate communications output. Microphones change only when enabled in the preset.\nCreate named audio presets in the window. Display capture only saves your layout; it does not change your screens. Display Apply follows the saved confirmation preference; --yes skips the prompt and --confirm requires it. Verification and recovery always run. Scenes combine independent presets and actions. Use director scene list | end | check <name-or-id> | apply <name-or-id> [--yes | --confirm]. Applying a scene first runs the previous scene's When leaving actions; end runs them without applying another scene."
             );
             return Ok(0);
         }
@@ -103,7 +103,7 @@ pub fn run(args: &[String]) -> i32 {
             [area, command, target, rest @ ..] if area == "audio" && command == "apply" => {
                 let saved = presets::load(&presets::path()?)?
                     .into_iter()
-                    .find(|p| p.name.to_lowercase() == target.to_lowercase());
+                    .find(|p| p.id == *target || p.name.to_lowercase() == target.to_lowercase());
                 let mut volume_override = None;
                 let mut keep_override = false;
                 let mut i = 0;
@@ -139,10 +139,14 @@ pub fn run(args: &[String]) -> i32 {
                     (
                         p.output_id,
                         volume_override.or(p.volume_percent),
-                        keep_override || p.keep_changes,
+                        keep_override || crate::preferences::current().keep_completed_changes,
                     )
                 } else if target.starts_with('{') {
-                    (target.clone(), volume_override, keep_override)
+                    (
+                        target.clone(),
+                        volume_override,
+                        keep_override || crate::preferences::current().keep_completed_changes,
+                    )
                 } else {
                     return Err(format!(
                         "No audio preset named “{target}”. Create it in the window first."

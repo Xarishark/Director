@@ -11,8 +11,9 @@ fn svg(name: &str, size: f64) -> View {
         .map(|image| image.width(size).height(size).into())
         .unwrap_or_else(|_| View::empty())
 }
+/// The remote-control icon, sized for card buttons.
 pub(crate) fn remote() -> View {
-    svg("remote.svg", 24.0)
+    svg("remote.svg", 18.0)
 }
 pub(crate) fn delete() -> View {
     svg("delete.svg", 20.0)

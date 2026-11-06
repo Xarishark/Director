@@ -256,6 +256,7 @@ impl DirectorApp {
                         self.status =
                             "Command sent. Please confirm what happened on the TV.".into();
                         self.details.clear();
+                        self.announce(cx);
                     }
                 }
             }
@@ -283,6 +284,7 @@ impl DirectorApp {
                     }
                     .into();
                     self.details.clear();
+                    self.announce(cx);
                 }
             }
             TvMessage::ReportModel(v) if !self.busy => {
@@ -339,6 +341,7 @@ impl DirectorApp {
                     Ok(path) => {
                         self.error = false;
                         self.status = "Redacted compatibility report saved.".into();
+                        self.announce(cx);
                         self.details = path;
                     }
                     Err(e) => self.failure(e),
@@ -401,8 +404,9 @@ impl DirectorApp {
                     Ok(d) => self.tv.displays = d,
                     Err(e) => {
                         self.tv.displays.clear();
-                        self.details = format!(
-                            "TV setup is available. Windows display links could not be read: {e}"
+                        self.warn(
+                            "Windows display links could not be read.",
+                            format!("TV setup is still available. {e}"),
                         );
                     }
                 }
@@ -488,6 +492,16 @@ impl DirectorApp {
                 } else {
                     String::new()
                 };
+                if paired {
+                    // Stay here so the pairing note stays visible.
+                    self.warn(
+                        "Setup cancelled.",
+                        "Any permission already granted on the TV remains until you remove it in the TV’s settings.",
+                    );
+                    self.flow.navigated();
+                } else {
+                    self.library_cancelled(crate::library_flow::Slot::Tv, cx);
+                }
             }
             TvMessage::Name(v) if !self.busy => {
                 if let Some(d) = &mut self.tv.draft {
@@ -691,6 +705,15 @@ impl DirectorApp {
                     }
                     .into();
                     self.details = details.network_warning.unwrap_or_default();
+                    if self.tv.setup.is_none() {
+                        // Refreshed data for a saved TV isn't an edit.
+                        self.rebase_tv();
+                    }
+                    if self.details.is_empty() {
+                        self.announce(cx);
+                    } else {
+                        self.warn(self.status.clone(), self.details.clone());
+                    }
                 }
                 Err(e) => {
                     if self.tv.setup.is_some() {
@@ -698,9 +721,11 @@ impl DirectorApp {
                     } else {
                         self.end();
                         self.error = false;
-                        self.status = "Showing saved TV details.".into();
-                        self.details = format!(
-                            "Live TV information is unavailable. Saved choices remain editable. {e}"
+                        self.warn(
+                            "Showing saved TV details.",
+                            format!(
+                                "Live TV information is unavailable. Saved choices remain editable. {e}"
+                            ),
                         );
                     }
                 }
@@ -820,6 +845,10 @@ impl DirectorApp {
             TvMessage::Saved(result) => match result {
                 Ok(tvs) => {
                     self.end();
+                    let added = crate::library_flow::added_id(
+                        self.tv.tvs.iter().map(|t| t.id.as_str()),
+                        tvs.iter().map(|t| t.id.as_str()),
+                    );
                     self.tv.tvs = tvs;
                     self.tip.tvs = self.tv.tvs.clone();
                     self.tip.catalog_loaded = true;
@@ -827,6 +856,9 @@ impl DirectorApp {
                     self.tv.setup = None;
                     self.tv.pending_delete = None;
                     self.status = "TVs saved.".into();
+                    self.guard_saved(true, cx);
+                    self.announce(cx);
+                    self.library_saved(crate::library_flow::Slot::Tv, added, cx);
                 }
                 Err(e) => self.failure(e),
             },
@@ -866,121 +898,142 @@ impl DirectorApp {
             };
         }
         let ready = self.tv_ready();
-        let rows =
-            self.tv
-                .tvs
-                .iter()
-                .map(|tv| {
-                    let controls = tv.id.clone();
-
-                    let edit = tv.id.clone();
-                    let delete = tv.id.clone();
-                    let row =
-                        Grid::new()
-                            .columns([GridLength::Star(1.0), GridLength::Auto])
-                            .column_spacing(12.0)
-                            .margin(Thickness::xy(4.0, 10.0))
-                            .children((
-                                StackPanel::new().grid_column(0).spacing(4.0).children((
-                                    TextBlock::new()
-                                        .text(tv.name.clone())
-                                        .font_size(16.0)
-                                        .font_weight(FontWeight::SEMI_BOLD)
-                                        .text_trimming(TextTrimming::CharacterEllipsis),
-                                    note(format!(
-                                        "{} · {} · {} · {}",
-                                        tv.brand.label(),
-                                        tv.address,
-                                        if tv.credential.is_some() {
-                                            "Paired"
-                                        } else {
-                                            "Not paired"
-                                        },
-                                        if tv.brand == tvs::Brand::TclAndroid {
-                                            "Remote wake · network standby required"
-                                        } else if tv.network.targets().is_empty() {
-                                            "Wake not configured"
-                                        } else {
-                                            "Wake available"
-                                        }
-                                    )),
-                                    TextBlock::new()
-                                        .text(format!(
-                                            "PC: {} · Windows: {}",
-                                            tv.pc_input
-                                                .as_ref()
-                                                .map_or("Not linked", |i| i.label.as_str()),
-                                            tv.display
-                                                .as_ref()
-                                                .map_or("Not linked", |d| d.name.as_str())
-                                        ))
-                                        .opacity(0.72)
-                                        .font_size(12.0)
-                                        .text_trimming(TextTrimming::CharacterEllipsis),
-                                )),
-                                StackPanel::new()
-                                    .grid_column(1)
-                                    .orientation(Orientation::Horizontal)
-                                    .spacing(4.0)
-                                    .vertical_alignment(VerticalAlignment::Center)
-                                    .children((
-                                        Button::new()
-                                            .style(ButtonStyle::Subtle)
-                                            .automation_name(format!("Control {}", tv.name))
-                                            .is_enabled(ready)
-                                            .on_click(cx.callback(move |()| {
-                                                msg(TvMessage::Control(
-                                                    crate::tv_controls_ui::ControlMessage::Open(
-                                                        controls.clone(),
-                                                    ),
-                                                ))
-                                            }))
-                                            .content(crate::icons::remote())
-                                            .tooltip("TV controls"),
-                                        Button::new()
-                                            .style(ButtonStyle::Subtle)
-                                            .automation_name(format!("Edit {}", tv.name))
-                                            .is_enabled(ready)
-                                            .on_click(cx.callback(move |()| {
-                                                msg(TvMessage::Edit(edit.clone()))
-                                            }))
-                                            .content(FontIcon::new().glyph("\u{e70f}"))
-                                            .tooltip("Edit TV"),
-                                        Button::new()
-                                            .style(ButtonStyle::Subtle)
-                                            .automation_name(format!("Remove {}", tv.name))
-                                            .is_enabled(ready)
-                                            .on_click(cx.callback(move |()| {
-                                                msg(TvMessage::Delete(delete.clone()))
-                                            }))
-                                            .content(crate::icons::delete())
-                                            .tooltip("Remove TV"),
-                                    )),
-                            ));
-                    KeyedView::new(
-                        tv.id.clone(),
-                        ListViewItem::new()
-                            .automation_name(tv.name.clone())
-                            .content(row),
-                    )
-                })
-                .collect::<Vec<_>>();
+        let line = |text: String, size: f64, opacity: f64| -> View {
+            TextBlock::new()
+                .text(text)
+                .font_size(size)
+                .opacity(opacity)
+                .text_trimming(TextTrimming::CharacterEllipsis)
+                .into()
+        };
+        let cards = self
+            .tv
+            .tvs
+            .iter()
+            .map(|tv| {
+                let controls = tv.id.clone();
+                let edit = tv.id.clone();
+                let delete = tv.id.clone();
+                let wake = if tv.brand == tvs::Brand::TclAndroid {
+                    "Remote wake"
+                } else if tv.network.targets().is_empty() {
+                    "Wake not set up"
+                } else {
+                    "Wake available"
+                };
+                let body = StackPanel::new().spacing(8.0).children((
+                    TextBlock::new()
+                        .text("CONNECTION")
+                        .font_size(10.0)
+                        .opacity(0.65),
+                    Grid::new()
+                        .columns([GridLength::Auto, GridLength::Star(1.0)])
+                        .column_spacing(12.0)
+                        .children((
+                            FontIcon::new()
+                                .glyph("\u{e7f4}")
+                                .vertical_alignment(VerticalAlignment::Center),
+                            TextBlock::new()
+                                .grid_column(1)
+                                .text(tv.brand.label())
+                                .font_size(17.0)
+                                .text_trimming(TextTrimming::CharacterEllipsis),
+                        )),
+                    line(
+                        format!(
+                            "{} · {} · {wake}",
+                            tv.address,
+                            if tv.credential.is_some() {
+                                "Paired"
+                            } else {
+                                "Not paired"
+                            }
+                        ),
+                        13.0,
+                        0.8,
+                    ),
+                    line(
+                        format!(
+                            "PC input: {}",
+                            tv.pc_input
+                                .as_ref()
+                                .map_or("Not linked", |i| i.label.as_str())
+                        ),
+                        12.0,
+                        0.8,
+                    ),
+                    line(
+                        format!(
+                            "Windows display: {}",
+                            tv.display
+                                .as_ref()
+                                .map_or("Not linked", |d| d.name.as_str())
+                        ),
+                        12.0,
+                        0.8,
+                    ),
+                    line(
+                        format!(
+                            "Audio: {}",
+                            tv.audio.as_ref().map_or("Not linked", |a| a.name.as_str())
+                        ),
+                        12.0,
+                        0.8,
+                    ),
+                ));
+                KeyedView::new(
+                    tv.id.clone(),
+                    crate::preset_cards_ui::card(
+                        &tv.name,
+                        View::empty(),
+                        body,
+                        vec![
+                            crate::preset_cards_ui::card_icon_button(Button::new())
+                                .automation_name(format!("Control {}", tv.name))
+                                .is_enabled(ready)
+                                .on_click(cx.callback(move |()| {
+                                    msg(TvMessage::Control(
+                                        crate::tv_controls_ui::ControlMessage::Open(
+                                            controls.clone(),
+                                        ),
+                                    ))
+                                }))
+                                .content(crate::icons::remote())
+                                .tooltip("TV controls"),
+                            crate::preset_cards_ui::card_icon_button(Button::new())
+                                .automation_name(format!("Edit {}", tv.name))
+                                .is_enabled(ready)
+                                .on_click(cx.callback(move |()| msg(TvMessage::Edit(edit.clone()))))
+                                .content(crate::preset_cards_ui::card_edit_icon())
+                                .tooltip("Edit TV"),
+                            crate::preset_cards_ui::card_icon_button(Button::new())
+                                .automation_name(format!("Remove {}", tv.name))
+                                .is_enabled(ready)
+                                .on_click(
+                                    cx.callback(move |()| msg(TvMessage::Delete(delete.clone()))),
+                                )
+                                .content(crate::icons::delete_small())
+                                .tooltip("Remove TV"),
+                        ],
+                        crate::preset_cards_ui::TV_CARD_HEIGHT,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
         let list = if self.tv.tvs.is_empty() {
             Border::new().grid_row(1).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
    TextBlock::new().text(if self.busy{"Loading your TVs…"}else if !self.tv.ready{"Your TVs could not be loaded"}else{"Add your first TV"}).font_size(20.0),
    note("Choose + and Director will guide you through pairing, choosing your PC input, and setting up wake."),
   )))
         } else {
-            ListView::new()
-                .grid_row(1)
-                .collection_slot(ListViewSlot::Items, rows)
+            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::TV_CARD_HEIGHT, cards)
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
                     "TVs",
-                    "Connect your TVs independently of presets and scenes.",
+                    "Paired TVs that scenes can wake and switch.",
                     vec![
                         Button::new()
                             .style(ButtonStyle::Accent)
@@ -1308,7 +1361,7 @@ impl DirectorApp {
     TextBlock::new().grid_column(0).text("Saving remembers your choices.").opacity(0.72).text_wrapping(TextWrapping::Wrap).vertical_alignment(VerticalAlignment::Center),
     StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
      Button::new().is_enabled(!self.busy).on_click(cx.message(msg(TvMessage::Cancel))).content("Cancel"),
-     Button::new().style(ButtonStyle::Accent).is_enabled(self.tv_ready()&&valid).on_click(cx.message(msg(TvMessage::Save))).content(if changed{"Continue setup"}else{"Save TV"}),
+     Button::new().style(ButtonStyle::Accent).is_enabled(self.tv_ready()&&valid&&(changed||self.draft_changed(crate::Page::Tvs))).on_click(cx.message(msg(TvMessage::Save))).content(if changed{"Continue setup"}else{"Save TV"}),
     )),
    )),
   ))

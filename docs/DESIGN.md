@@ -1,12 +1,44 @@
 # Director interface
 
+## Information architecture — current
+
+The navigation pane has three areas. Scenes is the start page (except when opened from a failed-scene notification, which opens Options). Now (formerly Current setup) adjusts the live setup without saving. Library is an expanded, non-selectable parent item with Displays, Audio and TVs. Options stays in the pane footer. Each area has its own icon; Displays and TVs no longer share one.
+
+Pages connect forward instead of being islands. Now offers Save as display preset… and Save as audio preset…, which open the normal Library editor seeded from the staged state. The last entry of each scene-editor dropdown (New display preset…, New audio preset…, Add TV…) opens the Library editor and, after Save, returns to the scene with the new item selected; Cancel also returns. A sidebar navigation abandons the return. An existing open Library draft is never overwritten: the user is sent to finish or cancel it. The empty Scenes page is a checklist of the building blocks, linking to Now and the Library. This supersedes "Audio presets is the main NavigationView page" below; the page names in older sections refer to Library › Audio, Library › Displays and Now.
+
+## Leaving a page with unsaved changes — current
+
+Choosing another category in the navigation pane, or Options, while the current editor has unsaved changes opens a dialog: Save, Discard or Keep editing. Unsaved means the draft differs from how it was when it opened; data that loads into an opened draft (supported display modes, live TV details) doesn't count. Save appears only when the draft can be saved: not in the TV setup guide, and never for Now, whose edits are applied rather than saved, so Now offers Discard or Keep editing. A failed save keeps you on the page with its error. Links inside an editor that return to the draft (Manage presets, View TV, New … preset) don't ask. An unchanged draft stays open when you leave, as before.
+
+## Scene editor — current
+
+A scene is edited as a vertical flow of fixed-size step cards in run order (Before, Prepare TV, Displays, Audio, FPS limit, After) joined by small down arrows, with When leaving set apart below under its own label. A card shows an icon, the title and a one-line summary, with a pencil and a bin. The card or its pencil opens the step's controls in a dialog: Done keeps the changes and Cancel restores the step as it was when the dialog opened. Nothing in the flow expands, and the column has a fixed width (720 DIP, or less in a narrow window), so the overview never changes size. Empty steps are dashed outlines the same size as filled cards, with the step's muted icon, a one-line hint and an Add button; they open the same dialog. Every card shares one icon column, and the arrows between steps are centred on it. Leaving the page from inside a dialog (New … preset, Manage) closes it and keeps the edits. There is no side summary panel: the flow is the summary. Failure policy and device wait live in Options, not in the scene. Scene cards mark the active scene and offer End beside Apply. See [Scenes](SCENES.md).
+
+## Scenes first run — current
+
+With no scenes, the Scenes page shows one card, "Start with your everyday setup", instead of the old four-step checklist and its page buttons. It reads the current screens, default output and volume, and the global FPS limit, and shows each with a checkbox (all on) and a live summary. A name box defaults to "Default", and one accent button, "Save as my Default scene", saves it; a quiet "Build a scene from scratch instead" link opens the editor. Saving changes no device and reuses a saved preset when the layout, or the output and volume, match exactly. It never sends people to Now: the step editor creates presets in place. While only one scene exists, a slim tip above the cards explains making the next scene, with "Got it" stored in preferences. See [Scenes](SCENES.md).
+
+## Status area — current
+
+The bottom status area is hidden when nothing needs attention. Work in progress shows one muted line with an indeterminate progress bar. A finished action shows a closable Success InfoBar that hides itself after 5 seconds. Something the user must read (an open draft blocking a flow, a cancelled pairing that left permission on the TV, unavailable live TV data) shows a Warning InfoBar that stays until closed. Errors stay red until closed. Routine hints such as Ready., Draft updated or Edit TV. are recorded for diagnostics but not shown; editor footers already explain save-versus-apply. This supersedes the earlier always-open InfoBar.
+
+## Save and shortcut commands — current
+
+Save is enabled only when the draft can be saved and has changed: it differs from how it opened, or it's a new item that isn't saved yet (a draft seeded from Now counts). Data that loads into an opened draft doesn't count as a change. The scene editor's footer says "No changes to save." meanwhile.
+
+Scene, display and audio cards have a borderless ">_" (CommandPrompt glyph) button right after the name. It opens a dialog with the command by name and by ID, each in selectable text with a Copy button and a one-line subtitle, plus `director scene end` for scenes that do something when left.
+
+## Title bar — current
+
+The window uses WinUI 3's TitleBar, like Windows 11 Settings: the pane toggle (☰) and "Director" sit in the title bar next to the caption buttons, and the navigation pane starts directly with Scenes. NavigationView has no pane title and hides its own toggle.
+
 ## Native Windows workspace
 
 Use genuine WinUI 3 controls through Microsoft Windows Reactor. Follow the system theme, accent, fonts, hover, focus, scrolling, and control behavior. Keep custom painting and custom interaction machinery out of core controls.
 
 Audio presets is the main NavigationView page. Use a compact ListView with one selectable row per preset and an Add/plus control. Each row has visible native icon buttons: green check for Apply, pencil for Edit, red bin for Delete. Accessible names and native tooltips explain each action. Selection alone never applies anything. Deletion uses a native ContentDialog.
 
-Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, failure-policy selection, device-ID Expander with Copy, and Save/Cancel. Saving stores choices only; Cancel discards the draft. Preserve navigation collapse and device-ID expansion state across form updates.
+Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, and Save/Cancel. Saving stores choices only; Cancel discards the draft. The endpoint ID is not shown (it was noise for most people); `director audio list` prints it. Failure policy is global in Options.
 
 InfoBar communicates status and errors. Disable mutations while work is active, keeping the UI responsive. Deferred features must not pretend to work. The default client size is 1000 x 700 logical pixels, minimum 760 x 600. Scroll constrained list/editor content, keep actions reachable, and make full device identity available on demand.
 
@@ -32,9 +64,9 @@ Audio and display list pages use one shared heading/toolbar component. Keep the 
 
 The display pencil opens the complete editor directly. There is no Customize layout step. A boxed map supports pointer-captured dragging with stable scale during the gesture, edge snapping, and overlap handling on drop. Show technical position details in screen hover tooltips, rather than numeric fields. Keep the primary display's Enabled switch greyed out and put the reason on a transparent, enabled hover layer above it so it can still be hovered. New GUI and CLI presets default to confirmation off; preserve existing choices.
 
-## Current setup alternative
+## Current setup alternative (now "Now")
 
-Current setup puts the shared monitor editor and audio output/volume controls into one scrolling page. Keep separate Apply display changes and Apply audio changes actions, plus Discard edits. This view neither edits nor saves preset documents. Stage edits before Apply; preserve pending edits across navigation. New page roots prevent native scroll state from leaking across pages. Theme/appearance switching was explicitly excluded by the user.
+Now puts the shared monitor editor and audio output/volume controls into one scrolling page. Keep separate Apply display changes and Apply audio changes actions, plus Discard edits. This view neither edits nor saves preset documents. Stage edits before Apply; preserve pending edits across navigation. New page roots prevent native scroll state from leaking across pages. Theme/appearance switching was explicitly excluded by the user.
 
 Orientation choices use equally sized compact rows, left-aligned icon/text, stand-only SVGs, and a standard chevron. Re-key the picker after selection so its native flyout closes, including when choosing the current orientation.
 
