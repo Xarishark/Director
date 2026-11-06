@@ -384,7 +384,9 @@ impl DirectorApp {
                         } else {
                             "Change FPS limit"
                         }),
-                        ui::caption(if on {
+                        ui::caption(if target == Target::Current && self.current.fps_dirty {
+                            "Not applied yet: use Apply changes on the display map.".into()
+                        } else if on {
                             current
                         } else if current.is_empty() {
                             "Off leaves FPS settings as they are.".into()
@@ -420,99 +422,116 @@ impl DirectorApp {
         } else {
             View::empty()
         };
+        // Two compact rows of labelled controls, like a display card, so the card stays short.
+        let field = |title: &str, control: View| -> View {
+            StackPanel::new()
+                .spacing(4.0)
+                .children((TextBlock::new().text(title), control))
+        };
+        let pair = |left: View, right: View| -> View {
+            Grid::new()
+                .columns([GridLength::Star(1.0), GridLength::Star(1.0)])
+                .column_spacing(ui::GAP_M)
+                .children((
+                    Border::new().content(left),
+                    Border::new().grid_column(1).content(right),
+                ))
+        };
         let body = match &shown {
             Some(r) => {
                 let limited = r.limit.is_some() || r.vrr_safe;
+                let rate: View = if r.vrr_safe {
+                    field(
+                        "Frames per second",
+                        ui::note(match refresh {
+                            Some(hz) => format!(
+                                "{} FPS on a {} Hz display",
+                                director::fps::vrr_safe_cap(hz),
+                                hz.round()
+                            ),
+                            None => "Worked out from the refresh rate".into(),
+                        }),
+                    )
+                } else if let Some(n) = r.limit {
+                    field(
+                        "Frames per second",
+                        NumberBox::new()
+                            .automation_name("FPS value")
+                            .horizontal_alignment(HorizontalAlignment::Stretch)
+                            .value(Some(f64::from(n)))
+                            .minimum(1.0)
+                            .maximum(f64::from(cap.map_or(1000, |c| c.maximum)))
+                            .is_enabled(editable)
+                            .on_value_changed(
+                                cx.callback(move |v| msg(FpsMessage::Value(target, v))),
+                            )
+                            .into(),
+                    )
+                } else {
+                    ui::note("Turns off a global cap that’s already set.")
+                };
                 StackPanel::new()
-                    .spacing(ui::GAP_S)
+                    .spacing(ui::GAP_M)
                     .opacity(if on { 1.0 } else { 0.55 })
                     .children((
-                        ui::setting_row(
-                            "Method",
-                            "",
-                            ComboBox::new()
-                                .automation_name("FPS method")
-                                .width(220.0)
-                                .items_source(methods.iter().map(|c| c.provider.label()))
-                                .selected_index(selected)
-                                .placeholder_text(format!("{} unavailable", r.provider.label()))
-                                .is_enabled(editable)
-                                .on_selection_changed(
-                                    cx.callback(move |i| msg(FpsMessage::Method(target, i))),
-                                ),
-                        ),
-                        ui::setting_row(
-                            "Limit",
-                            if limited {
-                                ""
-                            } else {
-                                "Turns off a global cap that’s already set."
-                            },
-                            ComboBox::new()
-                                .automation_name("FPS limit mode")
-                                .width(220.0)
-                                .items_source(["Set a frame rate limit", "Remove the global limit"])
-                                .selected_index(Some(if limited { 0 } else { 1 }))
-                                .is_enabled(editable)
-                                .on_selection_changed(
-                                    cx.callback(move |i| msg(FpsMessage::Mode(target, i))),
-                                ),
-                        ),
-                        if limited {
-                            ui::setting_row(
-                                "VRR-safe cap",
-                                &if r.vrr_safe {
-                                    match refresh {
-                                        Some(hz) => format!(
-                                            "{} FPS on a {} Hz display, worked out from the primary display when {} runs.",
-                                            director::fps::vrr_safe_cap(hz),
-                                            hz.round(),
-                                            if target == Target::Scene { "the scene" } else { "this" }
-                                        ),
-                                        None => "A little below the primary display’s refresh rate, worked out when applied.".into(),
-                                    }
-                                } else {
-                                    "A little below the refresh rate, so variable refresh rate stays active.".into()
-                                },
-                                ToggleSwitch::new()
-                                    .automation_name("VRR-safe cap")
-                                    .is_on(r.vrr_safe)
+                        pair(
+                            field(
+                                "Method",
+                                ComboBox::new()
+                                    .automation_name("FPS method")
+                                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                                    .items_source(methods.iter().map(|c| c.provider.label()))
+                                    .selected_index(selected)
+                                    .placeholder_text(format!(
+                                        "{} unavailable",
+                                        r.provider.label()
+                                    ))
                                     .is_enabled(editable)
-                                    .on_toggled(
-                                        cx.callback(move |v| msg(FpsMessage::VrrSafe(target, v))),
-                                    ),
-                            )
-                        } else {
-                            View::empty()
-                        },
-                        match r.limit {
-                            Some(n) if !r.vrr_safe => ui::setting_row(
-                                "Frames per second",
-                                "",
-                                NumberBox::new()
-                                    .automation_name("FPS value")
-                                    .width(120.0)
-                                    .value(Some(f64::from(n)))
-                                    .minimum(1.0)
-                                    .maximum(f64::from(cap.map_or(1000, |c| c.maximum)))
-                                    .is_enabled(editable)
-                                    .on_value_changed(
-                                        cx.callback(move |v| msg(FpsMessage::Value(target, v))),
-                                    ),
+                                    .on_selection_changed(
+                                        cx.callback(move |i| msg(FpsMessage::Method(target, i))),
+                                    )
+                                    .into(),
                             ),
+                            field(
+                                "Limit",
+                                ComboBox::new()
+                                    .automation_name("FPS limit mode")
+                                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                                    .items_source(["Set a frame rate limit", "Remove the global limit"])
+                                    .selected_index(Some(if limited { 0 } else { 1 }))
+                                    .is_enabled(editable)
+                                    .on_selection_changed(
+                                        cx.callback(move |i| msg(FpsMessage::Mode(target, i))),
+                                    )
+                                    .into(),
+                            ),
+                        ),
+                        pair(
+                            rate,
+                            if limited {
+                                field(
+                                    "VRR-safe cap",
+                                    ToggleSwitch::new()
+                                        .automation_name("VRR-safe cap")
+                                        .is_on(r.vrr_safe)
+                                        .is_enabled(editable)
+                                        .on_toggled(
+                                            cx.callback(move |v| msg(FpsMessage::VrrSafe(target, v))),
+                                        )
+                                        .into(),
+                                )
+                            } else {
+                                View::empty()
+                            },
+                        ),
+                        match r.validate() {
+                            Err(e) if on => ui::caption(e),
                             _ => View::empty(),
                         },
                         ui::caption(match cap {
                             Some(c) => c.detail.clone(),
                             None => "The saved method is unavailable. Applying will fail before any scene changes.".into(),
                         }),
-                        match r.validate() {
-                            Err(e) if on => ui::caption(e),
-                            _ => View::empty(),
-                        },
-                        ui::caption(
-                            "Global setting: game profiles and other limiters can still apply. RTSS must stay running when selected, and a running game may need restarting.",
-                        ),
                     ))
             }
             None => View::empty(),

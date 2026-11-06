@@ -232,36 +232,12 @@ pub(crate) fn card_padded(padding: Thickness, body: impl Into<View>) -> View {
         .content(body)
 }
 
-/// A group heading above settings rows, as in Windows Settings ("Scale & layout").
-pub(crate) fn group(text: &str) -> View {
-    label(text)
-        .margin(Thickness::new(0.0, GAP_S, 0.0, 0.0))
-        .into()
-}
 /// A settings row's title: regular weight, so group headings stand out.
 fn row_title(text: &str) -> TextBlock {
     TextBlock::new()
         .text(text)
         .text_wrapping(TextWrapping::Wrap)
 }
-/// A settings row without its own card, for rows grouped inside one card: title and
-/// description on the left, the control on the right.
-pub(crate) fn setting_row(title: &str, description: &str, control: impl Into<View>) -> View {
-    Grid::new()
-        .columns([GridLength::Star(1.0), GridLength::Auto])
-        .column_spacing(GAP_L)
-        .children((
-            StackPanel::new()
-                .spacing(2.0)
-                .vertical_alignment(VerticalAlignment::Center)
-                .children((row_title(title), caption(description))),
-            Border::new()
-                .grid_column(1)
-                .vertical_alignment(VerticalAlignment::Center)
-                .content(control),
-        ))
-}
-
 /// A settings row in a card, as in Windows Settings: title and description on the left,
 /// the control on the right.
 pub(crate) fn setting(title: &str, description: &str, control: impl Into<View>) -> View {
