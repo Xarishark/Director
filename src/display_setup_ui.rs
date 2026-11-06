@@ -369,11 +369,8 @@ impl DirectorApp {
             Button::new()
                 .element_ref(&focus)
                 .automation_name(format!("Set up display {}", m.name))
-                .style(if configured {
-                    ButtonStyle::Subtle
-                } else {
-                    ButtonStyle::Default
-                })
+                // None keeps the standard rounded style; ButtonStyle::Default would clear it.
+                .style(configured.then_some(ButtonStyle::Subtle))
                 .is_enabled(!self.busy && state.recovery.is_none())
                 .on_click(cx.message(setup(SetupMessage::Review(index))))
                 .content(if configured {

@@ -105,11 +105,11 @@ fn preview(
                         0.0,
                         0.0,
                     ))
-                    .background(Brush::Solid(Color::rgb(38, 52, 69)))
+                    .background(crate::ui::SCREEN_FILL)
                     .border_brush(Brush::Solid(if primary {
-                        Color::rgb(255, 148, 113)
+                        crate::ui::SCREEN_PRIMARY
                     } else {
-                        Color::rgb(155, 180, 207)
+                        crate::ui::SCREEN_OTHER
                     }))
                     .border_thickness(Thickness::uniform(2.0))
                     .corner_radius(crate::ui::RADIUS_S)
@@ -137,7 +137,7 @@ fn preview(
                                 if primary { " ★" } else { "" }
                             ))
                             .font_size(18.0)
-                            .foreground(Color::rgb(240, 244, 249))
+                            .foreground(crate::ui::SCREEN_TEXT)
                             .horizontal_alignment(HorizontalAlignment::Center)
                             .vertical_alignment(VerticalAlignment::Center),
                     )
@@ -160,7 +160,7 @@ Drag to move this screen.",
     Border::new()
         .horizontal_alignment(HorizontalAlignment::Left)
         .border_thickness(Thickness::uniform(1.0))
-        .border_brush(Brush::Solid(Color::rgb(100, 110, 125)))
+        .border_brush(crate::ui::OUTLINE)
         .corner_radius(crate::ui::RADIUS_L)
         .padding(Thickness::uniform(10.0))
         .content(

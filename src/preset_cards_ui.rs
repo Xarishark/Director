@@ -282,11 +282,11 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
                     0.0,
                     0.0,
                 ))
-                .background(Color::rgb(38, 52, 69))
+                .background(crate::ui::SCREEN_FILL)
                 .border_brush(if d.primary() {
-                    Color::rgb(255, 148, 113)
+                    crate::ui::SCREEN_PRIMARY
                 } else {
-                    Color::rgb(145, 167, 187)
+                    crate::ui::SCREEN_OTHER
                 })
                 .border_thickness(1.0)
                 .corner_radius(crate::ui::RADIUS_S)

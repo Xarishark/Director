@@ -35,6 +35,15 @@ pub(crate) const SUBTLE_FILL: Color = Color::argb(18, 128, 128, 128);
 /// The background behind commands and other monospace text.
 pub(crate) const CODE_FILL: Color = Color::argb(40, 128, 128, 128);
 
+// Screens in layout previews and the arrangement map: a dark panel that reads on both themes,
+// outlined in coral for the primary display.
+pub(crate) const SCREEN_FILL: Color = Color::rgb(38, 52, 69);
+pub(crate) const SCREEN_PRIMARY: Color = Color::rgb(255, 148, 113);
+pub(crate) const SCREEN_OTHER: Color = Color::rgb(150, 174, 197);
+pub(crate) const SCREEN_TEXT: Color = Color::rgb(240, 244, 249);
+/// A visible outline around a work area such as the arrangement map, on either theme.
+pub(crate) const OUTLINE: Color = Color::argb(110, 128, 128, 128);
+
 /// The card fill and outline, from the system theme.
 pub(crate) fn card_fill() -> Brush {
     ThemeBrush::CardBackground.into()
