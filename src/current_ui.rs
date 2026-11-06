@@ -6,7 +6,7 @@ use crate::{
     work,
 };
 use director::{
-    audio::{self, AudioBackend, FailurePolicy, Output, Request},
+    audio::{self, AudioBackend, Output, Request},
     display_apply,
     display_editor::{Editor, Options},
     displays::{Layout, Preset},
@@ -289,7 +289,7 @@ Could not read audio outputs: {e}"
                         Ok::<_, String>(audio::apply(
                             &mut backend,
                             &request,
-                            FailurePolicy::Revert,
+                            director::preferences::current().audio_policy(),
                             |_| {},
                         ))
                     })();

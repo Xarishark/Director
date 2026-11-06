@@ -31,7 +31,7 @@ enum Page {
     Scenes,
 }
 use director::{
-    audio::{self, FailurePolicy, Output},
+    audio::{self, Output},
     presets::{self, Preset},
     windows_audio::{OperationLock, WindowsAudio},
 };
@@ -53,7 +53,6 @@ struct Draft {
     input_volume: Option<f64>,
     set_volume: bool,
     volume: Option<f64>,
-    keep_changes: bool,
 }
 #[derive(Clone)]
 enum Message {
@@ -86,7 +85,6 @@ enum Message {
     InputVolume(Option<f64>),
     SetVolume(bool),
     Volume(Option<f64>),
-    Keep(bool),
     CopyId,
     DeviceId(bool),
     Pane(bool),
@@ -330,8 +328,6 @@ impl DirectorApp {
                         if d.input_set_volume{NumberBox::new().automation_name("Microphone volume percentage").minimum(0.0).maximum(100.0).value(d.input_volume).is_enabled(!self.busy).on_value_changed(cx.callback(Message::InputVolume)).into()}else{View::empty()},
                     ))
                 }else{TextBlock::new().text("Microphone and input roles stay unchanged.").font_size(12.0).opacity(0.72).into()},
-                CheckBox::new().is_checked(d.keep_changes).is_enabled(!self.busy).on_is_checked_changed(cx.callback(Message::Keep)).content("Keep completed changes if applying fails"),
-                TextBlock::new().text("Unchecked: restore the settings from before the operation.").font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap),
             ))),
             Grid::new().grid_row(2).margin(Thickness::new(0.0,20.0,0.0,0.0)).columns([GridLength::Star(1.0),GridLength::Auto]).children((
                 TextBlock::new().grid_column(0).text("Saving won’t change your audio.").opacity(0.72).vertical_alignment(VerticalAlignment::Center),
@@ -579,7 +575,6 @@ impl Component for DirectorApp {
                             .and_then(|o| o.volume_percent)
                             .map_or(50.0, f64::from),
                     ),
-                    keep_changes: false,
                 });
                 self.error = false;
                 self.status = "Create an audio preset.".into();
@@ -649,7 +644,6 @@ impl Component for DirectorApp {
                         )),
                         set_volume: p.volume_percent.is_some(),
                         volume: Some(f64::from(p.volume_percent.unwrap_or(50))),
-                        keep_changes: p.keep_changes,
                     });
                     self.error = false;
                     self.status = "Edit your audio preset.".into();
@@ -738,11 +732,6 @@ impl Component for DirectorApp {
                     d.volume = value;
                 }
             }
-            Message::Keep(value) if !self.busy => {
-                if let Some(d) = &mut self.draft {
-                    d.keep_changes = value;
-                }
-            }
             Message::DeviceId(value) => self.show_device_id = value,
             Message::CopyId => {
                 if let Some(d) = &self.draft {
@@ -804,7 +793,7 @@ impl Component for DirectorApp {
                     } else {
                         None
                     },
-                    keep_changes: d.keep_changes,
+                    keep_changes: false,
                 };
                 let mut next = self.presets.clone();
                 if let Some(existing) = next.iter_mut().find(|p| p.id == id) {
@@ -860,11 +849,7 @@ impl Component for DirectorApp {
                             let report = audio::apply(
                                 &mut backend,
                                 &p.request(),
-                                if p.keep_changes {
-                                    FailurePolicy::KeepChanges
-                                } else {
-                                    FailurePolicy::Revert
-                                },
+                                director::preferences::current().audio_policy(),
                                 |_| {},
                             );
                             let outputs = backend.picker_devices(false);

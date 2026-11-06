@@ -21,6 +21,8 @@ pub(crate) enum TipMessage {
     Dismiss,
     Show(bool),
     NotifySceneFailures(bool),
+    KeepCompleted(bool),
+    DeviceWait(Option<f64>),
     Saved(Result<Preferences, String>),
     AddTv,
 }
@@ -56,7 +58,10 @@ impl DirectorApp {
                 }
             }
             TipMessage::Dismiss => self.tip.dismissed = true,
-            message @ (TipMessage::Show(_) | TipMessage::NotifySceneFailures(_))
+            message @ (TipMessage::Show(_)
+            | TipMessage::NotifySceneFailures(_)
+            | TipMessage::KeepCompleted(_)
+            | TipMessage::DeviceWait(Some(_)))
                 if !self.busy && self.tip.pending.is_none() =>
             {
                 let Some(expected) = self.tip.preferences.clone() else {
@@ -67,8 +72,15 @@ impl DirectorApp {
                     next.hide_tv_setup_tip = !show;
                     self.tip.dismissed = !show;
                 }
-                if let TipMessage::NotifySceneFailures(enabled) = message {
-                    next.notify_scene_failures = enabled;
+                match message {
+                    TipMessage::NotifySceneFailures(enabled) => {
+                        next.notify_scene_failures = enabled
+                    }
+                    TipMessage::KeepCompleted(keep) => next.keep_completed_changes = keep,
+                    TipMessage::DeviceWait(Some(seconds)) => {
+                        next.device_wait_seconds = seconds.round().clamp(1.0, 120.0) as u16
+                    }
+                    _ => {}
                 }
                 if next == expected {
                     return;

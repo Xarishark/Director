@@ -29,8 +29,6 @@ pub(crate) enum SceneMessage {
     Tv(Option<usize>),
     Wake(bool),
     Input(Option<usize>),
-    Wait(Option<f64>),
-    Keep(bool),
     AddUri,
     AddApp,
     Browse(usize, bool),
@@ -195,18 +193,7 @@ impl DirectorApp {
                 }
             }
             SceneMessage::Add if ready => {
-                self.scene.draft = Some(Scene {
-                    id: id(),
-                    name: String::new(),
-                    display: None,
-                    audio: None,
-                    tv_audio: None,
-                    tv: None,
-                    fps: None,
-                    actions: vec![],
-                    keep_on_failure: false,
-                    wait_seconds: 30,
-                });
+                self.scene.draft = Some(Scene::new(id(), ""));
                 self.status =
                     "Choose what this scene changes. Saving leaves your setup untouched.".into();
             }
@@ -286,18 +273,6 @@ impl DirectorApp {
                     .map(|i| i.id.clone());
                 if let Some(t) = self.scene.draft.as_mut().and_then(|d| d.tv.as_mut()) {
                     t.input = selected;
-                }
-            }
-            SceneMessage::Wait(value) if !self.busy => {
-                if let Some(d) = &mut self.scene.draft {
-                    d.wait_seconds = value
-                        .filter(|v| v.is_finite() && v.fract() == 0.0 && (1.0..=120.0).contains(v))
-                        .unwrap_or(0.0) as u16;
-                }
-            }
-            SceneMessage::Keep(v) if !self.busy => {
-                if let Some(d) = &mut self.scene.draft {
-                    d.keep_on_failure = v;
                 }
             }
             SceneMessage::AddUri if !self.busy => {
@@ -863,8 +838,7 @@ impl DirectorApp {
  ))))).collect::<Vec<_>>()),
  StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((Button::new().automation_name("Add app action").is_enabled(available&&d.actions.len()<32).on_click(cx.message(msg(SceneMessage::AddApp))).content("Add app"),Button::new().automation_name("Add URI action").is_enabled(available&&d.actions.len()<32).on_click(cx.message(msg(SceneMessage::AddUri))).content("Add URI"))),
  )),
- StackPanel::new().spacing(10.0).children((heading("Readiness and recovery"),NumberBox::new().automation_name("Device wait seconds").value(Some(f64::from(d.wait_seconds))).minimum(1.0).maximum(120.0).is_enabled(available).on_value_changed(cx.callback(|v|msg(SceneMessage::Wait(v)))).slot(NumberBoxSlot::Header,"Device wait timeout (seconds)"),
- ToggleSwitch::new().automation_name("Keep completed scene changes on failure").is_on(d.keep_on_failure).is_enabled(available).on_toggled(cx.callback(|v|msg(SceneMessage::Keep(v)))).slot(ToggleSwitchSlot::Header,"Keep completed changes if a step fails"),note("Off: restore the previous display, audio and selected FPS settings. TV power/input changes and opened apps cannot be undone automatically."))),
+ note("If a step fails, Director restores your previous settings. Change this in Options."),
  ));
         let summary = Border::new()
             .padding(20.0)

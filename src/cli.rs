@@ -139,10 +139,14 @@ pub fn run(args: &[String]) -> i32 {
                     (
                         p.output_id,
                         volume_override.or(p.volume_percent),
-                        keep_override || p.keep_changes,
+                        keep_override || crate::preferences::current().keep_completed_changes,
                     )
                 } else if target.starts_with('{') {
-                    (target.clone(), volume_override, keep_override)
+                    (
+                        target.clone(),
+                        volume_override,
+                        keep_override || crate::preferences::current().keep_completed_changes,
+                    )
                 } else {
                     return Err(format!(
                         "No audio preset named “{target}”. Create it in the window first."

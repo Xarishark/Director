@@ -297,6 +297,22 @@ impl DirectorApp {
                 .on_toggled(cx.callback(|show| Message::Tip(crate::tv_tip_ui::TipMessage::Show(show))))
                 .slot(ToggleSwitchSlot::Header, "Show TV setup tips"),
             if let Some(error) = &self.tip.error { TextBlock::new().text(format!("Could not update setup tips: {error}")).text_wrapping(TextWrapping::Wrap).into() } else { View::empty() },
+            StackPanel::new().spacing(12.0).children((
+            TextBlock::new().text("When applying scenes and presets").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
+            ToggleSwitch::new().automation_name("Keep changes that finished if a later step fails")
+                .is_on(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).is_some_and(|p| p.keep_completed_changes))
+                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
+                .on_toggled(cx.callback(|keep| Message::Tip(crate::tv_tip_ui::TipMessage::KeepCompleted(keep))))
+                .slot(ToggleSwitchSlot::Header, "Keep changes that finished if a later step fails"),
+            TextBlock::new().text("Off: Director restores your previous display, audio and FPS settings when a scene or audio preset fails. TV power, inputs and opened apps can’t be undone either way.")
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left),
+            NumberBox::new().automation_name("Device wait seconds").minimum(1.0).maximum(120.0).horizontal_alignment(HorizontalAlignment::Left).min_width(220.0)
+                .value(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).map(|p| f64::from(p.device_wait_seconds)))
+                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
+                .on_value_changed(cx.callback(|v| Message::Tip(crate::tv_tip_ui::TipMessage::DeviceWait(v))))
+                .slot(NumberBoxSlot::Header, "Wait for TVs, audio devices and setup apps (seconds)"),
+            )),
+            StackPanel::new().spacing(12.0).children((
             TextBlock::new().text("Notifications").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             ToggleSwitch::new().automation_name("Notify when CLI scenes fail")
                 .is_on(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).is_some_and(|p| p.notify_scene_failures))
@@ -305,6 +321,7 @@ impl DirectorApp {
                 .slot(ToggleSwitchSlot::Header, "Notify when CLI scenes fail"),
             TextBlock::new().text("Requires the MSI installation. Click a Windows notification to open that run’s details.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),
+            )),
             TextBlock::new().text("Diagnostics").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new().text("Director keeps local logs to help explain what happened during an operation. Old logs are replaced automatically. Pairing keys and raw TV messages are excluded.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),

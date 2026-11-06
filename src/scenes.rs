@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scene {
     pub id: String,
@@ -19,13 +19,25 @@ pub struct Scene {
     pub fps: Option<crate::fps::Request>,
     #[serde(default)]
     pub actions: Vec<Action>,
-    #[serde(default)]
-    pub keep_on_failure: bool,
-    #[serde(default = "default_wait")]
+    /// Former per-scene policy. Read so existing files load, never written; see `ScenePolicy`.
+    #[serde(default, rename = "keep_on_failure", skip_serializing)]
+    legacy_keep_on_failure: Option<bool>,
+    #[serde(default, rename = "wait_seconds", skip_serializing)]
+    legacy_wait_seconds: Option<u16>,
+}
+/// How scenes behave when a step fails or waits for devices. Global, from Preferences.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScenePolicy {
+    pub keep_completed: bool,
     pub wait_seconds: u16,
 }
-fn default_wait() -> u16 {
-    30
+impl Default for ScenePolicy {
+    fn default() -> Self {
+        Self {
+            keep_completed: false,
+            wait_seconds: 30,
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,21 +111,25 @@ impl Action {
     }
 }
 impl Scene {
+    /// An empty scene that changes nothing yet.
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        }
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.id.is_empty()
             || self.id.len() > 200
             || self.name.trim().is_empty()
             || self.name.len() > 160
-            || self.wait_seconds == 0
-            || self.wait_seconds > 120
             || self.actions.len() > 32
             || [&self.display, &self.audio]
                 .iter()
                 .any(|v| v.as_ref().is_some_and(|s| s.is_empty() || s.len() > 200))
         {
-            return Err(
-                "Give the scene a name, valid selections and a wait from 1 to 120 seconds.".into(),
-            );
+            return Err("Give the scene a name and valid selections.".into());
         }
         if self.tv.as_ref().is_some_and(|t| {
             t.id.is_empty()
@@ -151,6 +167,11 @@ impl Scene {
         }
         Ok(())
     }
+    /// Drop the former per-scene policy fields once they have been read.
+    fn normalize(&mut self) {
+        self.legacy_keep_on_failure = None;
+        self.legacy_wait_seconds = None;
+    }
 }
 #[derive(Clone)]
 pub struct Plan {
@@ -158,6 +179,7 @@ pub struct Plan {
     pub display: Option<crate::displays::Preset>,
     pub audio: Option<crate::presets::Preset>,
     pub tv: Option<crate::tvs::Tv>,
+    pub policy: ScenePolicy,
 }
 pub fn resolve(
     scene: &Scene,
@@ -235,6 +257,7 @@ pub fn resolve(
         display,
         audio,
         tv,
+        policy: ScenePolicy::default(),
     })
 }
 #[derive(Serialize, Deserialize)]
@@ -285,11 +308,12 @@ pub fn load(path: &Path) -> Result<Vec<Scene>, String> {
     if data.len() > STORAGE_LIMIT {
         return Err("Scene file is too large. It was left unchanged.".into());
     }
-    let doc: Document = serde_json::from_slice(&data)
+    let mut doc: Document = serde_json::from_slice(&data)
         .map_err(|_| "Could not read scenes. The file was left unchanged.")?;
     if doc.version != 1 {
         return Err("Unsupported scenes version.".into());
     }
+    doc.scenes.iter_mut().for_each(Scene::normalize);
     validate(&doc.scenes)?;
     Ok(doc.scenes)
 }
@@ -436,7 +460,7 @@ pub fn apply(
         },
         Err(e) => {
             details.push(e);
-            let message = if plan.scene.keep_on_failure {
+            let message = if plan.policy.keep_completed {
                 "Scene stopped. Completed changes were kept."
             } else {
                 progress("Restoring previous settings…");
@@ -479,8 +503,7 @@ mod tests {
             actions: vec![Action::Uri {
                 target: "steam://open/bigpicture".into(),
             }],
-            keep_on_failure: false,
-            wait_seconds: 30,
+            ..Default::default()
         }
     }
     struct Fake {
@@ -551,7 +574,7 @@ mod tests {
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "fps", "restore"]);
         let mut p = p;
-        p.scene.keep_on_failure = true;
+        p.policy.keep_completed = true;
         b.calls.clear();
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "fps"]);
@@ -636,7 +659,7 @@ mod tests {
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "display", "audio", "restore"]);
         b.calls.clear();
-        p.scene.keep_on_failure = true;
+        p.policy.keep_completed = true;
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "display", "audio"]);
     }

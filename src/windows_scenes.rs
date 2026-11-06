@@ -30,7 +30,8 @@ pub fn load_plan(id: &str) -> Result<Plan, String> {
         .iter()
         .find(|s| s.id == id)
         .ok_or("The scene was removed. Reopen Scenes.")?;
-    let plan = scenes::resolve(scene, &d, &a, &t)?;
+    let mut plan = scenes::resolve(scene, &d, &a, &t)?;
+    plan.policy = crate::preferences::current().scene_policy();
     for action in &scene.actions {
         if let Action::App {
             path,
@@ -213,7 +214,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         self.tv_attempted = true;
         let tv = plan.tv.as_ref().ok_or("Missing TV.")?;
         let prep = plan.scene.tv.as_ref().ok_or("Missing TV preparation.")?;
-        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.scene.wait_seconds));
+        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
         let mut next_wake = Instant::now();
         let mut wakes = 0;
         loop {
@@ -270,7 +271,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
     ) -> Result<(), String> {
         let p = plan.audio.as_ref().ok_or("Missing audio preset.")?;
         let audio = self.audio.as_mut().ok_or("Audio snapshot unavailable.")?;
-        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.scene.wait_seconds));
+        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
         loop {
             if cancel.load(Ordering::Acquire) {
                 return Err("Scene canceled.".into());
@@ -320,7 +321,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         let report = audio::apply(
             audio,
             &p.request(),
-            if plan.scene.keep_on_failure {
+            if plan.policy.keep_completed {
                 audio::FailurePolicy::KeepChanges
             } else {
                 audio::FailurePolicy::Revert
