@@ -47,6 +47,7 @@ pub mod windows_display_detection;
 
 pub mod display_mirroring;
 
+pub mod scene_session;
 pub mod scenes;
 #[cfg(windows)]
 pub mod windows_close;

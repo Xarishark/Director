@@ -571,6 +571,29 @@ fn action_done(action: &Action) -> String {
         _ => format!("{} dispatched.", action.label()),
     }
 }
+/// Run a scene's When leaving actions. A failing action never blocks the next scene, so
+/// every action runs and the failures come back as warnings.
+pub fn leave(
+    backend: &mut impl Backend,
+    scene: &Scene,
+    policy: ScenePolicy,
+    mut progress: impl FnMut(&str),
+) -> Vec<String> {
+    let _operation = crate::diagnostics::Operation::start("scene.leave", Some(&scene.id));
+    let mut warnings = vec![];
+    for action in &scene.leave {
+        progress(&format!("Leaving “{}”: {}", scene.name, action.label()));
+        if let Err(e) = backend.launch(action, policy.wait_seconds) {
+            crate::diagnostics::event("scene.leave", "error", &e);
+            warnings.push(format!(
+                "Leaving “{}”: {} failed. {e}",
+                scene.name,
+                action.label()
+            ));
+        }
+    }
+    warnings
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -851,6 +874,25 @@ mod tests {
         let r = apply(&mut b, &p, &AtomicBool::new(false), |_| {});
         assert!(!r.success);
         assert_eq!(b.calls, ["snapshot", "run", "restore"]);
+    }
+    #[test]
+    fn leave_runs_every_action_and_reports_failures_as_warnings() {
+        let mut s = scene();
+        s.leave = vec![
+            run("C:/cleanup.exe"),
+            Action::Close {
+                target: "steam.exe".into(),
+                force: false,
+            },
+        ];
+        assert!(s.validate().is_ok());
+        let mut b = Fake {
+            fail_run: true,
+            ..Default::default()
+        };
+        let warnings = leave(&mut b, &s, ScenePolicy::default(), |_| {});
+        assert_eq!(b.calls, ["run", "close"]);
+        assert_eq!(warnings.len(), 1);
     }
     #[test]
     fn version_one_files_load_and_save_as_version_two_without_policy_fields() {
