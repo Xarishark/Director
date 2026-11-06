@@ -12,7 +12,7 @@ impl DirectorApp {
         StackPanel::new().spacing(12.0).children((
             TextBlock::new().text("Test report").font_size(crate::ui::SUBTITLE).font_weight(FontWeight::SEMI_BOLD),
             note("Enter the TV model and software version from its Settings → About page if you can find them. Use only model/version information here."),
-            TextBox::new().automation_name("Report TV model").text(f.tv_model.clone()).placeholder_text(tv.compatibility().model.as_deref().unwrap_or("TV model, e.g. TCL 55C745")).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::ReportModel(v)))).slot(TextBoxSlot::Header,"TV model (optional if already detected)"),
+            TextBox::new().automation_name("Report TV model").text(f.tv_model.clone()).placeholder_text(tv.compatibility().model.as_deref().unwrap_or("TV model, for example TCL 55C745")).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::ReportModel(v)))).slot(TextBoxSlot::Header,"TV model (optional if already detected)"),
             TextBox::new().automation_name("Report TV software").text(f.tv_software.clone()).placeholder_text("Version from the TV’s About page, if available").is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::ReportSoftware(v)))).slot(TextBoxSlot::Header,"TV software version (optional)"),
             ComboBox::new().automation_name("Report TV network").items_source(["Not specified","Wi-Fi","Ethernet cable"]).selected_index(Some(f.network.index())).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(!self.busy).on_selection_changed(cx.callback(|v|msg(TvMessage::ReportNetwork(v)))).slot(ComboBoxSlot::Header,"How is the TV connected to the router?"),
             if checks{StackPanel::new().spacing(12.0).children((

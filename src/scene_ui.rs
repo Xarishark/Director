@@ -899,6 +899,7 @@ impl DirectorApp {
                                 .tooltip("Delete scene"),
                         ],
                         crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                        true,
                     ),
                 )
             })

@@ -40,16 +40,23 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
         )
 }
 /// The widest a card's name can be next to its command button and `actions` buttons.
-fn name_width(actions: usize) -> f64 {
-    // Inner width, less the ">_" button, Apply (about 72) and 40 per icon button.
-    let buttons = match actions {
-        0 => 0.0,
-        n => 72.0 + 40.0 * (n as f64 - 1.0) + 4.0 * n as f64,
-    };
-    (CARD_WIDTH - 28.0 - 36.0 - buttons).max(60.0)
+fn name_width(actions: usize, apply: bool) -> f64 {
+    // Inner width, less the ">_" button (cards with Apply have one), Apply (about 72) and 40 per
+    // icon button.
+    let n = actions as f64;
+    let buttons = 44.0 * n + if apply { 32.0 + 36.0 } else { 0.0 };
+    (CARD_WIDTH - 28.0 - buttons).max(60.0)
 }
 /// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
-pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, height: f64) -> View {
+/// `apply` says the first action is the text Apply button, which is wider than the icons.
+pub(crate) fn card(
+    name: &str,
+    command: View,
+    body: View,
+    actions: Vec<View>,
+    height: f64,
+    apply: bool,
+) -> View {
     Border::new()
         .automation_name(name)
         .horizontal_alignment(HorizontalAlignment::Left)
@@ -73,7 +80,7 @@ pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, he
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
-                            .max_width(name_width(actions.len()))
+                            .max_width(name_width(actions.len(), apply))
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
@@ -376,6 +383,7 @@ impl DirectorApp {
                                 .tooltip("Delete display preset"),
                         ],
                         DISPLAY_CARD_HEIGHT,
+                        true,
                     ),
                 )
             })

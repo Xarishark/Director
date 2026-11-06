@@ -90,6 +90,38 @@ fn input_label(input: &Input) -> String {
     }
 }
 use crate::ui::note;
+/// Label and value rows, for a summary.
+fn review_rows(rows: &[(&str, String)]) -> View {
+    Grid::new()
+        .columns([GridLength::Auto, GridLength::Star(1.0)])
+        .rows(rows.iter().map(|_| GridLength::Auto))
+        .column_spacing(crate::ui::GAP_L)
+        .row_spacing(crate::ui::GAP_S)
+        .keyed_children(
+            rows.iter()
+                .enumerate()
+                .flat_map(|(i, (label, value))| {
+                    [
+                        KeyedView::new(
+                            format!("label-{i}"),
+                            TextBlock::new()
+                                .grid_row(i as i32)
+                                .text(*label)
+                                .opacity(crate::ui::SECONDARY),
+                        ),
+                        KeyedView::new(
+                            format!("value-{i}"),
+                            TextBlock::new()
+                                .grid_row(i as i32)
+                                .grid_column(1)
+                                .text(value.clone())
+                                .text_wrapping(TextWrapping::Wrap),
+                        ),
+                    ]
+                })
+                .collect::<Vec<_>>(),
+        )
+}
 impl TvState {
     #[cfg(test)]
     pub(crate) fn ready_for_controls_preview(&mut self) {
@@ -912,10 +944,6 @@ impl DirectorApp {
                     "Wake available"
                 };
                 let body = StackPanel::new().spacing(8.0).children((
-                    TextBlock::new()
-                        .text("CONNECTION")
-                        .font_size(10.0)
-                        .opacity(crate::ui::SECONDARY),
                     Grid::new()
                         .columns([GridLength::Auto, GridLength::Star(1.0)])
                         .column_spacing(12.0)
@@ -926,7 +954,7 @@ impl DirectorApp {
                             TextBlock::new()
                                 .grid_column(1)
                                 .text(tv.brand.label())
-                                .font_size(17.0)
+                                .font_weight(FontWeight::SEMI_BOLD)
                                 .text_trimming(TextTrimming::CharacterEllipsis),
                         )),
                     line(
@@ -939,8 +967,8 @@ impl DirectorApp {
                                 "Not paired"
                             }
                         ),
-                        13.0,
-                        0.8,
+                        14.0,
+                        1.0,
                     ),
                     line(
                         format!(
@@ -949,8 +977,8 @@ impl DirectorApp {
                                 .as_ref()
                                 .map_or("Not linked", |i| i.label.as_str())
                         ),
-                        12.0,
-                        0.8,
+                        crate::ui::CAPTION,
+                        crate::ui::SECONDARY,
                     ),
                     line(
                         format!(
@@ -959,16 +987,16 @@ impl DirectorApp {
                                 .as_ref()
                                 .map_or("Not linked", |d| d.name.as_str())
                         ),
-                        12.0,
-                        0.8,
+                        crate::ui::CAPTION,
+                        crate::ui::SECONDARY,
                     ),
                     line(
                         format!(
                             "Audio: {}",
                             tv.audio.as_ref().map_or("Not linked", |a| a.name.as_str())
                         ),
-                        12.0,
-                        0.8,
+                        crate::ui::CAPTION,
+                        crate::ui::SECONDARY,
                     ),
                 ));
                 KeyedView::new(
@@ -1006,6 +1034,7 @@ impl DirectorApp {
                                 .tooltip("Remove TV"),
                         ],
                         crate::preset_cards_ui::TV_CARD_HEIGHT,
+                        false,
                     ),
                 )
             })
@@ -1203,7 +1232,7 @@ impl DirectorApp {
    Step::Brand=>StackPanel::new().spacing(16.0).children((note("Choose the TV’s local control platform. Director connects directly on your network."),ComboBox::new().automation_name("TV brand").items_source(["LG webOS","Samsung Tizen","TCL — Android / Google TV"]).selected_index(Some(match tv.brand{tvs::Brand::Lg=>0,tvs::Brand::Samsung=>1,tvs::Brand::TclAndroid=>2})).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(!self.busy).on_selection_changed(cx.callback(|i|msg(TvMessage::Brand(i)))),note("Samsung and TCL HDMI controls appear only after a direct-command test succeeds and you confirm it. Director does not navigate input menus."))),
    Step::Name=>StackPanel::new().spacing(14.0).children((
     note("Give this TV a name you’ll recognize in Director and scenes."),
-    TextBox::new().automation_name("TV name").text(tv.name.clone()).placeholder_text("e.g. Living room TV").is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Name(v)))),
+    TextBox::new().automation_name("TV name").text(tv.name.clone()).placeholder_text("For example, Living room TV").is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Name(v)))),
    )),
    Step::Address=>StackPanel::new().spacing(16.0).children((
     note("Enter the TV’s IPv4 address from its network settings. Keep the TV on and connected to your network."),
@@ -1214,7 +1243,7 @@ impl DirectorApp {
    Step::Pair=>StackPanel::new().spacing(16.0).children((
     TextBlock::new().text(format!("{} · {}",tv.name,tv.address)).font_size(crate::ui::SUBTITLE),
     note(if tv.credential.is_some(){"Pairing succeeded. Director will read the TV’s inputs and network addresses. If that read failed, retry below without pairing again."}else{"Choose Pair TV, then accept the connection prompt on the TV. Director will read its inputs and available wake addresses automatically."}),
-    note("If the TV cannot be reached, use Back to correct its IP address or connection method."),
+    crate::ui::caption("If the TV can’t be reached, use Back to correct its IP address or connection method."),
     if tv.brand!=tvs::Brand::Lg{self.tv_test_report(cx,tv,false)}else{View::empty()},
    )),
    Step::Input if tv.brand!=tvs::Brand::Lg=>self.samsung_compatibility(cx,tv),
@@ -1228,19 +1257,25 @@ impl DirectorApp {
     TextBlock::new().text(tv.network.summary()).text_wrapping(TextWrapping::Wrap),
     note(s.network_warning.clone().unwrap_or_default()),
     self.tv_mac_field(cx,&s.manual_mac,s.manual_mac_enabled),
-    if tv.brand==tvs::Brand::TclAndroid{note("Enable Screenless service / network standby in the TV’s power settings. Director uses the direct Wake command while reachable, with optional Wake-on-LAN fallback if a MAC is saved.")}else{View::empty()},
-    note("For wake to work, keep the TV connected to the network and enable its network/mobile power-on setting. Availability depends on the TV and connection."),
+    if tv.brand==tvs::Brand::TclAndroid{crate::ui::caption("Enable Screenless service / network standby in the TV’s power settings. Director uses the direct Wake command while reachable, with optional Wake-on-LAN fallback if a MAC is saved.")}else{View::empty()},
+    crate::ui::caption("For wake to work, keep the TV on the network and turn on its network or mobile power-on setting."),
    )),
    Step::Display=>StackPanel::new().spacing(16.0).children((
     note("Optionally identify which Windows monitor entry belongs to this TV."),
     self.tv_display_picker(cx,tv),
     self.tv_audio_picker(cx,tv),
-    note("This link helps coordinate scenes. It does not change your screens or bind the TV to a display preset."),
+    crate::ui::caption("This link helps scenes coordinate. It doesn’t change your screens or tie the TV to a display preset."),
    )),
    Step::Review=>StackPanel::new().spacing(16.0).children((
-    TextBlock::new().text(tv.name.clone()).font_size(24.0).font_weight(FontWeight::SEMI_BOLD).text_wrapping(TextWrapping::Wrap),
-    note(format!("Address: {}\nPairing: complete\nPC input: {}\nWindows display: {}\nWake: {}",tv.address,tv.pc_input.as_ref().map_or("None",|i|i.label.as_str()),tv.display.as_ref().map_or("Not linked",|d|d.name.as_str()),if tv.brand==tvs::Brand::TclAndroid{"Direct remote; network standby required"}else if tv.network.targets().is_empty(){"Not configured"}else{"Address saved"})),
-    note("Save this TV to finish. Wake, input switching, and other actions will be chosen separately when configuring a scene."),
+    crate::ui::subtitle(tv.name.clone()),
+    review_rows(&[
+        ("Address", tv.address.clone()),
+        ("Pairing", "Complete".into()),
+        ("PC input", tv.pc_input.as_ref().map_or("None", |i| i.label.as_str()).into()),
+        ("Windows display", tv.display.as_ref().map_or("Not linked", |d| d.name.as_str()).into()),
+        ("Wake", if tv.brand == tvs::Brand::TclAndroid { "Direct remote; network standby required" } else if tv.network.targets().is_empty() { "Not set up" } else { "Address saved" }.into()),
+    ]),
+    crate::ui::caption("Save this TV to finish. Waking it and switching inputs are chosen in each scene."),
    )),
   };
         let pair = s.step == Step::Pair && !s.valid_step(tv);
@@ -1321,25 +1356,20 @@ impl DirectorApp {
                 || self.tv.manual_mac.parse::<tv_network::MacAddress>().is_ok());
         Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
    crate::ui::header("Edit TV","Device connections · Scene actions are configured separately.",vec![]),
-   ScrollViewer::new().grid_row(1).horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(14.0).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left).children((
-    TextBlock::new().text("TV name").font_weight(FontWeight::SEMI_BOLD),
-    TextBox::new().automation_name("TV name").text(tv.name.clone()).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Name(v)))),
-    TextBlock::new().text("IP address").font_weight(FontWeight::SEMI_BOLD),
-    TextBox::new().automation_name("TV IP address").text(tv.address.clone()).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Address(v)))),
-    self.tv_connection_options(cx,tv),
-    note(if changed{"Continue through setup to pair the new connection. Your saved TV stays unchanged until you finish."}else{"Pairing is retained when you edit the name, PC input, wake addresses, or display link."}),
-    TextBlock::new().text("PC input").font_weight(FontWeight::SEMI_BOLD),
-    if tv.brand==tvs::Brand::Lg{self.tv_input_picker(cx,tv,true)}else{self.samsung_compatibility(cx,tv)},
-    TextBlock::new().text("Wake addresses").font_weight(FontWeight::SEMI_BOLD),
-    note(if tv.network.targets().is_empty(){"No wake address saved. You can enter a manual MAC below.".into()}else{tv.network.summary()}),
-    self.tv_mac_field(cx,&self.tv.manual_mac,self.tv.manual_mac_enabled),
-    TextBlock::new().text("Windows display (optional)").font_weight(FontWeight::SEMI_BOLD),
-    self.tv_display_picker(cx,tv),
-    self.tv_audio_picker(cx,tv),
-    note("Connection choices are saved only. No input, power, or display change is applied here."),
+   ScrollViewer::new().grid_row(1).horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(crate::ui::GAP_XXL).max_width(crate::ui::FORM_WIDTH).horizontal_alignment(HorizontalAlignment::Left).children((
+    crate::ui::section("Connection", if changed { "Continue through setup to pair the new connection. Your saved TV stays unchanged until you finish." } else { "Pairing is kept when you change anything except the address or connection method." }, None, StackPanel::new().spacing(crate::ui::GAP_M).children((
+     crate::ui::label("TV name"),
+     TextBox::new().automation_name("TV name").text(tv.name.clone()).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Name(v)))),
+     crate::ui::label("IP address"),
+     TextBox::new().automation_name("TV IP address").text(tv.address.clone()).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Address(v)))),
+     self.tv_connection_options(cx,tv),
+    ))),
+    crate::ui::section("PC input", "The TV input this PC is connected to.", None, if tv.brand==tvs::Brand::Lg{self.tv_input_picker(cx,tv,true)}else{self.samsung_compatibility(cx,tv)}),
+    crate::ui::section("Wake", &if tv.network.targets().is_empty(){"No wake address saved. You can enter a MAC address below.".to_string()}else{tv.network.summary()}, None, self.tv_mac_field(cx,&self.tv.manual_mac,self.tv.manual_mac_enabled)),
+    crate::ui::section("Windows display", "Optional: the display and sound output this TV appears as in Windows.", None, StackPanel::new().spacing(crate::ui::GAP_M).children((self.tv_display_picker(cx,tv), self.tv_audio_picker(cx,tv)))),
    ))),
    Grid::new().grid_row(2).columns([GridLength::Star(1.0),GridLength::Auto]).margin(Thickness::new(0.0,20.0,0.0,0.0)).children((
-    TextBlock::new().grid_column(0).text("Saving remembers your choices.").opacity(0.72).text_wrapping(TextWrapping::Wrap).vertical_alignment(VerticalAlignment::Center),
+    TextBlock::new().grid_column(0).text("Saving only remembers your choices. Nothing changes on the TV.").opacity(crate::ui::SECONDARY).text_wrapping(TextWrapping::Wrap).vertical_alignment(VerticalAlignment::Center),
     StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
      Button::new().is_enabled(!self.busy).on_click(cx.message(msg(TvMessage::Cancel))).content("Cancel"),
      Button::new().style(ButtonStyle::Accent).is_enabled(self.tv_ready()&&valid&&(changed||self.draft_changed(crate::Page::Tvs))).on_click(cx.message(msg(TvMessage::Save))).content(if changed{"Continue setup"}else{"Save TV"}),
