@@ -20,6 +20,7 @@ mod preset_ui;
 mod samsung_ui;
 mod scene_editor_ui;
 mod scene_ui;
+mod starter_ui;
 mod status_ui;
 mod tv_controls_ui;
 mod tv_power_state;

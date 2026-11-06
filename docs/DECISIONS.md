@@ -197,3 +197,7 @@ The user wanted scenes to switch the TV off, chose a switch in the Prepare TV st
 ### D062 — Local crash reports offered as GitHub issues (2026-11-06)
 
 Opening a scene step with actions closed the window: the pinned Reactor rejects tooltips inside a ContentDialog, and nothing recorded the failure beyond one log line. The user asked why crashes aren't collected so people can report them. Director now saves a local crash report for panics and fatal window errors and offers it once on the next start. Report on GitHub opens a pre-filled issue in the browser, so nothing is uploaded without the user submitting it; the log lines stay in the file for the user to attach. A test keeps tooltips out of dialog content.
+
+### D063 — Onboarding starts from the current setup (2026-11-06)
+
+The first-run checklist sent people to Now and to each Library page before they knew what a scene was, and its buttons were mismatched page names. The user asked for a better start that explains a scene for the everyday setup. The empty Scenes page now saves the current screens, sound and FPS limit as one scene (checkboxes, default name Default), reusing matching presets and changing no device, then shows a dismissible tip for making the next scene in the step editor, which can create presets in place.

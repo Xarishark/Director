@@ -60,6 +60,10 @@ The Prepare TV step has **Turn off the TV when you leave this scene** (`off_when
 
 The **>\_** button next to a scene's or preset's name opens "Run … from a shortcut" with two commands, each with a Copy button: by name (`director scene apply "CONSOLE"`, readable, but copy it again after a rename) and by ID (keeps working after a rename). A scene with leave work also shows `director scene end`. Display and audio presets accept their ID in `director display apply` and `director audio apply`, as scenes already did. Setup puts `director` on PATH, so the commands don't include a full path.
 
+## First scene
+
+An empty Scenes page offers to save the current setup as the everyday scene (named "Default" unless changed). It reads the layout with the display capture, the console default output (else any active one) with its volume, and the global FPS limit from the FPS survey: a provider with a limit wins, RTSS wins when both have one, and a zero value saves "no global limit". Each part can be unticked; a part that couldn't be read is disabled. Saving holds the operation lock, reuses a display preset with an identical layout and an audio preset with the same output and volume, otherwise adds "Default screens" and "Default sound" (made unique), then saves the scene. Presets are saved before the scene, so a scene never points at a preset that wasn't saved. No device changes. The logic is `director::starter`.
+
 ## Global failure policy
 
 "Keep changes that finished if a later step fails" and the device wait (1–120 seconds, default 30) are Options settings in `preferences.json`, shared by scenes, audio presets (window, Now and CLI) and waited apps. The per-preset audio checkbox is gone; saved presets keep their `keep_changes` field for compatibility, and it is ignored. `director audio apply --keep-on-failure` still overrides the setting for one run.

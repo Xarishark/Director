@@ -14,6 +14,10 @@ pub struct Preferences {
     /// How long scenes wait for a TV or audio device, and for waited apps (1–120 s).
     #[serde(default = "default_wait")]
     pub device_wait_seconds: u16,
+    /// The Scenes page's "make your next scene" tip was dismissed. Written only when set, so
+    /// older builds keep reading the file until the tip is dismissed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_next_scene_tip: bool,
 }
 fn default_wait() -> u16 {
     30
@@ -25,6 +29,7 @@ impl Default for Preferences {
             notify_scene_failures: false,
             keep_completed_changes: false,
             device_wait_seconds: default_wait(),
+            hide_next_scene_tip: false,
         }
     }
 }
@@ -102,12 +107,21 @@ mod tests {
         ));
         let initial = load(&path).unwrap();
         assert_eq!(initial.device_wait_seconds, 30);
+        assert!(!initial.hide_next_scene_tip);
+        std::fs::write(
+            &path,
+            br#"{"version":1,"preferences":{"hide_tv_setup_tip":false,"notify_scene_failures":false,"keep_completed_changes":false,"device_wait_seconds":30}}"#,
+        )
+        .unwrap();
+        assert_eq!(load(&path).unwrap(), initial, "older files still load");
+        std::fs::remove_file(&path).unwrap();
         assert_eq!(initial.audio_policy(), crate::audio::FailurePolicy::Revert);
         let hidden = Preferences {
             hide_tv_setup_tip: true,
             notify_scene_failures: true,
             keep_completed_changes: true,
             device_wait_seconds: 45,
+            hide_next_scene_tip: true,
         };
         save(&path, &initial, &hidden).unwrap();
         assert_eq!(load(&path).unwrap(), hidden);

@@ -60,6 +60,8 @@ pub(crate) enum SceneMessage {
     Progress(u64, Option<Event>),
     Confirm(ContentDialogResult),
     Finished(u64, Result<scenes::Report, String>),
+    /// The first-run card that saves the current setup as a scene.
+    Starter(crate::starter_ui::StarterMessage),
 }
 #[derive(Clone)]
 pub(crate) enum Event {
@@ -88,6 +90,8 @@ pub(crate) struct SceneState {
     pub(crate) active: Option<String>,
     /// App actions whose Advanced options section is open.
     pub(crate) advanced: Vec<(ActionList, usize)>,
+    /// The first-run card: what it read and what's ticked.
+    pub(crate) starter: crate::starter_ui::StarterState,
 }
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
@@ -97,13 +101,6 @@ fn note(s: impl Into<String>) -> View {
         .text(s)
         .text_wrapping(TextWrapping::Wrap)
         .opacity(0.72)
-        .into()
-}
-fn heading(s: &str) -> View {
-    TextBlock::new()
-        .text(s)
-        .font_size(20.0)
-        .font_weight(FontWeight::SEMI_BOLD)
         .into()
 }
 fn id() -> String {
@@ -210,6 +207,7 @@ impl DirectorApp {
                         self.scene.active = director::scene_session::active();
                         self.status = "Ready.".into();
                         self.library_select_in_scene(cx);
+                        self.starter_loaded(cx);
                     }
                     Err(e) => {
                         self.scene.ready = false;
@@ -217,6 +215,7 @@ impl DirectorApp {
                     }
                 }
             }
+            SceneMessage::Starter(m) => self.update_starter(m, cx),
             SceneMessage::Add if ready => {
                 self.scene.draft = Some(Scene::new(id(), ""));
                 self.scene.open = None;
@@ -519,6 +518,7 @@ impl DirectorApp {
                         self.error = false;
                         self.status = "Scenes saved. Your setup is unchanged.".into();
                         self.guard_saved(true, cx);
+                        self.starter_probe_if_needed(cx);
                         self.details.clear();
                         self.announce(cx);
                     }
@@ -792,7 +792,12 @@ impl DirectorApp {
             })
             .collect::<Vec<_>>();
         Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+            .rows([
+                GridLength::Auto,
+                GridLength::Auto,
+                GridLength::Star(1.0),
+                GridLength::Auto,
+            ])
             .children((
                 crate::preset_ui::header(
                     "Scenes",
@@ -808,21 +813,23 @@ impl DirectorApp {
                             .tooltip("Add scene"),
                     ],
                 ),
+                Border::new().grid_row(1).content(self.next_scene_tip(cx)),
                 if self.scene.scenes.is_empty() {
-                    Border::new()
-                        .grid_row(1)
-                        .padding(20.0)
-                        .content(self.scene_first_run(cx))
+                    ScrollViewer::new().grid_row(2).content(
+                        Border::new()
+                            .padding(Thickness::new(0.0, 4.0, 0.0, 20.0))
+                            .content(self.starter_card(cx)),
+                    )
                 } else {
                     crate::preset_cards_ui::card_grid(
-                        1,
+                        2,
                         crate::preset_cards_ui::SCENE_CARD_HEIGHT,
                         cards,
                     )
                 },
                 if self.scene.cancel.is_some() {
                     Button::new()
-                        .grid_row(2)
+                        .grid_row(3)
                         .horizontal_alignment(HorizontalAlignment::Left)
                         .automation_name("Cancel scene")
                         .on_click(cx.message(msg(SceneMessage::Stop)))
@@ -907,83 +914,6 @@ impl DirectorApp {
             (Some(off), n) => lines.push(format!("When leaving: {off} · {n} action(s)")),
         }
         lines.join("\n")
-    }
-    /// First-run checklist: save the building blocks in the Library, then combine them here.
-    fn scene_first_run(&self, cx: &ViewContext<Self>) -> View {
-        let step = |key: &str, done: bool, title: &str, detail: &str, action: View| {
-            KeyedView::new(
-                key,
-                Grid::new()
-                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-                    .column_spacing(12.0)
-                    .children((
-                        FontIcon::new()
-                            .grid_column(0)
-                            .glyph(if done { "\u{e73e}" } else { "\u{ea3a}" })
-                            .opacity(if done { 1.0 } else { 0.5 })
-                            .vertical_alignment(VerticalAlignment::Top)
-                            .margin(Thickness::new(0.0, 3.0, 0.0, 0.0)),
-                        StackPanel::new().grid_column(1).spacing(2.0).children((
-                            TextBlock::new()
-                                .text(title)
-                                .font_weight(FontWeight::SEMI_BOLD),
-                            note(detail),
-                        )),
-                        Border::new()
-                            .grid_column(2)
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .content(action),
-                    )),
-            )
-        };
-        let go = |label: &str, tag: &str| -> View {
-            Button::new()
-                .is_enabled(!self.busy)
-                .on_click(cx.message(Message::Navigate(Some(tag.into()))))
-                .content(label)
-        };
-        StackPanel::new()
-            .spacing(16.0)
-            .max_width(650.0)
-            .horizontal_alignment(HorizontalAlignment::Left)
-            .children((
-                heading("Your setup, ready in one scene"),
-                note("A scene combines saved building blocks from your Library and runs them in order."),
-                StackPanel::new().spacing(14.0).keyed_children([
-                    step(
-                        "displays",
-                        !self.scene.displays.is_empty(),
-                        "1 · Save a display layout",
-                        "Arrange your screens in Now, then save them as a display preset.",
-                        go("Open Now", "current"),
-                    ),
-                    step(
-                        "audio",
-                        !self.scene.audio.is_empty(),
-                        "2 · Save your sound (optional)",
-                        "Pick an output and volume to switch to with the scene.",
-                        go("Audio", "audio"),
-                    ),
-                    step(
-                        "tv",
-                        !self.scene.tvs.is_empty(),
-                        "3 · Pair a TV (optional)",
-                        "Lets the scene wake your TV and switch its input first.",
-                        go("TVs", "tvs"),
-                    ),
-                    step(
-                        "scene",
-                        false,
-                        "4 · Create the scene",
-                        "Choose what it changes and what to open afterwards.",
-                        Button::new()
-                            .style(ButtonStyle::Accent)
-                            .is_enabled(self.scene_ready())
-                            .on_click(cx.message(msg(SceneMessage::Add)))
-                            .content("Create scene"),
-                    ),
-                ]),
-            ))
     }
     pub(crate) fn scene_dialog(&self, cx: &ViewContext<Self>) -> View {
         if self.scene.open.is_some() && self.scene.draft.is_some() {

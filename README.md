@@ -34,7 +34,7 @@ The display and audio preset cards show a preview of what you saved. Use the che
 
 ## Set up your first TV scene
 
-1. In **Library › Displays**, capture your desk layout so you can switch back. Create a separate layout for the TV. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
+1. The first time you open **Scenes**, save your everyday setup: **Save as my Default scene** stores your current screens, sound and FPS limit as a scene, so you can always switch back in one click. It changes nothing on your PC, and it reuses presets you already saved when they match. Then create a separate display layout for the TV in **Library › Displays**, or from the scene's Displays step. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
 2. In **Library › TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output, or create a separate **Audio preset** if you also want a specific volume.
 3. In **Scenes**, create **TV Gaming**. Select the TV, the TV display preset, and the audio choice. Add a frame-rate cap or an app launch if you want one. If a preset or TV is missing, choose **New display preset…**, **New audio preset…**, or **Add TV…** at the bottom of that list. Director returns to the scene with it selected after you save. Apply the scene when you’re ready.
 

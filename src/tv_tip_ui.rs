@@ -23,6 +23,8 @@ pub(crate) enum TipMessage {
     NotifySceneFailures(bool),
     KeepCompleted(bool),
     DeviceWait(Option<f64>),
+    /// Hide the Scenes page's "make your next scene" tip for good.
+    HideNextSceneTip,
     Saved(Result<Preferences, String>),
     AddTv,
 }
@@ -61,6 +63,7 @@ impl DirectorApp {
             message @ (TipMessage::Show(_)
             | TipMessage::NotifySceneFailures(_)
             | TipMessage::KeepCompleted(_)
+            | TipMessage::HideNextSceneTip
             | TipMessage::DeviceWait(Some(_)))
                 if !self.busy && self.tip.pending.is_none() =>
             {
@@ -77,6 +80,7 @@ impl DirectorApp {
                         next.notify_scene_failures = enabled
                     }
                     TipMessage::KeepCompleted(keep) => next.keep_completed_changes = keep,
+                    TipMessage::HideNextSceneTip => next.hide_next_scene_tip = true,
                     TipMessage::DeviceWait(Some(seconds)) => {
                         next.device_wait_seconds = seconds.round().clamp(1.0, 120.0) as u16
                     }

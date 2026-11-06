@@ -25,7 +25,7 @@ pub(crate) enum FpsMessage {
 #[derive(Default)]
 pub(crate) struct FpsState {
     pub caps: Vec<Capability>,
-    loaded: bool,
+    pub(crate) loaded: bool,
     checking: bool,
     revision: u64,
     pub live: Option<Request>,
