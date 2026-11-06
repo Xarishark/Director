@@ -229,6 +229,7 @@ mod tests {
             multimedia: true,
             communications: true,
             volume_percent: volume,
+            muted: None,
         }
     }
     fn snapshot(provider: fps::Provider, value: u32) -> fps::Snapshot {

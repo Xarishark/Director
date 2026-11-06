@@ -30,12 +30,14 @@ pub struct InputSelection {
 impl Preset {
     pub fn request(&self) -> crate::audio::Request {
         crate::audio::Request {
-            output_id: self.output_id.clone(),
+            output_id: Some(self.output_id.clone()),
             volume_percent: self.volume_percent,
+            mute: None,
             communications_output_id: self.communications_output.as_ref().map(|d| d.id.clone()),
             input: self.input.as_ref().map(|d| crate::audio::InputRequest {
                 device_id: d.id.clone(),
                 volume_percent: d.volume_percent,
+                mute: None,
             }),
         }
     }

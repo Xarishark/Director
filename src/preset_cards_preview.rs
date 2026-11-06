@@ -124,6 +124,7 @@ impl DirectorApp {
                     console: true,
                     multimedia: true,
                     volume_percent: Some(45),
+                    muted: None,
                 }];
                 self.outputs.push(Output {
                     id: "fixture-chat".into(),
@@ -134,6 +135,7 @@ impl DirectorApp {
                     multimedia: false,
                     communications: true,
                     volume_percent: Some(35),
+                    muted: None,
                 });
                 self.inputs = vec![Output {
                     id: "fixture-mic".into(),
@@ -144,6 +146,7 @@ impl DirectorApp {
                     multimedia: true,
                     communications: true,
                     volume_percent: Some(55),
+                    muted: None,
                 }];
                 self.presets = [
                     ("Desk working", Some(45)),

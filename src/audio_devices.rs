@@ -104,6 +104,7 @@ impl Inventory {
                     multimedia: false,
                     communications: false,
                     volume_percent: None,
+                    muted: None,
                 });
             }
         }

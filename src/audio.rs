@@ -21,6 +21,8 @@ pub struct Output {
     pub multimedia: bool,
     pub communications: bool,
     pub volume_percent: Option<u8>,
+    /// Read for active endpoints only.
+    pub muted: Option<bool>,
 }
 
 /// A device chosen by endpoint ID, with the name it had when chosen.
@@ -32,8 +34,10 @@ pub struct DeviceSelection {
 }
 #[derive(Clone, Debug)]
 pub struct Request {
-    pub output_id: String,
+    /// None leaves the default output as is; volume and mute then apply to it.
+    pub output_id: Option<String>,
     pub volume_percent: Option<u8>,
+    pub mute: Option<bool>,
     pub communications_output_id: Option<String>,
     pub input: Option<InputRequest>,
 }
@@ -41,6 +45,7 @@ pub struct Request {
 pub struct InputRequest {
     pub device_id: String,
     pub volume_percent: Option<u8>,
+    pub mute: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +94,12 @@ pub trait AudioBackend {
     fn set_default(&mut self, role: Role, id: &str) -> Result<()>;
     fn volume(&mut self, id: &str) -> Result<f32>;
     fn set_volume(&mut self, id: &str, scalar: f32) -> Result<()>;
+    fn mute(&mut self, _id: &str) -> Result<bool> {
+        Err("Mute cannot be read.".into())
+    }
+    fn set_mute(&mut self, _id: &str, _muted: bool) -> Result<()> {
+        Err("Mute cannot be changed.".into())
+    }
 }
 
 /// Changes one output level without calling the routing or mute APIs.
@@ -186,6 +197,11 @@ struct Level {
     percent: u8,
     previous: f32,
 }
+struct Mute {
+    id: String,
+    muted: bool,
+    previous: bool,
+}
 fn default(backend: &mut impl AudioBackend, input: bool, role: Role) -> Result<String> {
     if input {
         backend.default_input(role)
@@ -200,91 +216,143 @@ fn assign(backend: &mut impl AudioBackend, input: bool, role: Role, id: &str) ->
         backend.set_default(role, id)
     }
 }
+fn verify_mute(backend: &mut impl AudioBackend, id: &str, expected: bool) -> Result<()> {
+    if backend.mute(id)? == expected {
+        Ok(())
+    } else {
+        Err("Windows did not confirm the requested mute state.".into())
+    }
+}
+struct Plan {
+    routes: Vec<Route>,
+    levels: Vec<Level>,
+    mutes: Vec<Mute>,
+    name: String,
+}
+fn plan(backend: &mut impl AudioBackend, request: &Request) -> Result<Plan> {
+    if request.output_id.as_deref().is_some_and(str::is_empty) {
+        return Err("Choose an output device.".into());
+    }
+    if request.volume_percent.is_some_and(|v| v > 100)
+        || request
+            .input
+            .as_ref()
+            .is_some_and(|v| v.volume_percent.is_some_and(|p| p > 100))
+    {
+        return Err("Volume must be between 0 and 100%.".into());
+    }
+    if request.output_id.is_none()
+        && request.volume_percent.is_none()
+        && request.mute.is_none()
+        && request.communications_output_id.is_none()
+        && request.input.is_none()
+    {
+        return Err("Choose something to change.".into());
+    }
+    let outputs = backend.outputs()?;
+    // No output means "leave the default as is": volume and mute apply to the current one.
+    let output_id = match &request.output_id {
+        Some(id) => backend.resolve_id(id, false),
+        None => backend.default_output(Role::Console)?,
+    };
+    let output = outputs
+        .iter()
+        .find(|o| o.id == output_id && o.active)
+        .ok_or("The selected output is no longer available.")?;
+    let mut routes = vec![];
+    let mut levels = vec![];
+    let mut mutes = vec![];
+    let communications = request
+        .communications_output_id
+        .as_deref()
+        .map(|id| backend.resolve_id(id, false));
+    if let Some(id) = &communications
+        && !outputs.iter().any(|o| &o.id == id && o.active)
+    {
+        return Err("The selected communications output is no longer available.".into());
+    }
+    for role in DEFAULT_ROLES {
+        let desired = match (role, &communications) {
+            (Role::Communications, Some(id)) => id.clone(),
+            _ if request.output_id.is_some() => output.id.clone(),
+            _ => continue,
+        };
+        routes.push(Route {
+            input: false,
+            role,
+            desired,
+            previous: backend.default_output(role)?,
+        });
+    }
+    if let Some(percent) = request.volume_percent {
+        levels.push(Level {
+            id: output.id.clone(),
+            percent,
+            previous: backend.volume(&output.id)?,
+        });
+    }
+    if let Some(muted) = request.mute {
+        mutes.push(Mute {
+            id: output.id.clone(),
+            muted,
+            previous: backend.mute(&output.id)?,
+        });
+    }
+    if let Some(input) = &request.input {
+        let inputs = backend.inputs()?;
+        let input_id = backend.resolve_id(&input.device_id, true);
+        let target = inputs
+            .iter()
+            .find(|o| o.id == input_id && o.active)
+            .ok_or("The selected microphone is no longer available. No audio settings changed.")?;
+        for role in DEFAULT_ROLES {
+            routes.push(Route {
+                input: true,
+                role,
+                desired: target.id.clone(),
+                previous: backend.default_input(role)?,
+            });
+        }
+        if let Some(percent) = input.volume_percent {
+            levels.push(Level {
+                id: target.id.clone(),
+                percent,
+                previous: backend.volume(&target.id)?,
+            });
+        }
+        if let Some(muted) = input.mute {
+            mutes.push(Mute {
+                id: target.id.clone(),
+                muted,
+                previous: backend.mute(&target.id)?,
+            });
+        }
+    }
+    if levels
+        .iter()
+        .any(|l| !l.previous.is_finite() || !(0.0..=1.0).contains(&l.previous))
+    {
+        return Err("Windows returned an invalid device volume.".into());
+    }
+    Ok(Plan {
+        routes,
+        levels,
+        mutes,
+        name: output.name.clone(),
+    })
+}
 fn apply_inner(
     backend: &mut impl AudioBackend,
     request: &Request,
     policy: FailurePolicy,
     mut progress: impl FnMut(&str),
 ) -> Report {
-    let snapshot = (|| -> Result<(Vec<Route>, Vec<Level>, String)> {
-        if request.output_id.is_empty() {
-            return Err("Choose an output device.".into());
-        }
-        if request.volume_percent.is_some_and(|v| v > 100)
-            || request
-                .input
-                .as_ref()
-                .is_some_and(|v| v.volume_percent.is_some_and(|p| p > 100))
-        {
-            return Err("Volume must be between 0 and 100%.".into());
-        }
-        let outputs = backend.outputs()?;
-        let output_id = backend.resolve_id(&request.output_id, false);
-        let output = outputs
-            .iter()
-            .find(|o| o.id == output_id && o.active)
-            .ok_or("The selected output is no longer available.")?;
-        let communications = request
-            .communications_output_id
-            .as_deref()
-            .map(|id| backend.resolve_id(id, false))
-            .unwrap_or_else(|| output.id.clone());
-        if !outputs.iter().any(|o| o.id == communications && o.active) {
-            return Err("The selected communications output is no longer available.".into());
-        }
-        let mut routes = vec![];
-        let mut levels = vec![];
-        for role in DEFAULT_ROLES {
-            let desired = if role == Role::Communications {
-                &communications
-            } else {
-                &output.id
-            };
-            routes.push(Route {
-                input: false,
-                role,
-                desired: desired.into(),
-                previous: backend.default_output(role)?,
-            });
-        }
-        if let Some(percent) = request.volume_percent {
-            levels.push(Level {
-                id: output.id.clone(),
-                percent,
-                previous: backend.volume(&output.id)?,
-            });
-        }
-        if let Some(input) = &request.input {
-            let inputs = backend.inputs()?;
-            let input_id = backend.resolve_id(&input.device_id, true);
-            let target = inputs.iter().find(|o| o.id == input_id && o.active).ok_or(
-                "The selected microphone is no longer available. No audio settings changed.",
-            )?;
-            for role in DEFAULT_ROLES {
-                routes.push(Route {
-                    input: true,
-                    role,
-                    desired: target.id.clone(),
-                    previous: backend.default_input(role)?,
-                });
-            }
-            if let Some(percent) = input.volume_percent {
-                levels.push(Level {
-                    id: target.id.clone(),
-                    percent,
-                    previous: backend.volume(&target.id)?,
-                });
-            }
-        }
-        if levels
-            .iter()
-            .any(|l| !l.previous.is_finite() || !(0.0..=1.0).contains(&l.previous))
-        {
-            return Err("Windows returned an invalid device volume.".into());
-        }
-        Ok((routes, levels, output.name.clone()))
-    })();
-    let (routes, levels, name) = match snapshot {
+    let Plan {
+        routes,
+        levels,
+        mutes,
+        name,
+    } = match plan(backend, request) {
         Ok(v) => v,
         Err(e) => {
             return Report {
@@ -296,6 +364,7 @@ fn apply_inner(
     };
     let mut attempted = vec![];
     let mut changed_levels = vec![];
+    let mut changed_mutes = vec![];
     let result = (|| -> Result<()> {
         for (i, route) in routes.iter().enumerate() {
             if route.previous != route.desired {
@@ -316,6 +385,17 @@ fn apply_inner(
                 backend.set_volume(&level.id, scalar)?;
             }
         }
+        for (i, mute) in mutes.iter().enumerate() {
+            if mute.previous != mute.muted {
+                progress(if mute.muted {
+                    "Muting…"
+                } else {
+                    "Unmuting…"
+                });
+                changed_mutes.push(i);
+                backend.set_mute(&mute.id, mute.muted)?;
+            }
+        }
         progress("Verifying audio settings…");
         for route in &routes {
             if default(backend, route.input, route.role)? != route.desired {
@@ -329,32 +409,43 @@ fn apply_inner(
         for level in &levels {
             verify_volume(backend, &level.id, f32::from(level.percent) / 100.0)?;
         }
+        for mute in &mutes {
+            verify_mute(backend, &mute.id, mute.muted)?;
+        }
         Ok(())
     })();
+    let nothing_changed =
+        attempted.is_empty() && changed_levels.is_empty() && changed_mutes.is_empty();
     match result {
-        Ok(()) => {
-            let changed = !attempted.is_empty() || !changed_levels.is_empty();
-            Report {
-                outcome: if changed {
-                    Outcome::Applied
+        Ok(()) => Report {
+            outcome: if nothing_changed {
+                Outcome::NoChanges
+            } else {
+                Outcome::Applied
+            },
+            message: format!(
+                "{}: {name}",
+                if nothing_changed {
+                    "Already set"
                 } else {
-                    Outcome::NoChanges
+                    "Applied"
+                }
+            ),
+            details: vec![format!(
+                "{} {}",
+                if request.output_id.is_some() {
+                    "Output roles verified (Console, Multimedia, Communications)."
+                } else {
+                    "The default output was left as is."
                 },
-                message: format!(
-                    "{}: {name}",
-                    if changed { "Applied" } else { "Already set" }
-                ),
-                details: vec![format!(
-                    "Output roles verified (Console, Multimedia, Communications). {}",
-                    if request.input.is_some() {
-                        "Selected microphone roles verified."
-                    } else {
-                        "Microphone settings were left unchanged."
-                    }
-                )],
-            }
-        }
-        Err(e) if attempted.is_empty() && changed_levels.is_empty() => Report {
+                if request.input.is_some() {
+                    "Selected microphone roles verified."
+                } else {
+                    "Microphone settings were left unchanged."
+                }
+            )],
+        },
+        Err(e) if nothing_changed => Report {
             outcome: Outcome::PreflightFailed,
             message: "No changes made.".into(),
             details: vec![e],
@@ -367,6 +458,12 @@ fn apply_inner(
         Err(e) => {
             progress("Restoring previous audio settings…");
             let mut errors = vec![e];
+            for &i in changed_mutes.iter().rev() {
+                let m = &mutes[i];
+                if let Err(e) = backend.set_mute(&m.id, m.previous) {
+                    errors.push(format!("Restore mute: {e}"));
+                }
+            }
             for &i in changed_levels.iter().rev() {
                 let l = &levels[i];
                 if let Err(e) = backend.set_volume(&l.id, l.previous) {
@@ -397,6 +494,12 @@ fn apply_inner(
                     Ok(v) if v.is_finite() && (v - l.previous).abs() <= 0.01 => {}
                     Ok(_) => errors.push("Restored device volume could not be verified.".into()),
                     Err(e) => errors.push(format!("Verify restored volume: {e}")),
+                }
+            }
+            for &i in &changed_mutes {
+                let m = &mutes[i];
+                if let Err(e) = verify_mute(backend, &m.id, m.previous) {
+                    errors.push(format!("Verify restored mute: {e}"));
                 }
             }
             let complete = errors.len() == 1;
@@ -453,6 +556,7 @@ mod tests {
                 console: false,
                 multimedia: false,
                 volume_percent: Some(73),
+                muted: None,
             }])
         }
         fn default_output(&mut self, role: Role) -> Result<String> {
@@ -487,8 +591,9 @@ mod tests {
         Request {
             communications_output_id: None,
             input: None,
-            output_id: "headphones".into(),
+            output_id: Some("headphones".into()),
             volume_percent: volume,
+            mute: None,
         }
     }
 
@@ -573,19 +678,23 @@ mod tests {
 }
 
 #[cfg(test)]
-mod optional_routing_tests {
+pub(crate) mod optional_routing_tests {
     use super::*;
-    struct Backend {
-        out: [String; 3],
-        input: [String; 3],
-        levels: std::collections::BTreeMap<String, f32>,
-        writes: Vec<String>,
-        mic_available: bool,
-        input_reads: usize,
-        fail_mic_volume: bool,
+    /// Two outputs (speakers, headset) and one mic, with levels and mute; shared with
+    /// audio_control's tests.
+    pub(crate) struct Backend {
+        pub out: [String; 3],
+        pub input: [String; 3],
+        pub levels: std::collections::BTreeMap<String, f32>,
+        pub mutes: std::collections::BTreeMap<String, bool>,
+        pub writes: Vec<String>,
+        pub mic_available: bool,
+        pub input_reads: usize,
+        pub fail_mic_volume: bool,
+        pub fail_mute: bool,
     }
     impl Backend {
-        fn new() -> Self {
+        pub fn new() -> Self {
             Self {
                 out: ["old-system".into(), "old-media".into(), "old-calls".into()],
                 input: [
@@ -597,14 +706,20 @@ mod optional_routing_tests {
                     ("speakers".into(), 0.7),
                     ("mic".into(), 0.8),
                 ]),
+                mutes: std::collections::BTreeMap::from([
+                    ("speakers".into(), false),
+                    ("headset".into(), false),
+                    ("mic".into(), false),
+                ]),
                 writes: vec![],
                 mic_available: true,
                 input_reads: 0,
                 fail_mic_volume: false,
+                fail_mute: false,
             }
         }
     }
-    fn device(id: &str, active: bool) -> Output {
+    pub fn device(id: &str, active: bool) -> Output {
         Output {
             id: id.into(),
             name: id.into(),
@@ -614,6 +729,7 @@ mod optional_routing_tests {
             multimedia: false,
             communications: false,
             volume_percent: None,
+            muted: None,
         }
     }
     impl AudioBackend for Backend {
@@ -652,14 +768,67 @@ mod optional_routing_tests {
             }
             Ok(())
         }
+        fn mute(&mut self, id: &str) -> Result<bool> {
+            self.mutes.get(id).copied().ok_or("Missing mute".into())
+        }
+        fn set_mute(&mut self, id: &str, muted: bool) -> Result<()> {
+            self.writes.push(format!("mute:{id}"));
+            self.mutes.insert(id.into(), muted);
+            if self.fail_mute {
+                self.fail_mute = false;
+                return Err("Mute changed before failure".into());
+            }
+            Ok(())
+        }
     }
     fn request() -> Request {
         Request {
-            output_id: "speakers".into(),
+            output_id: Some("speakers".into()),
             volume_percent: Some(40),
+            mute: None,
             communications_output_id: Some("headset".into()),
             input: None,
         }
+    }
+    #[test]
+    fn mute_applies_to_the_current_output_when_the_output_is_left_as_is() {
+        let mut b = Backend::new();
+        b.out = ["speakers".into(), "speakers".into(), "speakers".into()];
+        let r = Request {
+            output_id: None,
+            volume_percent: Some(20),
+            mute: Some(true),
+            communications_output_id: None,
+            input: None,
+        };
+        let report = apply(&mut b, &r, FailurePolicy::Revert, |_| {});
+        assert_eq!(report.outcome, Outcome::Applied, "{:?}", report.details);
+        assert_eq!(b.writes, ["volume:speakers", "mute:speakers"]);
+        assert!(b.mutes["speakers"]);
+        assert!(apply(&mut b, &r, FailurePolicy::Revert, |_| {}).outcome == Outcome::NoChanges);
+        let empty = Request {
+            output_id: None,
+            volume_percent: None,
+            mute: None,
+            communications_output_id: None,
+            input: None,
+        };
+        assert_eq!(
+            apply(&mut b, &empty, FailurePolicy::Revert, |_| {}).outcome,
+            Outcome::PreflightFailed
+        );
+    }
+    #[test]
+    fn failed_mute_restores_mute_volume_and_routes() {
+        let mut b = Backend::new();
+        b.fail_mute = true;
+        let mut r = request();
+        r.mute = Some(true);
+        let report = apply(&mut b, &r, FailurePolicy::Revert, |_| {});
+        assert_eq!(report.outcome, Outcome::Reverted, "{:?}", report.details);
+        assert!(!b.mutes["speakers"]);
+        assert_eq!(b.levels["speakers"], 0.7);
+        assert_eq!(b.out, ["old-system", "old-media", "old-calls"]);
     }
     #[test]
     fn separate_calls_output_leaves_microphones_untouched() {
@@ -679,6 +848,7 @@ mod optional_routing_tests {
         r.input = Some(InputRequest {
             device_id: "mic".into(),
             volume_percent: Some(25),
+            mute: None,
         });
         assert_eq!(
             apply(&mut b, &r, FailurePolicy::Revert, |_| {}).outcome,
@@ -703,6 +873,7 @@ mod optional_routing_tests {
         r.input = Some(InputRequest {
             device_id: "mic".into(),
             volume_percent: Some(25),
+            mute: None,
         });
         b.fail_mic_volume = true;
         assert_eq!(
@@ -720,6 +891,7 @@ mod optional_routing_tests {
         r.input = Some(InputRequest {
             device_id: "mic".into(),
             volume_percent: None,
+            mute: None,
         });
         assert!(apply(&mut b, &r, FailurePolicy::Revert, |_| {}).succeeded());
         assert_eq!(b.input, ["mic", "mic", "mic"]);

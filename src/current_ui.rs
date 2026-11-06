@@ -278,8 +278,9 @@ Could not read audio outputs: {e}"
                 let request = Request {
                     communications_output_id: None,
                     input: None,
-                    output_id: self.current.output_id.clone(),
+                    output_id: Some(self.current.output_id.clone()),
                     volume_percent: volume,
+                    mute: None,
                 };
                 self.begin("Applying audio changes…");
                 work(cx, move || {
@@ -488,6 +489,7 @@ mod tests {
             console: default,
             multimedia: default,
             volume_percent: Some(40),
+            muted: None,
         }
     }
     #[test]

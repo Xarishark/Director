@@ -540,6 +540,7 @@ impl Component for DirectorApp {
                                                 multimedia: false,
                                                 communications: false,
                                                 volume_percent: None,
+                                                muted: None,
                                             });
                                         }
                                     }
@@ -603,6 +604,7 @@ impl Component for DirectorApp {
                                 console: false,
                                 multimedia: false,
                                 volume_percent: None,
+                                muted: None,
                             });
                         }
                         for selection in p.communications_output.iter() {
@@ -616,6 +618,7 @@ impl Component for DirectorApp {
                                     multimedia: false,
                                     communications: false,
                                     volume_percent: None,
+                                    muted: None,
                                 });
                             }
                         }
@@ -630,6 +633,7 @@ impl Component for DirectorApp {
                                     multimedia: false,
                                     communications: false,
                                     volume_percent: None,
+                                    muted: None,
                                 });
                             }
                         }

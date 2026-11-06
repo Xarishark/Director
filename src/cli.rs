@@ -178,6 +178,7 @@ pub fn run(args: &[String]) -> i32 {
                     p.input.as_ref().map(|d| audio::InputRequest {
                         device_id: d.id.clone(),
                         volume_percent: d.volume_percent,
+                        mute: None,
                     })
                 });
                 let (id, volume, keep) = if let Some(p) = saved {
@@ -199,8 +200,9 @@ pub fn run(args: &[String]) -> i32 {
                     &Request {
                         communications_output_id,
                         input,
-                        output_id: id,
+                        output_id: Some(id),
                         volume_percent: volume,
+                        mute: None,
                     },
                     if keep {
                         FailurePolicy::KeepChanges
