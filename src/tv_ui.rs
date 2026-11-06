@@ -985,6 +985,7 @@ impl DirectorApp {
                     tv.id.clone(),
                     crate::preset_cards_ui::card(
                         &tv.name,
+                        View::empty(),
                         body,
                         vec![
                             crate::preset_cards_ui::card_icon_button(Button::new())

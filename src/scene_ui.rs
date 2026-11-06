@@ -738,6 +738,15 @@ impl DirectorApp {
                     s.id.clone(),
                     crate::preset_cards_ui::card(
                         &name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Scene,
+                                name: s.name.clone(),
+                                id: s.id.clone(),
+                                can_end: s.has_leave_work(),
+                            },
+                        ),
                         body,
                         vec![
                             crate::preset_cards_ui::apply_button(

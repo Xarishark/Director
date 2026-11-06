@@ -1,0 +1,196 @@
+//! "Run from a shortcut": the CLI command that applies a scene or preset, ready to copy into a
+//! Stream Deck button, a desktop shortcut or a script. Setup puts `director` on PATH.
+use crate::{DirectorApp, Message};
+use windows_reactor::*;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Scene,
+    Display,
+    Audio,
+}
+impl Kind {
+    fn area(self) -> &'static str {
+        match self {
+            Self::Scene => "scene",
+            Self::Display => "display",
+            Self::Audio => "audio",
+        }
+    }
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Scene => "scene",
+            Self::Display | Self::Audio => "preset",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Target {
+    pub kind: Kind,
+    pub name: String,
+    pub id: String,
+    /// A scene that does something when left also gets `director scene end`.
+    pub can_end: bool,
+}
+
+#[derive(Clone)]
+pub(crate) enum CommandMessage {
+    Show(Target),
+    Copy(String),
+    Closed,
+}
+
+/// Quote a name for the command line. Names can contain spaces; inner quotes are doubled
+/// so cmd, PowerShell and Stream Deck all pass the name through as one argument.
+fn quoted(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn commands(t: &Target) -> Vec<(&'static str, String, String)> {
+    let mut rows = vec![
+        (
+            "By name",
+            format!("director {} apply {}", t.kind.area(), quoted(&t.name)),
+            format!(
+                "Easy to read. Copy it again if you rename this {}.",
+                t.kind.noun()
+            ),
+        ),
+        (
+            "By ID",
+            format!("director {} apply {}", t.kind.area(), t.id),
+            "Keeps working after a rename.".into(),
+        ),
+    ];
+    if t.kind == Kind::Scene && t.can_end {
+        rows.push((
+            "End the active scene",
+            "director scene end".into(),
+            "Runs the active scene’s When leaving steps.".into(),
+        ));
+    }
+    rows
+}
+
+/// The borderless ">_" button shown next to a card's name.
+pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> View {
+    Button::new()
+        .automation_name(format!("Command for {}", target.name))
+        .style(ButtonStyle::Subtle)
+        .height(32.0)
+        .vertical_alignment(VerticalAlignment::Center)
+        .on_click(cx.callback(move |()| Message::Command(CommandMessage::Show(target.clone()))))
+        .content(
+            Viewbox::new()
+                .width(16.0)
+                .height(16.0)
+                .slot(ViewboxSlot::Child, FontIcon::new().glyph("\u{e756}")),
+        )
+        .tooltip("Command for shortcuts")
+}
+
+impl DirectorApp {
+    pub(crate) fn update_command(&mut self, m: CommandMessage, cx: &ComponentContext<Self>) {
+        match m {
+            CommandMessage::Show(target) => self.command = Some(target),
+            CommandMessage::Closed => self.command = None,
+            CommandMessage::Copy(text) => match crate::clipboard::copy_text(&text) {
+                Ok(()) => {
+                    self.error = false;
+                    self.status = "Command copied.".into();
+                    self.details = text;
+                    self.announce(cx);
+                }
+                Err(e) => self.failure(e),
+            },
+        }
+    }
+    pub(crate) fn command_dialog(&self, cx: &ViewContext<Self>) -> View {
+        let Some(target) = &self.command else {
+            return View::empty();
+        };
+        let rows = commands(target)
+            .into_iter()
+            .enumerate()
+            .map(|(i, (label, command, subtitle))| {
+                let copy = command.clone();
+                KeyedView::new(
+                    i.to_string(),
+                    StackPanel::new().spacing(6.0).children((
+                        TextBlock::new()
+                            .text(label)
+                            .font_weight(FontWeight::SEMI_BOLD),
+                        Grid::new()
+                            .columns([GridLength::Star(1.0), GridLength::Auto])
+                            .column_spacing(8.0)
+                            .children((
+                                Border::new()
+                                    .padding(Thickness::xy(10.0, 7.0))
+                                    .corner_radius(4.0)
+                                    .background(Color::argb(40, 128, 128, 128))
+                                    .content(
+                                        TextBlock::new()
+                                            .text(command)
+                                            .is_text_selection_enabled(true)
+                                            .text_wrapping(TextWrapping::Wrap),
+                                    ),
+                                Button::new()
+                                    .grid_column(1)
+                                    .automation_name(format!("Copy {}", label.to_lowercase()))
+                                    .vertical_alignment(VerticalAlignment::Center)
+                                    .on_click(cx.callback(move |()| {
+                                        Message::Command(CommandMessage::Copy(copy.clone()))
+                                    }))
+                                    .content("Copy"),
+                            )),
+                        TextBlock::new()
+                            .text(subtitle)
+                            .font_size(12.0)
+                            .opacity(0.65)
+                            .text_wrapping(TextWrapping::Wrap),
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+        ContentDialog::new()
+            .is_open(true)
+            .title(format!("Run “{}” from a shortcut", target.name))
+            .close_button_text("Close")
+            .on_closed(cx.callback(|_| Message::Command(CommandMessage::Closed)))
+            .content(
+                StackPanel::new()
+                    .spacing(16.0)
+                    .min_width(440.0)
+                    .children((
+                        StackPanel::new().spacing(14.0).keyed_children(rows),
+                        TextBlock::new()
+                            .text("Works from Stream Deck, shortcuts and scripts. Director doesn’t need to be open.")
+                            .opacity(0.72)
+                            .text_wrapping(TextWrapping::Wrap),
+                    )),
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn commands_quote_names_and_offer_end_only_when_it_does_something() {
+        let mut t = Target {
+            kind: Kind::Scene,
+            name: "TV \"Gaming\"".into(),
+            id: "abc-1".into(),
+            can_end: false,
+        };
+        let rows = commands(&t);
+        assert_eq!(rows[0].1, r#"director scene apply "TV ""Gaming""""#);
+        assert_eq!(rows[1].1, "director scene apply abc-1");
+        assert_eq!(rows.len(), 2);
+        t.can_end = true;
+        assert_eq!(commands(&t).len(), 3);
+        t.kind = Kind::Audio;
+        assert_eq!(commands(&t).len(), 2);
+    }
+}

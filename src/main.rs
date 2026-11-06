@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 mod audio_relink_ui;
+mod clipboard;
 mod close_guard;
+mod command_ui;
 mod current_ui;
 mod display_editor_ui;
 mod display_setup_ui;
@@ -63,6 +65,7 @@ enum Message {
     /// Navigate without asking about unsaved changes, for links that come back to a draft.
     Go(String),
     Guard(nav_guard::GuardMessage),
+    Command(command_ui::CommandMessage),
     Display(DisplayMessage),
     Current(current_ui::CurrentMessage),
     Fps(fps_ui::FpsMessage),
@@ -109,6 +112,8 @@ struct DirectorApp {
     scene: scene_ui::SceneState,
     flow: library_flow::LibraryFlow,
     nav: nav_guard::NavGuard,
+    /// The scene or preset whose shortcut command is shown.
+    command: Option<command_ui::Target>,
     notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
     presets: Vec<Preset>,
@@ -400,6 +405,7 @@ impl Component for DirectorApp {
             scene: scene_ui::SceneState::default(),
             flow: library_flow::LibraryFlow::default(),
             nav: nav_guard::NavGuard::default(),
+            command: None,
             notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
             presets: vec![],
@@ -476,6 +482,7 @@ impl Component for DirectorApp {
             Message::Navigate(tag) if !self.busy => self.navigate_guarded(tag, context),
             Message::Go(tag) if !self.busy => self.navigate_now(Some(tag), context),
             Message::Guard(message) => self.update_guard(message, context),
+            Message::Command(message) => self.update_command(message, context),
             Message::GuardReady(result) => match result {
                 Ok(()) => self.guard_ready = true,
                 Err(e) => {
@@ -1080,6 +1087,7 @@ impl Component for DirectorApp {
                 ),
                 KeyedView::new("audio-dialog", dialog),
                 KeyedView::new("guard-dialog", self.guard_dialog(cx)),
+                KeyedView::new("command-dialog", self.command_dialog(cx)),
                 KeyedView::new("options-dialog", self.options_dialog(cx)),
                 KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
                 KeyedView::new("display-dialog", self.display_dialog(cx)),

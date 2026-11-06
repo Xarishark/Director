@@ -40,7 +40,8 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
                 .keyed_children(cards),
         )
 }
-pub(crate) fn card(name: &str, body: View, actions: Vec<View>, height: f64) -> View {
+/// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
+pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, height: f64) -> View {
     Border::new()
         .automation_name(name)
         .horizontal_alignment(HorizontalAlignment::Left)
@@ -55,17 +56,24 @@ pub(crate) fn card(name: &str, body: View, actions: Vec<View>, height: f64) -> V
         .content(
             StackPanel::new().spacing(12.0).children((
                 Grid::new()
-                    .columns([GridLength::Star(1.0), GridLength::Auto])
-                    .column_spacing(8.0)
+                    .columns([
+                        GridLength::Auto,
+                        GridLength::Auto,
+                        GridLength::Star(1.0),
+                        GridLength::Auto,
+                    ])
+                    .column_spacing(4.0)
                     .children((
                         TextBlock::new()
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
+                            .max_width(150.0)
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
-                        Border::new().grid_column(1).content(action_row(actions)),
+                        Border::new().grid_column(1).content(command),
+                        Border::new().grid_column(3).content(action_row(actions)),
                     )),
                 body,
             )),
@@ -362,6 +370,15 @@ impl DirectorApp {
                     p.id.clone(),
                     card(
                         &p.name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Audio,
+                                name: p.name.clone(),
+                                id: p.id.clone(),
+                                can_end: false,
+                            },
+                        ),
                         body,
                         vec![
                             apply_button(
@@ -412,6 +429,15 @@ impl DirectorApp {
                     p.id.clone(),
                     card(
                         &p.name,
+                        crate::command_ui::command_button(
+                            cx,
+                            crate::command_ui::Target {
+                                kind: crate::command_ui::Kind::Display,
+                                name: p.name.clone(),
+                                id: p.id.clone(),
+                                can_end: false,
+                            },
+                        ),
                         body,
                         vec![
                             apply_button(
