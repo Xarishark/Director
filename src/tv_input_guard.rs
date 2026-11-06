@@ -86,8 +86,9 @@ pub fn sleep_until(cancel: &AtomicBool, until: Instant) -> bool {
 }
 
 /// Keep `id` selected until `next` says stop (it waits one poll and returns whether to go
-/// on). `connect` opens a fresh connection, used again after a failed request. Returns how
-/// many times the input was switched back.
+/// on). `connect` opens a fresh connection, used again after a failed request; each one
+/// reads the input list first, which a TV may need to name its current input (LG maps the
+/// app in front to an input through it). Returns how many times the input was switched back.
 pub fn hold<B: Backend>(
     mut connect: impl FnMut() -> B,
     id: &str,
@@ -95,11 +96,26 @@ pub fn hold<B: Backend>(
     mut next: impl FnMut() -> bool,
 ) -> usize {
     let mut backend = connect();
+    let mut listed = false;
     let mut since_switch = RESEND_POLLS;
     let mut switches = 0;
     loop {
         if cancel.load(Ordering::Acquire) {
             break;
+        }
+        if !listed {
+            match backend.inputs() {
+                Ok(_) => listed = true,
+                Err(e) => {
+                    crate::diagnostics::event("tv.input.guard", "unavailable", &e);
+                    backend = connect();
+                    since_switch = since_switch.saturating_add(1);
+                    if !next() {
+                        break;
+                    }
+                    continue;
+                }
+            }
         }
         match backend.current_input() {
             Ok(current) if current.as_deref() == Some(id) => {}
@@ -121,6 +137,7 @@ pub fn hold<B: Backend>(
                         Err(e) => {
                             crate::diagnostics::event("tv.input.guard", "error", &e);
                             backend = connect();
+                            listed = false;
                         }
                     }
                     since_switch = 0;
@@ -129,6 +146,7 @@ pub fn hold<B: Backend>(
             Err(e) => {
                 crate::diagnostics::event("tv.input.guard", "unavailable", &e);
                 backend = connect();
+                listed = false;
             }
         }
         since_switch = since_switch.saturating_add(1);
@@ -152,21 +170,24 @@ mod tests {
         switches: Vec<String>,
         connects: usize,
     }
-    struct Fake(Rc<RefCell<State>>);
+    /// Like LG, it can't name its input until this connection read the input list.
+    struct Fake(Rc<RefCell<State>>, bool);
     impl Backend for Fake {
         fn power(&mut self) -> Result<PowerState, String> {
             Ok(PowerState::On)
         }
         fn inputs(&mut self) -> Result<Vec<Input>, String> {
+            self.1 = true;
             Ok(vec![])
         }
         fn current_input(&mut self) -> Result<Option<String>, String> {
             let mut s = self.0.borrow_mut();
-            if s.reads.len() > 1 {
+            let read = if s.reads.len() > 1 {
                 s.reads.remove(0)
             } else {
                 s.reads[0].clone()
-            }
+            };
+            read.map(|input| input.filter(|_| self.1))
         }
         fn wake(&mut self) -> Result<WakeReport, String> {
             unreachable!()
@@ -188,7 +209,7 @@ mod tests {
         let switched = hold(
             || {
                 state.borrow_mut().connects += 1;
-                Fake(state.clone())
+                Fake(state.clone(), false)
             },
             "HDMI_1",
             &AtomicBool::new(false),
@@ -243,7 +264,7 @@ mod tests {
             ..Default::default()
         }));
         let switched = hold(
-            || Fake(state.clone()),
+            || Fake(state.clone(), false),
             "HDMI_1",
             &AtomicBool::new(true),
             || true,
