@@ -3,7 +3,7 @@
 use crate::{
     audio::{AudioBackend, Output},
     cli_name::cli_name,
-    displays, presets, scenes, tvs,
+    displays, scenes, tvs,
     windows_audio::WindowsAudio,
     windows_displays,
 };
@@ -15,17 +15,15 @@ use serde_json::{Value, json};
 pub enum Category {
     Scenes,
     DisplayPresets,
-    AudioPresets,
     Tvs,
     Screens,
     AudioOutputs,
     AudioInputs,
 }
 impl Category {
-    pub const ALL: [Category; 7] = [
+    pub const ALL: [Category; 6] = [
         Self::Scenes,
         Self::DisplayPresets,
-        Self::AudioPresets,
         Self::Tvs,
         Self::Screens,
         Self::AudioOutputs,
@@ -35,7 +33,6 @@ impl Category {
         match self {
             Self::Scenes => "Scenes",
             Self::DisplayPresets => "Display presets",
-            Self::AudioPresets => "Audio presets",
             Self::Tvs => "TVs",
             Self::Screens => "Screens",
             Self::AudioOutputs => "Audio outputs",
@@ -46,7 +43,6 @@ impl Category {
         match self {
             Self::Scenes => "scenes",
             Self::DisplayPresets => "display_presets",
-            Self::AudioPresets => "audio_presets",
             Self::Tvs => "tvs",
             Self::Screens => "screens",
             Self::AudioOutputs => "audio_outputs",
@@ -59,7 +55,6 @@ impl Category {
             Self::DisplayPresets => {
                 "No display presets yet. Save one in the window or with director display capture <name>."
             }
-            Self::AudioPresets => "No audio presets yet. Create one in the window.",
             Self::Tvs => "No TVs yet. Add one on the TVs page.",
             Self::Screens => "Windows reported no screens.",
             Self::AudioOutputs => "Windows reported no audio outputs.",
@@ -77,46 +72,45 @@ struct Row {
     absent: bool,
 }
 
-/// Print one category, or JSON with a `cli_name` on each item.
-pub fn run(category: Category, json: bool, all: bool) -> Result<i32, String> {
-    let (rows, value) = collect(category)?;
-    if json {
-        print_json(&value)?;
-    } else {
-        print_rows(&rows, category, all);
+/// Print one category as a list (JSON: an array with a `cli_name` on each item), or several
+/// in titled sections (JSON: an object keyed by category). A category that can't be read is
+/// reported in its section and the rest still print; the exit code is then 1.
+pub fn run(categories: &[Category], json: bool, all: bool) -> Result<i32, String> {
+    if let [category] = categories {
+        let (rows, value) = collect(*category)?;
+        if json {
+            print_json(&value)?;
+        } else {
+            print_rows(&rows, *category, all);
+        }
+        return Ok(0);
     }
-    Ok(0)
-}
-
-/// `director list`: every category, in sections. A category that can't be read is reported
-/// in its section and the rest still print; the exit code is then 1.
-pub fn everything(json: bool, all: bool) -> Result<i32, String> {
     let mut failed = false;
     let mut object = serde_json::Map::new();
-    for (i, category) in Category::ALL.into_iter().enumerate() {
-        match collect(category) {
-            Ok((rows, value)) => {
-                if json {
-                    object.insert(category.key().into(), value);
-                } else {
-                    if i > 0 {
-                        println!();
+    for (i, &category) in categories.iter().enumerate() {
+        let result = collect(category);
+        if json {
+            object.insert(
+                category.key().into(),
+                match result {
+                    Ok((_, value)) => value,
+                    Err(e) => {
+                        failed = true;
+                        json!({ "error": e })
                     }
-                    println!("{}", category.title());
-                    print_rows(&rows, category, all);
-                }
-            }
+                },
+            );
+            continue;
+        }
+        if i > 0 {
+            println!();
+        }
+        println!("{}", category.title());
+        match result {
+            Ok((rows, _)) => print_rows(&rows, category, all),
             Err(e) => {
                 failed = true;
-                if json {
-                    object.insert(category.key().into(), json!({ "error": e }));
-                } else {
-                    if i > 0 {
-                        println!();
-                    }
-                    println!("{}", category.title());
-                    println!("  {e}");
-                }
+                println!("  {e}");
             }
         }
     }
@@ -125,7 +119,6 @@ pub fn everything(json: bool, all: bool) -> Result<i32, String> {
     }
     Ok(if failed { 1 } else { 0 })
 }
-
 fn print_json(value: &Value) -> Result<(), String> {
     println!(
         "{}",
@@ -243,28 +236,6 @@ fn collect(category: Category) -> Result<(Vec<Row>, Value), String> {
                 .collect::<Result<_, _>>()?;
             Ok((rows, Value::Array(values)))
         }
-        Category::AudioPresets => {
-            let all = presets::load(&presets::path()?)?;
-            let rows = all
-                .iter()
-                .map(|p| {
-                    row(
-                        &p.name,
-                        format!(
-                            "{} · {}",
-                            p.output_name,
-                            p.volume_percent
-                                .map_or("keep volume".into(), |v| format!("{v}%"))
-                        ),
-                    )
-                })
-                .collect();
-            let values = all
-                .iter()
-                .map(|p| with_cli_name(p, &p.name))
-                .collect::<Result<_, _>>()?;
-            Ok((rows, Value::Array(values)))
-        }
         Category::Tvs => {
             let all = tvs::load(&tvs::path()?)?;
             let rows = all.iter().map(|t| row(&t.name, tv_summary(t))).collect();
@@ -373,7 +344,12 @@ fn device_summary(d: &Output) -> String {
     } else {
         ""
     };
-    format!("{}{role} · {}", d.state, d.id)
+    let muted = if d.muted == Some(true) {
+        " · muted"
+    } else {
+        ""
+    };
+    format!("{}{role}{muted} · {}", d.state, d.id)
 }
 
 #[cfg(test)]

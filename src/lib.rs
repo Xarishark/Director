@@ -1,10 +1,11 @@
 pub mod audio;
 pub mod audio_control;
 pub mod cli_name;
-pub mod presets;
 #[cfg(windows)]
 pub mod windows_audio;
 
+#[cfg(windows)]
+pub mod audio_cli;
 #[cfg(windows)]
 pub mod cli;
 #[cfg(windows)]
