@@ -332,13 +332,29 @@ Could not read audio outputs: {e}"
                 }
             }
             CurrentMessage::SaveAudio if !self.busy && !self.current.output_id.is_empty() => {
-                let seed = crate::library_flow::AudioSeed {
-                    output_id: self.current.output_id.clone(),
-                    volume: self.current.volume,
-                    set_volume: self.current.volume_dirty,
+                let Some(output) = self
+                    .current
+                    .outputs
+                    .iter()
+                    .find(|o| o.id == self.current.output_id)
+                else {
+                    return;
                 };
+                let mut scene = director::scenes::Scene::new(crate::scene_ui::new_id(), "");
+                scene.sound = Some(director::scenes::Sound {
+                    output: Some(director::scenes::SoundOutput::Device {
+                        id: output.id.clone(),
+                        name: output.name.clone(),
+                    }),
+                    volume: self
+                        .current
+                        .volume
+                        .filter(|v| v.is_finite())
+                        .map(|v| v.round().clamp(0.0, 100.0) as u8),
+                    ..Default::default()
+                });
                 self.update_library(
-                    crate::library_flow::LibraryMessage::NewAudio(Some(seed)),
+                    crate::library_flow::LibraryMessage::NewScene(Box::new(scene)),
                     cx,
                 );
             }

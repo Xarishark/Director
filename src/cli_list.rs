@@ -331,7 +331,7 @@ fn scene_summary(s: &scenes::Scene) -> String {
     if s.display.is_some() {
         parts.push("screens".into());
     }
-    if s.audio.is_some() || s.tv_audio.is_some() {
+    if s.sound.is_some() {
         parts.push("sound".into());
     }
     if s.fps.is_some() {

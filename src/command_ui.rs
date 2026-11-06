@@ -7,20 +7,18 @@ use windows_reactor::*;
 pub(crate) enum Kind {
     Scene,
     Display,
-    Audio,
 }
 impl Kind {
     fn area(self) -> &'static str {
         match self {
             Self::Scene => "scene",
             Self::Display => "display",
-            Self::Audio => "audio",
         }
     }
     fn noun(self) -> &'static str {
         match self {
             Self::Scene => "scene",
-            Self::Display | Self::Audio => "preset",
+            Self::Display => "preset",
         }
     }
 }
@@ -189,11 +187,11 @@ mod tests {
         assert_eq!(rows.len(), 2);
         t.can_end = true;
         assert_eq!(commands(&t).len(), 3);
-        t.kind = Kind::Audio;
+        t.kind = Kind::Display;
         assert_eq!(commands(&t).len(), 2);
         t.name = "★".into();
         let rows = commands(&t);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].1, "director audio apply abc-1");
+        assert_eq!(rows[0].1, "director display apply abc-1");
     }
 }

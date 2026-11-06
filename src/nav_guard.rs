@@ -4,7 +4,7 @@
 //! category from the navigation pane (or Options) with a changed draft opens a dialog:
 //! Save, Discard or Keep editing. Links inside an editor that are meant to come back to
 //! the draft (Manage presets, View TV, New … preset) navigate without asking.
-use crate::{DirectorApp, Draft, Message, Page, display_ui::DisplayMessage};
+use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage};
 use director::{displays, scenes::Scene, tvs::Tv};
 use windows_reactor::*;
 
@@ -22,7 +22,6 @@ pub(crate) struct NavGuard {
     /// Bumped to rebuild the navigation pane after Keep editing, so its selection
     /// returns to the current page.
     pub(crate) revision: u64,
-    audio: Option<Draft>,
     display: Option<displays::Preset>,
     tv: Option<Tv>,
     scene: Option<Scene>,
@@ -45,7 +44,6 @@ fn changed<T: PartialEq>(base: &Option<T>, draft: Option<&T>) -> bool {
 fn page_name(page: Page) -> &'static str {
     match page {
         Page::Current => "Now",
-        Page::Audio => "this audio preset",
         Page::Displays => "this display preset",
         Page::Tvs => "this TV",
         Page::Scenes => "this scene",
@@ -58,7 +56,6 @@ impl DirectorApp {
     /// every update, so a draft's first edit is compared with how it opened.
     pub(crate) fn track_unsaved(&mut self) {
         let g = &mut self.nav;
-        track(&mut g.audio, self.draft.as_ref(), |a, b| a.id == b.id);
         track(&mut g.display, self.display.draft.as_ref(), |a, b| {
             a.id == b.id
         });
@@ -79,11 +76,6 @@ impl DirectorApp {
     pub(crate) fn draft_changed(&self, page: Page) -> bool {
         let g = &self.nav;
         match page {
-            Page::Audio => self.draft.as_ref().is_some_and(|d| {
-                d.id.as_ref()
-                    .is_none_or(|id| !self.presets.iter().any(|p| &p.id == id))
-                    || g.audio.as_ref() != Some(d)
-            }),
             Page::Displays => self.display.draft.as_ref().is_some_and(|d| {
                 !self.display.presets.iter().any(|p| p.id == d.id) || g.display.as_ref() != Some(d)
             }),
@@ -99,7 +91,6 @@ impl DirectorApp {
     fn unsaved(&self) -> bool {
         let g = &self.nav;
         match self.page {
-            Page::Audio => changed(&g.audio, self.draft.as_ref()),
             Page::Displays => changed(&g.display, self.display.draft.as_ref()),
             Page::Tvs => changed(&g.tv, self.tv.draft.as_ref()),
             Page::Scenes => changed(&g.scene, self.scene.draft.as_ref()),
@@ -109,7 +100,6 @@ impl DirectorApp {
     }
     fn can_save(&self) -> bool {
         match self.page {
-            Page::Audio => self.draft_valid(),
             Page::Displays => {
                 self.display_ready()
                     && self.display.drag.is_none()
@@ -125,13 +115,8 @@ impl DirectorApp {
                 self.scene_ready()
                     && self.scene.draft.as_ref().is_some_and(|d| {
                         !d.name.trim().is_empty()
-                            && director::scenes::resolve(
-                                d,
-                                &self.scene.displays,
-                                &self.scene.audio,
-                                &self.scene.tvs,
-                            )
-                            .is_ok()
+                            && director::scenes::resolve(d, &self.scene.displays, &self.scene.tvs)
+                                .is_ok()
                     })
             }
             // Now applies changes rather than saving them.
@@ -140,7 +125,6 @@ impl DirectorApp {
     }
     fn draft_name(&self) -> Option<String> {
         let name = match self.page {
-            Page::Audio => self.draft.as_ref().map(|d| d.name.clone()),
             Page::Displays => self.display.draft.as_ref().map(|d| d.name.clone()),
             Page::Tvs => self.tv.draft.as_ref().map(|d| d.name.clone()),
             Page::Scenes => self.scene.draft.as_ref().map(|d| d.name.clone()),
@@ -176,7 +160,6 @@ impl DirectorApp {
             ContentDialogResult::Primary if self.can_save() => {
                 self.nav.saving = true;
                 let save = match self.page {
-                    Page::Audio => Message::Save,
                     Page::Displays => Message::Display(DisplayMessage::Save),
                     Page::Tvs => Message::Tv(crate::tv_ui::TvMessage::Save),
                     _ => Message::Scene(crate::scene_ui::SceneMessage::Save),
@@ -192,7 +175,6 @@ impl DirectorApp {
             ContentDialogResult::Secondary => {
                 self.nav.pending = None;
                 let discard = match self.page {
-                    Page::Audio => Message::Cancel,
                     Page::Displays => Message::Display(DisplayMessage::Cancel),
                     Page::Tvs => Message::Tv(crate::tv_ui::TvMessage::Cancel),
                     Page::Scenes => Message::Scene(crate::scene_ui::SceneMessage::Cancel),

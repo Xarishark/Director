@@ -1,8 +1,8 @@
 //! Cross-page flows between Now, Scenes and the Library.
 //!
-//! Now can seed a new Library preset from what it has staged, and the scene editor can create a
-//! display preset, audio preset or TV in place and get back to the scene with it selected. Every
-//! flow ends in the normal Library editor, so saving still only saves.
+//! Now can seed a new display preset from what it has staged, and the scene editor can create a
+//! display preset or TV in place and get back to the scene with it selected. Every flow ends in
+//! the normal Library editor, so saving still only saves.
 use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage, scene_ui::SceneMessage, work};
 use director::displays::Layout;
 use windows_reactor::*;
@@ -10,25 +10,16 @@ use windows_reactor::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Slot {
     Display,
-    Audio,
     Tv,
-}
-
-/// Starting values for a new audio preset taken from Now.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AudioSeed {
-    pub output_id: String,
-    pub volume: Option<f64>,
-    /// The user changed the volume in Now, so the preset should set it.
-    pub set_volume: bool,
 }
 
 #[derive(Clone)]
 pub(crate) enum LibraryMessage {
     /// Open a new display preset, seeded from a staged layout when one is given.
     NewDisplay(Option<Layout>),
-    NewAudio(Option<AudioSeed>),
     NewTv,
+    /// Open a new scene draft, for example one whose Sound step holds what's set in Now.
+    NewScene(Box<director::scenes::Scene>),
     /// Create the item for this scene section, then return to the scene with it selected.
     FromScene(Slot),
 }
@@ -37,7 +28,8 @@ pub(crate) enum LibraryMessage {
 pub(crate) struct LibraryFlow {
     /// A new display preset to open once the Displays page has loaded.
     display_seed: Option<Option<Layout>>,
-    audio_seed: Option<Option<AudioSeed>>,
+    /// A new scene draft to open once Scenes has loaded.
+    scene_seed: Option<director::scenes::Scene>,
     /// The scene section waiting for the item being created.
     scene_return: Option<Slot>,
     /// The item to select in the scene draft once the scene catalog has reloaded.
@@ -78,18 +70,6 @@ impl DirectorApp {
                 self.flow.display_seed = Some(seed);
                 self.library_go("displays", cx);
             }
-            LibraryMessage::NewAudio(seed) => {
-                if self.draft.is_some() {
-                    self.library_go("audio", cx);
-                    self.warn(
-                        "Finish or cancel the audio preset you’re editing first.",
-                        "",
-                    );
-                    return;
-                }
-                self.flow.audio_seed = Some(seed);
-                self.library_go("audio", cx);
-            }
             LibraryMessage::NewTv => {
                 if self.tv.draft.is_some() {
                     self.library_go("tvs", cx);
@@ -99,6 +79,15 @@ impl DirectorApp {
                 self.tv.add_after_load = true;
                 self.library_go("tvs", cx);
             }
+            LibraryMessage::NewScene(scene) => {
+                if self.scene.draft.is_some() {
+                    self.library_go("scenes", cx);
+                    self.warn("Finish or cancel the scene you’re editing first.", "");
+                    return;
+                }
+                self.flow.scene_seed = Some(*scene);
+                self.library_go("scenes", cx);
+            }
             LibraryMessage::FromScene(slot) => {
                 if self.scene.draft.is_none() {
                     return;
@@ -106,7 +95,6 @@ impl DirectorApp {
                 self.update_library(
                     match slot {
                         Slot::Display => LibraryMessage::NewDisplay(None),
-                        Slot::Audio => LibraryMessage::NewAudio(None),
                         Slot::Tv => LibraryMessage::NewTv,
                     },
                     cx,
@@ -137,21 +125,14 @@ impl DirectorApp {
                 }
             }
         }
-        if self.page == Page::Audio
-            && self.ready()
-            && let Some(seed) = self.flow.audio_seed.take()
+        if self.page == Page::Scenes
+            && self.scene_ready()
+            && self.scene.draft.is_none()
+            && let Some(scene) = self.flow.scene_seed.take()
         {
-            <Self as Component>::update(self, Message::Add, cx);
-            if let (Some(seed), Some(d)) = (seed, &mut self.draft) {
-                if self.outputs.iter().any(|o| o.id == seed.output_id) {
-                    d.output_id = seed.output_id;
-                }
-                if seed.volume.is_some() {
-                    d.volume = seed.volume;
-                }
-                d.set_volume = seed.set_volume;
-                self.status = "Name this audio preset to save what’s set in Now.".into();
-            }
+            self.scene.draft = Some(scene);
+            self.scene.open = None;
+            self.status = "Name this scene to save the sound set in Now.".into();
         }
     }
     /// Call after a Library save succeeds, with the item it added (if any).
@@ -185,14 +166,12 @@ impl DirectorApp {
         }
         let index = match slot {
             Slot::Display => self.scene.displays.iter().position(|p| p.id == id),
-            Slot::Audio => self.scene.audio.iter().position(|p| p.id == id),
             Slot::Tv => self.scene.tvs.iter().position(|t| t.id == id),
         };
         if let Some(i) = index.map(|i| Some(i + 1)) {
             self.update_scene(
                 match slot {
                     Slot::Display => SceneMessage::Display(i),
-                    Slot::Audio => SceneMessage::Audio(i),
                     Slot::Tv => SceneMessage::Tv(i),
                 },
                 cx,
@@ -225,7 +204,7 @@ mod tests {
     #[test]
     fn navigating_clears_a_pending_scene_return() {
         let mut flow = LibraryFlow {
-            scene_return: Some(Slot::Audio),
+            scene_return: Some(Slot::Tv),
             ..Default::default()
         };
         flow.navigated();

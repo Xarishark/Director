@@ -1,14 +1,14 @@
 //! The first scene: save how the PC is set up right now (screens, sound and FPS limit) as one
-//! scene, so any other scene can bring everything back in one click. Saving reuses matching
-//! presets instead of duplicating them, and never changes a device.
+//! scene, so any other scene can bring everything back in one click. Saving reuses a matching
+//! display preset instead of duplicating it, and never changes a device.
 use crate::{
     audio::Output,
     displays::{self, Layout},
-    fps, presets,
+    fps,
     scenes::{self, Scene},
 };
 
-/// The default output a new audio preset starts from: the console default, else any active one.
+/// The output the starter's Sound step uses: the console default, else any active one.
 pub fn default_output(outputs: &[Output]) -> Option<&Output> {
     outputs
         .iter()
@@ -86,7 +86,6 @@ pub struct Choice {
 #[derive(Debug, PartialEq)]
 pub struct Plan {
     pub displays: Vec<displays::Preset>,
-    pub audio: Vec<presets::Preset>,
     pub scene: Scene,
 }
 
@@ -94,7 +93,6 @@ pub struct Plan {
 pub fn plan(
     choice: &Choice,
     displays: &[displays::Preset],
-    audio: &[presets::Preset],
     mut new_id: impl FnMut() -> String,
     now_unix: u64,
 ) -> Result<Plan, String> {
@@ -103,7 +101,6 @@ pub fn plan(
         return Err("Give the scene a name.".into());
     }
     let mut displays = displays.to_vec();
-    let mut audio = audio.to_vec();
     let mut scene = Scene::new(format!("scene-{}", new_id()), name);
     if let Some(layout) = &choice.layout {
         layout.validate()?;
@@ -127,55 +124,30 @@ pub fn plan(
         });
     }
     if let Some(output) = &choice.output {
-        let volume = output.volume_percent;
-        scene.audio = Some(
-            match audio
-                .iter()
-                .find(|p| p.output_id == output.id && p.volume_percent == volume)
-            {
-                Some(p) => p.id.clone(),
-                None => {
-                    let preset = presets::Preset {
-                        id: new_id(),
-                        name: unique_name(
-                            &format!("{name} sound"),
-                            audio.iter().map(|p| p.name.as_str()),
-                        ),
-                        output_id: output.id.clone(),
-                        output_name: output.name.clone(),
-                        volume_percent: volume,
-                        keep_changes: false,
-                        communications_output: None,
-                        input: None,
-                    };
-                    let id = preset.id.clone();
-                    audio.push(preset);
-                    id
-                }
-            },
-        );
+        scene.sound = Some(scenes::Sound {
+            output: Some(scenes::SoundOutput::Device {
+                id: output.id.clone(),
+                name: output.name.clone(),
+            }),
+            volume: output.volume_percent,
+            ..Default::default()
+        });
     }
     scene.fps = choice.fps.clone();
-    if scene.display.is_none() && scene.audio.is_none() && scene.fps.is_none() {
+    if scene.display.is_none() && scene.sound.is_none() && scene.fps.is_none() {
         return Err("Choose at least one thing to save.".into());
     }
     scene.validate()?;
-    Ok(Plan {
-        displays,
-        audio,
-        scene,
-    })
+    Ok(Plan { displays, scene })
 }
 
-/// Save the starter scene and any presets it needs. Changes no device. Returns the scene.
+/// Save the starter scene and the display preset it needs. Changes no device. Returns the scene.
 #[cfg(windows)]
 pub fn save(choice: &Choice) -> Result<Scene, String> {
     let _lock = crate::windows_audio::OperationLock::acquire()?;
     let display_path = displays::path()?;
-    let audio_path = presets::path()?;
     let scene_path = scenes::path()?;
     let old_displays = displays::load(&display_path)?;
-    let old_audio = presets::load(&audio_path)?;
     let old_scenes = scenes::load(&scene_path)?;
     if old_scenes
         .iter()
@@ -193,19 +165,15 @@ pub fn save(choice: &Choice) -> Result<Scene, String> {
     let plan = plan(
         choice,
         &old_displays,
-        &old_audio,
         || {
             counter += 1;
             format!("{}-{}", std::process::id(), now.as_nanos() + counter)
         },
         now.as_secs(),
     )?;
-    // Presets first: a scene must never point at a preset that wasn't saved.
+    // The display preset first: a scene must never point at one that wasn't saved.
     if plan.displays != old_displays {
         displays::save(&display_path, &old_displays, &plan.displays)?;
-    }
-    if plan.audio != old_audio {
-        presets::save(&audio_path, &old_audio, &plan.audio)?;
     }
     let mut next = old_scenes.clone();
     next.push(plan.scene.clone());
@@ -281,38 +249,25 @@ mod tests {
     }
 
     #[test]
-    fn sound_reuses_a_matching_preset_and_adds_one_otherwise() {
-        let existing = presets::Preset {
-            id: "speakers".into(),
-            name: "Desk sound".into(),
-            output_id: "spk".into(),
-            output_name: "Speakers".into(),
-            volume_percent: Some(35),
-            keep_changes: false,
-            communications_output: None,
-            input: None,
-        };
-        let mut choice = Choice {
+    fn sound_is_saved_in_the_scene() {
+        let choice = Choice {
             name: " Desk ".into(),
             layout: None,
             output: Some(output("spk", Some(35))),
             fps: None,
         };
-        let plan1 = plan(&choice, &[], std::slice::from_ref(&existing), ids(), 1).unwrap();
-        assert_eq!(plan1.scene.name, "Desk");
-        assert_eq!(plan1.scene.audio.as_deref(), Some("speakers"));
-        assert_eq!(plan1.audio.len(), 1);
-        choice.output = Some(output("spk", Some(50)));
-        let plan2 = plan(&choice, &[], &[existing], ids(), 1).unwrap();
-        assert_eq!(plan2.audio.len(), 2);
-        assert_eq!(plan2.audio[1].name, "Desk sound 2");
-        assert_eq!(plan2.audio[1].volume_percent, Some(50));
+        let plan = plan(&choice, &[], ids(), 1).unwrap();
+        assert_eq!(plan.scene.name, "Desk");
+        let sound = plan.scene.sound.unwrap();
         assert_eq!(
-            plan2.scene.audio.as_deref(),
-            Some(plan2.audio[1].id.as_str())
+            sound.output,
+            Some(scenes::SoundOutput::Device {
+                id: "spk".into(),
+                name: "spk name".into()
+            })
         );
+        assert_eq!(sound.volume, Some(35));
     }
-
     #[test]
     fn screens_reuse_an_identical_layout() {
         let desktop = DesktopMode {
@@ -364,11 +319,11 @@ mod tests {
                 vrr_safe: false,
             }),
         };
-        let reused = plan(&choice, std::slice::from_ref(&saved), &[], ids(), 1).unwrap();
+        let reused = plan(&choice, std::slice::from_ref(&saved), ids(), 1).unwrap();
         assert_eq!(reused.displays.len(), 1);
         assert_eq!(reused.scene.display.as_deref(), Some("home"));
         assert_eq!(reused.scene.fps.unwrap().limit, Some(228));
-        let fresh = plan(&choice, &[], &[], ids(), 7).unwrap();
+        let fresh = plan(&choice, &[], ids(), 7).unwrap();
         assert_eq!(fresh.displays[0].name, "Desk screens");
         assert_eq!(fresh.displays[0].captured_at_unix_seconds, 7);
         assert!(!fresh.displays[0].confirm_changes);
@@ -382,12 +337,12 @@ mod tests {
             output: None,
             fps: None,
         };
-        assert!(plan(&empty, &[], &[], ids(), 1).is_err());
+        assert!(plan(&empty, &[], ids(), 1).is_err());
         let unnamed = Choice {
             name: "  ".into(),
             output: Some(output("spk", None)),
             ..empty
         };
-        assert!(plan(&unnamed, &[], &[], ids(), 1).is_err());
+        assert!(plan(&unnamed, &[], ids(), 1).is_err());
     }
 }
