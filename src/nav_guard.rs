@@ -74,6 +74,28 @@ impl DirectorApp {
         self.nav.tv = None;
     }
 
+    /// Whether a page's draft has something to save: it differs from how it opened, or it's
+    /// a new item that isn't saved yet (so a draft seeded from Now can be saved right away).
+    pub(crate) fn draft_changed(&self, page: Page) -> bool {
+        let g = &self.nav;
+        match page {
+            Page::Audio => self.draft.as_ref().is_some_and(|d| {
+                d.id.as_ref()
+                    .is_none_or(|id| !self.presets.iter().any(|p| &p.id == id))
+                    || g.audio.as_ref() != Some(d)
+            }),
+            Page::Displays => self.display.draft.as_ref().is_some_and(|d| {
+                !self.display.presets.iter().any(|p| p.id == d.id) || g.display.as_ref() != Some(d)
+            }),
+            Page::Tvs => self.tv.draft.as_ref().is_some_and(|d| {
+                !self.tv.tvs.iter().any(|t| t.id == d.id) || g.tv.as_ref() != Some(d)
+            }),
+            Page::Scenes => self.scene.draft.as_ref().is_some_and(|d| {
+                !self.scene.scenes.iter().any(|s| s.id == d.id) || g.scene.as_ref() != Some(d)
+            }),
+            Page::Current | Page::Options => false,
+        }
+    }
     fn unsaved(&self) -> bool {
         let g = &self.nav;
         match self.page {

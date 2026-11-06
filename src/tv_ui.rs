@@ -1361,7 +1361,7 @@ impl DirectorApp {
     TextBlock::new().grid_column(0).text("Saving remembers your choices.").opacity(0.72).text_wrapping(TextWrapping::Wrap).vertical_alignment(VerticalAlignment::Center),
     StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
      Button::new().is_enabled(!self.busy).on_click(cx.message(msg(TvMessage::Cancel))).content("Cancel"),
-     Button::new().style(ButtonStyle::Accent).is_enabled(self.tv_ready()&&valid).on_click(cx.message(msg(TvMessage::Save))).content(if changed{"Continue setup"}else{"Save TV"}),
+     Button::new().style(ButtonStyle::Accent).is_enabled(self.tv_ready()&&valid&&(changed||self.draft_changed(crate::Page::Tvs))).on_click(cx.message(msg(TvMessage::Save))).content(if changed{"Continue setup"}else{"Save TV"}),
     )),
    )),
   ))

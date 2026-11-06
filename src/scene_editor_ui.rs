@@ -1074,7 +1074,9 @@ impl DirectorApp {
                     self.step_block(cx, d, Step::Leave),
                 )),
             ));
-        let can_save = self.scene_ready() && problem.is_none() && !d.name.trim().is_empty();
+        let changed = self.draft_changed(crate::Page::Scenes);
+        let can_save =
+            self.scene_ready() && problem.is_none() && !d.name.trim().is_empty() && changed;
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
             .children((
@@ -1109,6 +1111,7 @@ impl DirectorApp {
                                 TextBlock::new()
                                     .text(match &problem {
                                         Some(e) if !d.name.trim().is_empty() => e.clone(),
+                                        _ if !changed => "No changes to save.".into(),
                                         _ => "Saving won’t change your setup.".into(),
                                     })
                                     .opacity(0.72)

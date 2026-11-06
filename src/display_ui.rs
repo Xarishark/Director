@@ -610,7 +610,7 @@ impl DirectorApp {
                         TextBlock::new().grid_column(0).text("Saving won’t change your screens.").text_wrapping(TextWrapping::Wrap).opacity(0.72).vertical_alignment(VerticalAlignment::Center),
                         StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
                             Button::new().is_enabled(!self.busy && self.display.setup.recovery.is_none()).on_click(cx.message(msg(DisplayMessage::Cancel))).content("Cancel"),
-                            Button::new().style(ButtonStyle::Accent).automation_name("Save display preset").is_enabled(self.display_ready() && self.display.drag.is_none() && !d.name.trim().is_empty() && d.name.trim().len()<=160).on_click(cx.message(msg(DisplayMessage::Save))).content("Save preset"),
+                            Button::new().style(ButtonStyle::Accent).automation_name("Save display preset").is_enabled(self.display_ready() && self.display.drag.is_none() && !d.name.trim().is_empty() && d.name.trim().len()<=160 && self.draft_changed(crate::Page::Displays)).on_click(cx.message(msg(DisplayMessage::Save))).content("Save preset"),
                         )),
                     )),
                 ));
