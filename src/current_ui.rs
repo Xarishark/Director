@@ -581,7 +581,7 @@ Could not read audio outputs: {e}"
         };
         let displays = ui::section(
             "Displays",
-            "Drag screens to arrange them; hover for details.",
+            "Drag screens to arrange them; hover for details. Changes here and in FPS limit wait for Apply changes.",
             Some(
                 Button::new()
                     .style(ButtonStyle::Subtle)
@@ -632,11 +632,11 @@ Could not read audio outputs: {e}"
         ui::page(
             ui::header("Now", "Changes here aren’t saved.", vec![]),
             StackPanel::new().spacing(ui::GAP_XXL).children((
-                sound,
-                // Above the line applies at once; below it waits for the Apply bar.
-                ui::divider("Changes below wait for Apply changes"),
+                // Above the line waits for the Apply bar; below it applies at once.
                 displays,
                 fps,
+                ui::divider("Sound changes below apply right away"),
+                sound,
             )),
             // The Apply bar belongs to the staged sections only, so it appears once something
             // is staged and sound never looks like it waits for it.

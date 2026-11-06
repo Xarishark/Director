@@ -4,7 +4,7 @@ Now (formerly Current setup) is an alternative workspace for adjusting the activ
 
 ## Using the view
 
-Open **Now** in the navigation pane. Sound comes first because it applies as you change it; Displays and FPS limit follow and wait for **Apply changes**, a bar that appears at the bottom only while something is staged:
+Open **Now** in the navigation pane. Displays and FPS limit come first and wait for **Apply changes**, a bar that appears at the bottom only while something is staged. Below a divider, Sound applies as you change it:
 
 - Arrange screens by dragging them in the box; hover for technical details.
 - Enable/disable monitors, choose the primary, resolution, refresh rate, HDR, and orientation.
