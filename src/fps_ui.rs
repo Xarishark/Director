@@ -298,7 +298,7 @@ impl DirectorApp {
             .collect::<Vec<_>>()
             .join(" · ");
         StackPanel::new().spacing(12.0).children((
-TextBlock::new().text(if target==Target::Scene{"4 · FPS limit"}else{"FPS limit"}).font_size(if target==Target::Scene{20.0}else{24.0}).font_weight(FontWeight::SEMI_BOLD),
+if target==Target::Scene{View::empty()}else{TextBlock::new().text("FPS limit").font_size(24.0).font_weight(FontWeight::SEMI_BOLD).into()},
 if current.is_empty(){View::empty()}else{note(current)},
 ToggleSwitch::new().automation_name("Change FPS limit").is_on(request.is_some()).is_enabled(available&&(!methods.is_empty()||request.is_some())).on_toggled(cx.callback(move|v|msg(FpsMessage::Enable(target,v)))).slot(ToggleSwitchSlot::Header,"Change FPS limit"),
 if !self.fps.loaded||self.fps.checking{note("Checking installed FPS methods…")}else if methods.is_empty(){note(self.fps.caps.iter().map(|c|format!("{}: {}",c.provider.label(),c.detail)).collect::<Vec<_>>().join("\n"))}else{View::empty()},

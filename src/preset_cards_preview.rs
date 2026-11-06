@@ -215,6 +215,9 @@ impl DirectorApp {
                 scene.actions = vec![director::scenes::Action::Uri {
                     target: "steam://open/bigpicture".into(),
                 }];
+                scene.leave = vec![director::scenes::Action::Uri {
+                    target: "steam://close/bigpicture".into(),
+                }];
                 self.scene.scenes = vec![scene];
                 self.scene.ready = true;
                 self.fps = crate::fps_ui::FpsState::fixture();

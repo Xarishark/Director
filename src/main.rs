@@ -14,6 +14,7 @@ mod preset_cards_preview;
 mod preset_cards_ui;
 mod preset_ui;
 mod samsung_ui;
+mod scene_editor_ui;
 mod scene_ui;
 mod status_ui;
 mod tv_controls_ui;
