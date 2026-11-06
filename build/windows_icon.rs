@@ -52,10 +52,19 @@ pub fn embed(svg: &[u8], binary: &str) {
     let publisher = rc_text(&env::var("CARGO_PKG_AUTHORS").expect("package authors"));
     let description = rc_text(&env::var("CARGO_PKG_DESCRIPTION").expect("package description"));
     let icon_path = icon.display().to_string().replace('\\', "/");
+    // RT_MANIFEST (24), resource 1: declares Windows 11 support and DPI awareness.
+    println!("cargo:rerun-if-changed=build/director.manifest");
+    let manifest =
+        std::path::Path::new(&env::var_os("CARGO_MANIFEST_DIR").expect("crate directory"))
+            .join("build/director.manifest")
+            .display()
+            .to_string()
+            .replace('\\', "/");
     fs::write(
         &rc,
         format!(
             r#"1 ICON "{icon_path}"
+1 24 "{manifest}"
 1 VERSIONINFO
  FILEVERSION {major},{minor},{patch},0
  PRODUCTVERSION {major},{minor},{patch},0

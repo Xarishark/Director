@@ -344,6 +344,7 @@ impl DirectorApp {
             TextBlock::new().text("About Director").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             StackPanel::new().spacing(4.0).children((
                 TextBlock::new().text(concat!("Version ", env!("CARGO_PKG_VERSION"))),
+                TextBlock::new().text("Requires Windows 11, version 24H2 or newer.").opacity(0.72),
                 TextBlock::new().text(env!("CARGO_PKG_AUTHORS")).text_wrapping(TextWrapping::Wrap),
                 TextBlock::new().text(env!("CARGO_PKG_DESCRIPTION")).text_wrapping(TextWrapping::Wrap).opacity(0.72),
             )),

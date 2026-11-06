@@ -9,6 +9,13 @@
     <Property Id="ARPCOMMENTS" Value="$(var.Description)" />
     <!-- setup.exe passes the user's checkbox choice. Defaults to a desktop shortcut for direct msiexec installs. -->
     <Property Id="DESKTOPSHORTCUT" Value="1" />
+    <!-- The same Windows 11 24H2 (build 26100) minimum as setup.exe, for direct msiexec installs. -->
+    <Property Id="WINDOWSBUILD">
+      <RegistrySearch Id="WindowsBuildSearch" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentBuildNumber" Type="raw" Bitness="always64" />
+    </Property>
+    <Launch Condition="Installed OR (WINDOWSBUILD &gt;= 26100)"
+            Message="Director needs Windows 11, version 24H2 or newer. Update Windows from Settings &gt; Windows Update, then install again." />
     <Icon Id="DirectorIcon" SourceFile="$(var.ReleaseDir)\director.ico" />
     <Property Id="ARPPRODUCTICON" Value="DirectorIcon" />
 

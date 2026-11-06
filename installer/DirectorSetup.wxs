@@ -23,6 +23,11 @@
     <util:RegistrySearch Id="WindowsAppRuntimeSearch" Variable="WindowsAppRuntimeRegistered" Result="exists"
         Root="HKCU" Key="Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages\$(var.RuntimePackage)" />
 
+    <!-- Director needs Windows 11 24H2 (build 26100) or newer: its HDR switching uses display APIs added in 24H2,
+         and nothing older is tested. WindowsBuildNumber is Burn's built-in variable with the real build. -->
+    <bal:Condition Condition="WindowsBuildNumber &gt;= 26100"
+        Message="Director needs Windows 11, version 24H2 or newer. Update Windows from Settings &gt; Windows Update, then run setup again." />
+
     <!-- Director 0.9.1 and earlier could install just for the current user. Windows Installer cannot upgrade
          that copy from a machine-wide install, so ask the user to remove it first. Presets are kept. -->
     <util:RegistrySearch Id="PerUserDirectorSearch" Variable="PerUserDirectorInstalled" Result="exists"

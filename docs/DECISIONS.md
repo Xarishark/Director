@@ -201,3 +201,7 @@ Opening a scene step with actions closed the window: the pinned Reactor rejects 
 ### D063 — Onboarding starts from the current setup (2026-11-06)
 
 The first-run checklist sent people to Now and to each Library page before they knew what a scene was, and its buttons were mismatched page names. The user asked for a better start that explains a scene for the everyday setup. The empty Scenes page now saves the current screens, sound and FPS limit as one scene (checkboxes, default name Default), reusing matching presets and changing no device, then shows a dismissible tip for making the next scene in the step editor, which can create presets in place.
+
+### D064 — Windows 11 24H2 is the minimum (2026-11-06)
+
+Director declared no Windows support: no app manifest (so version APIs reported 6.2.9200), no installer check and no documented baseline. HDR switching needs display-configuration requests added in Windows 11 24H2, and only current Windows 11 is tested, so the user chose 24H2 (build 26100) as the minimum rather than a partly working Windows 10 install. The executable embeds a manifest (Windows 10/11 supportedOS, maxversiontested 10.0.26100.0, per-monitor v2 DPI), and setup.exe and the MSI refuse older builds.
