@@ -123,12 +123,15 @@ impl Sound {
 pub struct ScenePolicy {
     pub keep_completed: bool,
     pub wait_seconds: u16,
+    /// How long a TV that reports its input is held on the scene's input (0 = off).
+    pub input_guard_seconds: u16,
 }
 impl Default for ScenePolicy {
     fn default() -> Self {
         Self {
             keep_completed: false,
             wait_seconds: 30,
+            input_guard_seconds: crate::tv_input_guard::DEFAULT_SECONDS,
         }
     }
 }

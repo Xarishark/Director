@@ -335,16 +335,39 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
                 if let Some(id) = &prep.input {
                     progress("Selecting the TV input…");
                     crate::tv_control::switch_input(&mut controls, id)?;
-                    // Do not continue until the TV reports the requested input.
-                    while controls.input_readback() {
+                    if !controls.input_readback() {
+                        return Ok(());
+                    }
+                    // Do not continue until the TV reports the requested input. A TV box
+                    // may take the input while the TV wakes: ask again, leaving each
+                    // request time to land.
+                    let mut sent = Instant::now();
+                    loop {
                         if cancel.load(Ordering::Acquire) {
                             return Err("Scene canceled.".into());
                         }
                         if controls.current_input()?.as_deref() == Some(id) {
                             break;
                         }
+                        if sent.elapsed() >= Duration::from_millis(1500) {
+                            controls.switch_input(id)?;
+                            sent = Instant::now();
+                        }
                         paused(cancel, deadline)?;
                     }
+                    // Then keep it there in the background while the scene carries on.
+                    let (tv, id) = (tv.clone(), id.clone());
+                    crate::tv_input_guard::start(
+                        plan.policy.input_guard_seconds,
+                        move |stop, until| {
+                            crate::tv_input_guard::hold(
+                                || crate::windows_tv::WindowsTvControls::new(&tv),
+                                &id,
+                                || stop.is_set(),
+                                || crate::tv_input_guard::sleep_until(stop, until),
+                            );
+                        },
+                    );
                 }
                 return Ok(());
             }
@@ -530,6 +553,8 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         }
     }
     fn restore(&mut self, snapshot: &Snapshot) -> Result<(), String> {
+        // The scene stopped: stop holding the TV on its input too.
+        crate::tv_input_guard::stop();
         let mut errors = vec![];
         if self.fps_attempted
             && let (Some(provider), Some(saved)) = (&mut self.fps, &snapshot.fps)
@@ -668,6 +693,13 @@ pub fn cli(args: &[String]) -> Result<i32, String> {
             for detail in report.details {
                 println!("{detail}")
             }
+            // The guard runs on its own thread; exiting would end it early.
+            if crate::tv_input_guard::active() {
+                eprintln!(
+                    "Keeping the TV on the scene’s input for a few seconds (TV input protection)…"
+                );
+            }
+            crate::tv_input_guard::wait();
             Ok(if report.success { 0 } else { 1 })
         }
         _ => Err(
