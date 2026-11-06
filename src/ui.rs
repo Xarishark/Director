@@ -13,6 +13,7 @@ pub(crate) const SECONDARY: f64 = 0.72;
 pub(crate) const GAP_S: f64 = 8.0;
 pub(crate) const GAP_M: f64 = 12.0;
 pub(crate) const GAP_L: f64 = 16.0;
+pub(crate) const GAP_XXL: f64 = 32.0;
 
 // Corner radii: inner panels and controls, and cards.
 pub(crate) const RADIUS_S: f64 = 4.0;
@@ -163,6 +164,50 @@ pub(crate) fn page(header: View, body: View, footer: Option<View>) -> View {
             },
         ))
 }
+/// A left-aligned column no wider than `width`.
+pub(crate) fn column(width: f64, spacing: f64, children: impl IntoViews) -> View {
+    StackPanel::new()
+        .max_width(width)
+        .horizontal_alignment(HorizontalAlignment::Left)
+        .spacing(spacing)
+        .children(children)
+}
+
+/// A titled section: subtitle with an optional action at its right, a one-line description,
+/// then the body.
+pub(crate) fn section(title: &str, description: &str, action: Option<View>, body: View) -> View {
+    StackPanel::new().spacing(GAP_M).children((
+        StackPanel::new().spacing(2.0).children((
+            Grid::new()
+                .columns([GridLength::Star(1.0), GridLength::Auto])
+                .column_spacing(GAP_M)
+                .children((
+                    subtitle(title).vertical_alignment(VerticalAlignment::Center),
+                    match action {
+                        Some(action) => Border::new()
+                            .grid_column(1)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .content(action),
+                        None => View::empty(),
+                    },
+                )),
+            note(description),
+        )),
+        body,
+    ))
+}
+
+/// Work in progress inside a section: a small spinning ring and a line of text.
+pub(crate) fn loading(text: &str) -> View {
+    StackPanel::new()
+        .orientation(Orientation::Horizontal)
+        .spacing(GAP_M)
+        .children((
+            ProgressRing::new().is_active(true).width(20.0).height(20.0),
+            note(text),
+        ))
+}
+
 /// An editor footer: a hint on the left, the buttons (Cancel, then the accent action) on the right.
 pub(crate) fn footer(hint: View, actions: Vec<View>) -> View {
     Grid::new()

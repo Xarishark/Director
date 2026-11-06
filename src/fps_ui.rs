@@ -302,6 +302,18 @@ impl DirectorApp {
                     .and_then(|l| l.primary_refresh_hz())
             })
     }
+    /// Now's staged FPS change can be applied: it's valid and its method is available.
+    pub(crate) fn live_fps_ready(&self) -> bool {
+        self.current.fps_dirty
+            && self.fps.live.as_ref().is_some_and(|r| {
+                r.validate().is_ok()
+                    && self
+                        .fps
+                        .caps
+                        .iter()
+                        .any(|c| c.provider == r.provider && c.available)
+            })
+    }
     pub(crate) fn fps_controls(&self, cx: &ViewContext<Self>, target: Target) -> View {
         let request = self.fps_request(target);
         let methods = self
@@ -333,10 +345,32 @@ impl DirectorApp {
                     }
                 )
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                // On Now with nothing staged, say what every method has set right now.
+                if target != Target::Current {
+                    return String::new();
+                }
+                let set = self
+                    .fps
+                    .caps
+                    .iter()
+                    .filter_map(|c| c.current.as_ref().map(|s| (c.provider, s.value)))
+                    .map(|(provider, value)| {
+                        if value == 0 {
+                            format!("{} no limit", provider.label())
+                        } else {
+                            format!("{} {value} FPS", provider.label())
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if set.is_empty() {
+                    String::new()
+                } else {
+                    format!("Currently: {}", set.join(" · "))
+                }
+            });
         let refresh = self.fps_preview_refresh(target);
         StackPanel::new().spacing(12.0).children((
-if target==Target::Scene{View::empty()}else{TextBlock::new().text("FPS limit").font_size(24.0).font_weight(FontWeight::SEMI_BOLD).into()},
 if current.is_empty(){View::empty()}else{note(current)},
 ToggleSwitch::new().automation_name("Change FPS limit").is_on(request.is_some()).is_enabled(available&&(!methods.is_empty()||request.is_some())).on_toggled(cx.callback(move|v|msg(FpsMessage::Enable(target,v)))).slot(ToggleSwitchSlot::Header,"Change FPS limit"),
 if !self.fps.loaded||self.fps.checking{note("Checking installed FPS methods…")}else if methods.is_empty(){note(self.fps.caps.iter().map(|c|format!("{}: {}",c.provider.label(),c.detail)).collect::<Vec<_>>().join("\n"))}else{View::empty()},
@@ -350,7 +384,6 @@ if let Some(c)=cap{note(&c.detail)}else{note("The saved method is unavailable. A
 if let Err(e)=r.validate(){note(e)}else{View::empty()},
 note("Global setting. Game-specific profiles and other limiters can still apply. RTSS must stay running when selected. A running game may need restarting."),
 ))}else{note("Off leaves all existing FPS settings unchanged.")},
-if target==Target::Current{Button::new().automation_name("Apply current FPS changes").style(ButtonStyle::Accent).horizontal_alignment(HorizontalAlignment::Left).is_enabled(available&&self.current.fps_dirty&&request.is_some_and(|r|r.validate().is_ok())&&cap.is_some_and(|c|c.available)).on_click(cx.message(msg(FpsMessage::Apply))).content("Apply FPS changes")}else{View::empty()},
 ))
     }
 }

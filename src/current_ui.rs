@@ -1,5 +1,5 @@
-//! Now: what's active right now. Display and FPS edits are staged and applied together;
-//! sound changes (output, volume, mute, microphone) apply as soon as they're made. It never
+//! Now: what's active right now. Display and FPS edits are staged and applied together from
+//! the page footer; sound changes (output, volume, mute, microphone) apply as soon as they're made. It never
 //! reads or writes saved scenes or presets.
 use crate::{
     DirectorApp, Message,
@@ -36,6 +36,8 @@ pub(crate) enum CurrentMessage {
     Loaded(Displays, Devices),
     Display(DisplayMessage),
     ApplyDisplays,
+    /// Apply every staged change: displays first, then the FPS limit.
+    ApplyAll,
     DisplaysApplied(display_apply::Report, Displays, Devices),
     /// Pick the default output (false) or microphone (true).
     Device(bool, Option<usize>),
@@ -68,6 +70,8 @@ pub(crate) struct CurrentState {
     /// The slider tokens when that change started; a slider moved since then keeps its place.
     tokens_at_start: (u64, u64),
     pub(crate) fps_dirty: bool,
+    /// Apply the staged FPS limit once the display change running now succeeds.
+    fps_after_displays: bool,
 }
 impl CurrentState {
     pub fn dirty(&self) -> bool {
@@ -280,9 +284,21 @@ impl DirectorApp {
                     });
                 }
             }
+            CurrentMessage::ApplyAll
+                if !self.busy && self.guard_ready && self.current.display.drag.is_none() =>
+            {
+                if self.current.display_dirty() {
+                    self.current.fps_after_displays = self.current.fps_dirty;
+                    self.update_current(CurrentMessage::ApplyDisplays, cx);
+                } else if self.current.fps_dirty {
+                    self.update_fps(crate::fps_ui::FpsMessage::Apply, cx);
+                }
+            }
             CurrentMessage::DisplaysApplied(report, actual, audio) => {
                 self.end();
-                self.error = !report.succeeded();
+                let then_fps = std::mem::take(&mut self.current.fps_after_displays);
+                let succeeded = report.succeeded();
+                self.error = !succeeded;
                 self.status = report.message;
                 self.details = report.details.join("\n");
                 self.announce(cx);
@@ -304,6 +320,10 @@ Could not read the resulting display state: {e}"
                         "
 Could not read audio outputs: {e}"
                     )),
+                }
+                // A failed display change leaves the FPS edit staged rather than half-applying.
+                if then_fps && succeeded && !self.error {
+                    self.update_fps(crate::fps_ui::FpsMessage::Apply, cx);
                 }
             }
             CurrentMessage::Device(input, Some(index)) if !self.busy => {
@@ -489,11 +509,17 @@ Could not read audio outputs: {e}"
                                     FontIcon::new().glyph(match (input, muted) {
                                         (false, false) => "\u{e767}",
                                         (false, true) => "\u{e74f}",
-                                        (true, _) => "\u{e720}",
+                                        (true, false) => "\u{e720}",
+                                        (true, true) => "\u{ec54}",
                                     }),
-                                    TextBlock::new().text(if muted { "Muted" } else { "On" }),
+                                    TextBlock::new().text(if muted { "Unmute" } else { "Mute" }),
                                 )),
-                        ),
+                        )
+                        .tooltip(if muted {
+                            format!("The {kind} is muted. Select to unmute.")
+                        } else {
+                            format!("Mute the {kind}")
+                        }),
                     Slider::new()
                         .grid_column(1)
                         .automation_name(format!(
@@ -512,101 +538,109 @@ Could not read audio outputs: {e}"
                     TextBlock::new()
                         .grid_column(2)
                         .text(volume.map_or(String::new(), |v| format!("{}%", v.round())))
+                        .opacity(crate::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center),
                 )),
         ))
     }
+    /// What the footer says is staged.
+    fn staged_summary(&self) -> &'static str {
+        match (self.current.display_dirty(), self.current.fps_dirty) {
+            (true, true) => "Display and FPS limit changes are ready to apply.",
+            (true, false) => "Display changes are ready to apply.",
+            (false, true) => "An FPS limit change is ready to apply.",
+            (false, false) => "No changes to apply. Sound changes apply right away.",
+        }
+    }
     pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
+        use crate::ui;
+        let dragging = self.current.display.drag.is_some();
         let displays = if let (Some(draft), Some(editor)) =
             (&self.current.display.draft, &self.current.display.editor)
         {
-            StackPanel::new().spacing(16.0).children((
-                self.monitor_editor_for(&draft.layout, editor, cx, EditorTarget::Current),
-                StackPanel::new()
-                    .orientation(Orientation::Horizontal)
-                    .spacing(8.0)
-                    .children((
-                        Button::new()
-                            .style(ButtonStyle::Accent)
-                            .automation_name("Apply current display changes")
-                            .is_enabled(
-                                !self.busy
-                                    && self.guard_ready
-                                    && self.current.display_dirty()
-                                    && self.current.display.drag.is_none(),
-                            )
-                            .on_click(cx.message(msg(CurrentMessage::ApplyDisplays)))
-                            .content("Apply display changes"),
-                        Button::new()
-                            .automation_name("Save these displays as a preset")
-                            .is_enabled(!self.busy && self.current.display.drag.is_none())
-                            .on_click(cx.message(msg(CurrentMessage::SaveDisplays)))
-                            .content("Save as display preset…")
-                            .tooltip("Open a new display preset with this layout, including edits you haven’t applied"),
-                    )),
-            ))
+            self.monitor_editor_for(&draft.layout, editor, cx, EditorTarget::Current)
+        } else if self.busy {
+            ui::loading("Reading your displays…")
         } else {
-            TextBlock::new()
-                .text(if self.busy {
-                    "Reading your displays…"
-                } else {
-                    "Current display settings are unavailable."
-                })
-                .text_wrapping(TextWrapping::Wrap)
-                .into()
+            ui::note("Current display settings are unavailable.")
         };
-        let audio = StackPanel::new().spacing(14.0).children((
-            TextBlock::new()
-                .text("Sound")
-                .font_size(24.0)
-                .font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new()
-                .text("Changes apply right away. The output takes all three Windows roles.")
-                .text_wrapping(TextWrapping::Wrap)
-                .opacity(0.72),
-            self.sound_row(cx, false),
-            self.sound_row(cx, true),
-            Button::new()
-                .automation_name("Save this sound as a scene")
-                .is_enabled(!self.busy && self.current.default_device(false).is_some())
-                .on_click(cx.message(msg(CurrentMessage::SaveAudio)))
-                .content("Save as scene…")
-                .tooltip("Open a new scene whose Sound step uses this output and volume"),
-        ));
-        Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0)])
-            .children((
-                crate::ui::header(
-                    "Now",
-                    "Change what’s active right now. Nothing is saved unless you save it.",
-                    vec![
-                        Button::new()
-                            .automation_name("Discard current setup edits")
-                            .is_enabled(!self.busy)
-                            .on_click(cx.message(msg(CurrentMessage::Load)))
-                            .content("Discard edits")
-                            .tooltip("Discard pending changes and read the current Windows setup"),
-                    ],
+        let displays = ui::section(
+            "Displays",
+            "Drag screens to arrange them; hover for details. Edits wait until you apply them.",
+            Some(
+                Button::new()
+                    .style(ButtonStyle::Subtle)
+                    .automation_name("Save these displays as a preset")
+                    .is_enabled(!self.busy && !dragging && self.current.display.draft.is_some())
+                    .on_click(cx.message(msg(CurrentMessage::SaveDisplays)))
+                    .content("Save as display preset…")
+                    .tooltip("Open a new display preset with this layout, including edits you haven’t applied"),
+            ),
+            displays,
+        );
+        let sound = ui::column(
+            ui::FORM_WIDTH,
+            0.0,
+            (ui::section(
+                "Sound",
+                "Changes apply right away. The output becomes the default for apps, media and calls.",
+                Some(
+                    Button::new()
+                        .style(ButtonStyle::Subtle)
+                        .automation_name("Save this sound as a scene")
+                        .is_enabled(!self.busy && self.current.default_device(false).is_some())
+                        .on_click(cx.message(msg(CurrentMessage::SaveAudio)))
+                        .content("Save as scene…")
+                        .tooltip("Open a new scene whose Sound step uses this output and volume"),
                 ),
-                ScrollViewer::new()
-                    .grid_row(1)
-                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                    .content(
-                        StackPanel::new()
-                            .max_width(650.0)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .spacing(28.0)
-                            .children((
-                                TextBlock::new()
-                                    .text("Displays")
-                                    .font_size(24.0)
-                                    .font_weight(FontWeight::SEMI_BOLD),
-                                displays,
-                                audio,
-                                self.fps_controls(cx, crate::fps_ui::Target::Current),
-                            )),
-                    ),
-            ))
+                StackPanel::new()
+                    .spacing(ui::GAP_L)
+                    .children((self.sound_row(cx, false), self.sound_row(cx, true))),
+            ),),
+        );
+        let fps = ui::column(
+            ui::FORM_WIDTH,
+            0.0,
+            (ui::section(
+                "FPS limit",
+                "Edits wait until you apply them.",
+                None,
+                self.fps_controls(cx, crate::fps_ui::Target::Current),
+            ),),
+        );
+        let dirty = self.current.dirty();
+        let can_apply = !self.busy
+            && self.guard_ready
+            && !dragging
+            && (self.current.display_dirty() || self.current.fps_dirty)
+            && (!self.current.fps_dirty || self.live_fps_ready());
+        ui::page(
+            ui::header(
+                "Now",
+                "Change what’s active right now. Nothing is saved unless you save it.",
+                vec![],
+            ),
+            StackPanel::new()
+                .spacing(ui::GAP_XXL)
+                .children((displays, sound, fps)),
+            Some(ui::footer(
+                ui::note(self.staged_summary()),
+                vec![
+                    Button::new()
+                        .automation_name("Discard current setup edits")
+                        .is_enabled(!self.busy && dirty)
+                        .on_click(cx.message(msg(CurrentMessage::Load)))
+                        .content("Discard")
+                        .tooltip("Drop staged changes and read the current Windows setup again"),
+                    Button::new()
+                        .style(ButtonStyle::Accent)
+                        .automation_name("Apply current changes")
+                        .is_enabled(can_apply)
+                        .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
+                        .content("Apply changes"),
+                ],
+            )),
+        )
     }
 }
 
