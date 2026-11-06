@@ -118,6 +118,9 @@ fn complete_snapshot(backend: &mut impl Backend, mut result: Snapshot) -> Snapsh
 /// The displayed action is an explicit intent. Fresh state may make it a no-op;
 /// never reverse it if the TV changed state after the button was displayed.
 pub fn power(backend: &mut impl Backend, action: PowerAction) -> Result<Report, String> {
+    // Not in unit tests: they run in parallel with the guard's own tests.
+    #[cfg(not(test))]
+    crate::tv_input_guard::stop();
     match action {
         PowerAction::Wake => {
             // Providers use an explicit wake intent: direct wake or bounded Wake-on-LAN.
@@ -171,7 +174,11 @@ pub fn power(backend: &mut impl Backend, action: PowerAction) -> Result<Report, 
         }
     }
 }
+/// Select an input. Stops a running input guard first, so it can't switch back.
 pub fn switch_input(backend: &mut impl Backend, id: &str) -> Result<Report, String> {
+    // Not in unit tests: they run in parallel with the guard's own tests.
+    #[cfg(not(test))]
+    crate::tv_input_guard::stop();
     let inputs = crate::diagnostics::measure("tv.input.preflight", id, || backend.inputs())?;
     let target = inputs
         .iter()

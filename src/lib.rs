@@ -46,6 +46,7 @@ pub mod display_detection;
 pub mod notifications;
 pub mod preferences;
 pub mod tv_control;
+pub mod tv_input_guard;
 pub mod tv_network;
 pub mod tv_setup;
 #[cfg(windows)]
