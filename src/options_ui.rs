@@ -304,6 +304,13 @@ impl DirectorApp {
                 .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
                 .on_value_changed(cx.callback(|v| Message::Tip(crate::tv_tip_ui::TipMessage::DeviceWait(v))))
                 .slot(NumberBoxSlot::Header, "Wait for TVs, audio devices and setup apps (seconds)"),
+            NumberBox::new().automation_name("TV input protection seconds").minimum(0.0).maximum(f64::from(director::tv_input_guard::MAX_SECONDS)).horizontal_alignment(HorizontalAlignment::Left).min_width(220.0)
+                .value(self.tip.pending.as_ref().or(self.tip.preferences.as_ref()).map(|p| f64::from(p.tv_input_guard_seconds)))
+                .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
+                .on_value_changed(cx.callback(|v| Message::Tip(crate::tv_tip_ui::TipMessage::InputGuard(v))))
+                .slot(NumberBoxSlot::Header, "TV input protection (seconds)"),
+            TextBlock::new().text("TV boxes and consoles often take over the TV’s input while it turns on, even when they didn’t turn it on. After a scene selects the TV input, Director keeps switching back to it for this long, while the rest of the scene carries on. Works with TVs that report their current input, such as LG. 0 turns it off.")
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left),
             )),
             StackPanel::new().spacing(12.0).children((
             TextBlock::new().text("Notifications").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
