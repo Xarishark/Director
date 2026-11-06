@@ -759,8 +759,12 @@ Could not read audio outputs: {e}"
                 )),
             ),),
         );
-        // Full width, so its edges line up with the display card above.
-        let fps = self.fps_controls(cx, crate::fps_ui::Target::Current);
+        // A form-width card: its few short controls don't need the whole window.
+        let fps = ui::column(
+            ui::FORM_WIDTH,
+            0.0,
+            (self.fps_controls(cx, crate::fps_ui::Target::Current),),
+        );
         // No page title: the sidebar already says Now, and the sections explain themselves.
         ui::page(
             View::empty(),
