@@ -549,7 +549,7 @@ Could not read audio outputs: {e}"
             (true, true) => "Display and FPS limit changes are ready to apply.",
             (true, false) => "Display changes are ready to apply.",
             (false, true) => "An FPS limit change is ready to apply.",
-            (false, false) => "No changes to apply. Sound changes apply right away.",
+            (false, false) => "",
         }
     }
     pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
@@ -566,7 +566,7 @@ Could not read audio outputs: {e}"
         };
         let displays = ui::section(
             "Displays",
-            "Drag screens to arrange them; hover for details. Edits wait until you apply them.",
+            "Drag screens to arrange them; hover for details. Changes wait until you select Apply changes.",
             Some(
                 Button::new()
                     .style(ButtonStyle::Subtle)
@@ -583,7 +583,7 @@ Could not read audio outputs: {e}"
             0.0,
             (ui::section(
                 "Sound",
-                "Changes apply right away. The output becomes the default for apps, media and calls.",
+                "Changes apply as you make them; there’s nothing to apply. The output becomes the default for apps, media and calls.",
                 Some(
                     Button::new()
                         .style(ButtonStyle::Subtle)
@@ -603,7 +603,7 @@ Could not read audio outputs: {e}"
             0.0,
             (ui::section(
                 "FPS limit",
-                "Edits wait until you apply them.",
+                "Changes wait until you select Apply changes.",
                 None,
                 self.fps_controls(cx, crate::fps_ui::Target::Current),
             ),),
@@ -622,24 +622,30 @@ Could not read audio outputs: {e}"
             ),
             StackPanel::new()
                 .spacing(ui::GAP_XXL)
-                .children((displays, sound, fps)),
-            Some(ui::footer(
-                ui::note(self.staged_summary()),
-                vec![
-                    Button::new()
-                        .automation_name("Discard current setup edits")
-                        .is_enabled(!self.busy && dirty)
-                        .on_click(cx.message(msg(CurrentMessage::Load)))
-                        .content("Discard")
-                        .tooltip("Drop staged changes and read the current Windows setup again"),
-                    Button::new()
-                        .style(ButtonStyle::Accent)
-                        .automation_name("Apply current changes")
-                        .is_enabled(can_apply)
-                        .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
-                        .content("Apply changes"),
-                ],
-            )),
+                .children((sound, displays, fps)),
+            // The Apply bar belongs to the staged sections only, so it appears once something
+            // is staged and sound never looks like it waits for it.
+            (self.current.display_dirty() || self.current.fps_dirty).then(|| {
+                ui::footer(
+                    ui::note(self.staged_summary()),
+                    vec![
+                        Button::new()
+                            .automation_name("Discard current setup edits")
+                            .is_enabled(!self.busy && dirty)
+                            .on_click(cx.message(msg(CurrentMessage::Load)))
+                            .content("Discard")
+                            .tooltip(
+                                "Drop staged changes and read the current Windows setup again",
+                            ),
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .automation_name("Apply current changes")
+                            .is_enabled(can_apply)
+                            .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
+                            .content("Apply changes"),
+                    ],
+                )
+            }),
         )
     }
 }

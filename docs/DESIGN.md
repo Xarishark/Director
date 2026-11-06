@@ -18,7 +18,7 @@ The pane lists Scenes, Now, Displays and TVs, with Options in the pane footer. T
 
 ## Now — current
 
-Now has three sections: Displays, Sound and FPS limit. Sound applies each change right away; Displays and FPS limit stage edits. One fixed footer says what is staged and offers Discard (only while something is staged) and **Apply changes**, which applies displays and then, if that succeeded, the FPS limit. Save as display preset… and Save as scene… sit beside their section titles. Mute buttons read Mute or Unmute with matching icons, and the FPS section starts with what each method has set now. This supersedes "Keep separate Apply display changes and Apply audio changes actions, plus Discard edits" below.
+Now has three sections in this order: Sound, which applies each change right away and so comes first with nothing to apply, then Displays and FPS limit, which stage edits. The Apply bar belongs only to the staged sections: it appears once something is staged, says what, and offers Discard and **Apply changes**, which applies displays and then, if that succeeded, the FPS limit. Save as display preset… and Save as scene… sit beside their section titles. Mute buttons read Mute or Unmute with matching icons, and the FPS section starts with what each method has set now. This supersedes "Keep separate Apply display changes and Apply audio changes actions, plus Discard edits" below.
 
 ## Information architecture (earlier)
 
