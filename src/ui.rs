@@ -162,9 +162,10 @@ pub(crate) fn page(header: View, body: View, footer: Option<View>) -> View {
                 .grid_row(1)
                 .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
                 .content(
-                    // Room for the vertical scroll bar so it never covers controls.
+                    // Room for the vertical scroll bar so it never covers controls, and below
+                    // the last control so it (and its focus outline) never meets the edge.
                     Border::new()
-                        .padding(Thickness::new(0.0, 0.0, GAP_L, GAP_S))
+                        .padding(Thickness::new(0.0, 0.0, GAP_L, GAP_XXL))
                         .content(body),
                 ),
             match footer {

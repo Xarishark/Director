@@ -438,9 +438,15 @@ impl Component for DirectorApp {
                     .row_spacing(if self.status_visible() { 16.0 } else { 0.0 })
                     .children((
                         Border::new().grid_row(0).content(content),
-                        Border::new()
-                            .grid_row(1)
-                            .content(ScrollViewer::new().max_height(160.0).content(status)),
+                        // Only while something needs attention: an empty ScrollViewer still
+                        // takes height and shortens the page above it.
+                        if self.status_visible() {
+                            Border::new()
+                                .grid_row(1)
+                                .content(ScrollViewer::new().max_height(160.0).content(status))
+                        } else {
+                            View::empty()
+                        },
                     )),
             );
         // The window's TitleBar carries the app name and the pane toggle, as in Windows 11
