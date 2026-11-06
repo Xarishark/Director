@@ -616,12 +616,7 @@ Could not read audio outputs: {e}"
         let fps = ui::column(
             ui::FORM_WIDTH,
             0.0,
-            (ui::section(
-                "FPS limit",
-                "",
-                None,
-                self.fps_controls(cx, crate::fps_ui::Target::Current),
-            ),),
+            (self.fps_controls(cx, crate::fps_ui::Target::Current),),
         );
         let dirty = self.current.dirty();
         let can_apply = !self.busy

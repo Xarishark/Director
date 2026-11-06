@@ -218,6 +218,10 @@ pub(crate) fn loading(text: &str) -> View {
 }
 
 /// A bordered card in the system card colours.
+pub(crate) fn card(body: impl Into<View>) -> View {
+    card_padded(Thickness::uniform(GAP_L), body)
+}
+/// A card with its own padding.
 pub(crate) fn card_padded(padding: Thickness, body: impl Into<View>) -> View {
     Border::new()
         .padding(padding)
@@ -226,6 +230,24 @@ pub(crate) fn card_padded(padding: Thickness, body: impl Into<View>) -> View {
         .border_brush(card_stroke())
         .border_thickness(1.0)
         .content(body)
+}
+
+/// A settings row without its own card, for rows grouped inside one card: title and
+/// description on the left, the control on the right.
+pub(crate) fn setting_row(title: &str, description: &str, control: impl Into<View>) -> View {
+    Grid::new()
+        .columns([GridLength::Star(1.0), GridLength::Auto])
+        .column_spacing(GAP_L)
+        .children((
+            StackPanel::new()
+                .spacing(2.0)
+                .vertical_alignment(VerticalAlignment::Center)
+                .children((label(title), caption(description))),
+            Border::new()
+                .grid_column(1)
+                .vertical_alignment(VerticalAlignment::Center)
+                .content(control),
+        ))
 }
 
 /// A settings row in a card, as in Windows Settings: title and description on the left,
