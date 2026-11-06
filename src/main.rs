@@ -90,8 +90,6 @@ enum Message {
     InputVolume(Option<f64>),
     SetVolume(bool),
     Volume(Option<f64>),
-    CopyId,
-    DeviceId(bool),
     Pane(bool),
     Save,
     Saved(Result<Vec<Preset>, String>),
@@ -119,7 +117,6 @@ struct DirectorApp {
     draft: Option<Draft>,
     pane_open: bool,
     options_dialog: Option<options_ui::OptionsDialog>,
-    show_device_id: bool,
     pending_delete: Option<String>,
     audio_relink: Option<audio_relink_ui::RelinkDraft>,
     busy: bool,
@@ -319,7 +316,6 @@ impl DirectorApp {
                 ComboBox::new().automation_name("Output device").horizontal_alignment(HorizontalAlignment::Stretch).items_source(self.outputs.iter().map(audio_relink_ui::device_label)).selected_index(index).is_enabled(!self.busy).on_selection_changed(cx.callback(Message::Output)),
                 TextBlock::new().text(detail).font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap),
                 self.audio_relink_button(cx, &d.output_id, None, false),
-                Expander::new().is_expanded(self.show_device_id).on_is_expanded_changed(cx.callback(Message::DeviceId)).slots([SlotView::new(ExpanderSlot::Header,"Device ID"),SlotView::new(ExpanderSlot::Content,StackPanel::new().spacing(10.0).children((TextBlock::new().text(d.output_id.clone()).text_wrapping(TextWrapping::Wrap),Button::new().on_click(cx.message(Message::CopyId)).content("Copy device ID"))))]),
                 Grid::new().columns([GridLength::Star(1.0),GridLength::Pixel(130.0)]).children((
                     ToggleSwitch::new().grid_column(0).automation_name("Set volume").is_on(d.set_volume).is_enabled(!self.busy).on_toggled(cx.callback(Message::SetVolume)).slot(ToggleSwitchSlot::Header,"Set volume"),
                     NumberBox::new().grid_column(1).automation_name("Volume percentage").height(36.0).vertical_alignment(VerticalAlignment::Center).minimum(0.0).maximum(100.0).value(d.volume).is_enabled(!self.busy && d.set_volume).on_value_changed(cx.callback(Message::Volume)),
@@ -412,7 +408,6 @@ impl Component for DirectorApp {
             draft: None,
             window_width: 1000.0,
             pane_open: true,
-            show_device_id: false,
             pending_delete: None,
             audio_relink: None,
             options_dialog: None,
@@ -555,7 +550,6 @@ impl Component for DirectorApp {
                 self.library_resume(context);
             }
             Message::Add if self.ready() => {
-                self.show_device_id = false;
                 let output = self
                     .outputs
                     .iter()
@@ -581,7 +575,6 @@ impl Component for DirectorApp {
                 self.details.clear();
             }
             Message::Edit(id) if self.ready() => {
-                self.show_device_id = false;
                 if let Some(p) = self.presets.iter().find(|p| p.id == id) {
                     if !self.outputs.iter().any(|o| o.id == p.output_id) {
                         self.outputs.push(Output {
@@ -730,20 +723,6 @@ impl Component for DirectorApp {
             Message::Volume(value) if !self.busy => {
                 if let Some(d) = &mut self.draft {
                     d.volume = value;
-                }
-            }
-            Message::DeviceId(value) => self.show_device_id = value,
-            Message::CopyId => {
-                if let Some(d) = &self.draft {
-                    let result = (|| {
-                        use windows::ApplicationModel::DataTransfer::{Clipboard, DataPackage};
-                        let data = DataPackage::new()?;
-                        data.SetText(&windows::core::HSTRING::from(&d.output_id))?;
-                        Clipboard::SetContent(&data)
-                    })();
-                    if let Err(e) = result {
-                        self.failure(format!("Could not copy the device ID: {e}"));
-                    }
                 }
             }
             Message::Pane(value) => self.pane_open = value,
