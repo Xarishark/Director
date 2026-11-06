@@ -9,11 +9,11 @@ Moving from your desk to the living room? A **TV Gaming** scene can wake the TV,
 
 ## Presets and scenes
 
-Director has three areas in its sidebar:
+Director’s sidebar has four pages, with Options at the bottom:
 
 - **Scenes** is where Director opens. Run a scene, or create one.
-- **Now** changes what’s active right now without saving anything. Sound changes apply as you make them; display and FPS edits apply when you press Apply. Use **Save as display preset…** or **Save as scene…** to keep what you’ve set up.
-- **Library** holds your saved building blocks: **Displays** and **TVs**.
+- **Now** changes what’s active right now without saving anything. Sound changes apply as you make them; display and FPS edits wait until you press **Apply changes** at the bottom of the page. Use **Save as display preset…** or **Save as scene…** to keep what you’ve set up.
+- **Displays** and **TVs** hold your saved building blocks: display layouts and paired TVs.
 
 A **scene** is everything you want to switch together: its display preset, its sound, its TV, an FPS limit and actions. Display presets and TVs are saved once and reused across scenes; sound is set in each scene.
 
@@ -35,8 +35,8 @@ Director needs **Windows 11, version 24H2 or newer** (x64). Setup checks this an
 
 ## Set up your first TV scene
 
-1. The first time you open **Scenes**, save your everyday setup: **Save as my Default scene** stores your current screens, sound and FPS limit as a scene, so you can always switch back in one click. It changes nothing on your PC, and it reuses a display preset you already saved when it matches. Then create a separate display layout for the TV in **Library › Displays**, or from the scene's Displays step. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
-2. In **Library › TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output so scenes can use **TV's sound**.
+1. The first time you open **Scenes**, save your everyday setup: **Save as my Default scene** stores your current screens, sound and FPS limit as a scene, so you can always switch back in one click. It changes nothing on your PC, and it reuses a display preset you already saved when it matches. Then create a separate display layout for the TV in **Displays**, or from the scene's Displays step. If Windows hasn’t exposed the TV’s modes yet, use **Detect options** to temporarily enable it, read its available settings, and restore your layout.
+2. In **TVs**, add the TV, follow its pairing guide, and select the PC input where supported. Link its HDMI audio output so scenes can use **TV's sound**.
 3. In **Scenes**, create **TV Gaming**. Select the TV and the TV display preset, and in the Sound step choose **TV's sound** with a volume if you want one. Add a frame-rate cap or an app launch if you want one. If a display preset or TV is missing, choose **New display preset…** or **Add TV…** at the bottom of that list. Director returns to the scene with it selected after you save. Apply the scene when you’re ready.
 
 Director runs the scene in order: **Before → TV → Displays → Sound → FPS → After.** A Before step can wait for a setup script to finish. Director waits for the selected HDMI audio device after changing displays. If a required step fails, Director stops and restores the previous Windows settings, unless you change that in Options. TV boxes and consoles often grab the TV’s input while it turns on; with TVs that report their current input, such as LG, **TV input protection** in Options keeps switching back to the scene’s input for the first seconds (10 by default) while the rest of the scene carries on.

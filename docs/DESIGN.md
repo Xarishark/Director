@@ -1,6 +1,26 @@
 # Director interface
 
-## Information architecture — current
+## Design system — current
+
+Every page is built from `src/ui.rs`, so pages line up and follow the system theme:
+
+- **Type ramp** (Fluent): caption 12, body 14, label 14 semibold, section subtitle 20 semibold, page title 28 semibold. Secondary text uses one opacity (0.72).
+- **Spacing** 8/12/16/32 and **radii** 4 (inner panels, controls) and 8 (cards). Page padding and pane widths are constants that width calculations reuse.
+- **Colour** comes from theme brushes: card fill and stroke, critical red and the accent. Translucent greys mark inner panels, dashed outlines and the arrangement map, so they read on light and dark. Layout previews keep one fixed set of screen colours.
+- **Page**: fixed header (title, one-line subtitle, actions at the top right), scrolling body with a scroll-bar gutter, and an optional fixed footer: a hint on the left, Cancel then the accent action on the right.
+- **Section**: a subtitle with an optional quiet action beside it (Save as…), a one-line description, then the content. Forms stay within 650 DIP; monitor cards use up to three columns of about 400 DIP.
+- **Settings**: Options uses Windows-Settings-style cards, each with a title and description on the left and its control on the right.
+- Empty states use one helper: a subtitle, a line of explanation and at most one button.
+
+## Navigation — current
+
+The pane lists Scenes, Now, Displays and TVs, with Options in the pane footer. The Library group was removed once it only held Displays and TVs. Reactor 0.100 has no footer menu items, so Options is a button styled like a navigation item that shows the same selection pill and fill when open. This supersedes "Library is an expanded, non-selectable parent item" below.
+
+## Now — current
+
+Now has three sections: Displays, Sound and FPS limit. Sound applies each change right away; Displays and FPS limit stage edits. One fixed footer says what is staged and offers Discard (only while something is staged) and **Apply changes**, which applies displays and then, if that succeeded, the FPS limit. Save as display preset… and Save as scene… sit beside their section titles. Mute buttons read Mute or Unmute with matching icons, and the FPS section starts with what each method has set now. This supersedes "Keep separate Apply display changes and Apply audio changes actions, plus Discard edits" below.
+
+## Information architecture (earlier)
 
 The navigation pane has three areas. Scenes is the start page (except when opened from a failed-scene notification, which opens Options). Now (formerly Current setup) adjusts the live setup without saving. Library is an expanded, non-selectable parent item with Displays, Audio and TVs. Options stays in the pane footer. Each area has its own icon; Displays and TVs no longer share one.
 
