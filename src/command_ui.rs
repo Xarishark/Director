@@ -72,19 +72,19 @@ fn commands(t: &Target) -> Vec<(&'static str, String, String)> {
 }
 
 /// A quiet ">_" next to a card's name: plain dimmed text rather than a framed icon, so it
-/// The borderless ">_" button shown next to a card's name.
+/// reads as a hint, not a primary action. The subtle button still highlights on hover.
 pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> View {
     Button::new()
         .automation_name(format!("Command for {}", target.name))
         .style(ButtonStyle::Subtle)
-        .height(32.0)
         .vertical_alignment(VerticalAlignment::Center)
         .on_click(cx.callback(move |()| Message::Command(CommandMessage::Show(target.clone()))))
         .content(
-            Viewbox::new()
-                .width(16.0)
-                .height(16.0)
-                .slot(ViewboxSlot::Child, FontIcon::new().glyph("\u{e756}")),
+            TextBlock::new()
+                .text(">_")
+                .font_size(13.0)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .opacity(0.5),
         )
         .tooltip("Command for shortcuts")
 }
