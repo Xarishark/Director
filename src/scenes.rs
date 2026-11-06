@@ -403,6 +403,7 @@ pub fn load(path: &Path) -> Result<Vec<Scene>, String> {
 }
 pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), String> {
     validate(next)?;
+    crate::cli_name::check_new_names(expected, next, |s| (&s.id, &s.name), "scene")?;
     if load(path)? != expected {
         return Err("Scenes changed in another window. Reopen Scenes before saving.".into());
     }

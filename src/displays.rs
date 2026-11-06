@@ -200,6 +200,7 @@ pub fn load(path: &Path) -> Result<Vec<Preset>, String> {
 /// Caller holds Director's cross-process operation lock.
 pub fn save(path: &Path, expected: &[Preset], next: &[Preset]) -> Result<(), String> {
     validate(next)?;
+    crate::cli_name::check_new_names(expected, next, |p| (&p.id, &p.name), "display preset")?;
     if load(path)? != expected {
         return Err(
             "Display presets changed in another window. Refresh before saving again.".into(),

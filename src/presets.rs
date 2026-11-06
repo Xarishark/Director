@@ -123,6 +123,7 @@ pub(crate) fn validate(presets: &[Preset]) -> Result<(), String> {
 /// Caller holds the cross-process operation lock. Refuse stale-window overwrites.
 pub fn save(path: &Path, expected: &[Preset], next: &[Preset]) -> Result<(), String> {
     validate(next)?;
+    crate::cli_name::check_new_names(expected, next, |p| (&p.id, &p.name), "audio preset")?;
     if load(path)? != expected {
         return Err("Presets changed in another window. Refresh before saving again.".into());
     }

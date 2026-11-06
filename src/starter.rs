@@ -62,7 +62,7 @@ pub fn unique_name<'a>(base: &str, taken: impl IntoIterator<Item = &'a str> + Cl
         !taken
             .clone()
             .into_iter()
-            .any(|t| t.trim().eq_ignore_ascii_case(n))
+            .any(|t| crate::cli_name::cli_name(t) == crate::cli_name::cli_name(n))
     };
     if free(base) {
         return base.to_string();

@@ -206,6 +206,7 @@ fn validate(tvs: &[Tv]) -> Result<(), String> {
 /// Caller holds the shared operation lock, including across pairing.
 pub fn save(path: &Path, expected: &[Tv], next: &[Tv]) -> Result<(), String> {
     validate(next)?;
+    crate::cli_name::check_new_names(expected, next, |t| (&t.id, &t.name), "TV")?;
     if load(path)? != expected {
         return Err(
             "Saved TVs changed in another window. Reopen the TVs page before saving.".into(),
