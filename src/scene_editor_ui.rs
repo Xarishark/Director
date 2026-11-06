@@ -40,16 +40,16 @@ impl Step {
             Self::Leave => "\u{e7e8}",
         }
     }
-    /// What an unused step offers to add.
-    fn add_label(self) -> &'static str {
+    /// What an empty step would do, shown under its title.
+    fn hint(self) -> &'static str {
         match self {
-            Self::Before => "Add something to run first",
-            Self::Tv => "Prepare a TV",
-            Self::Displays => "Switch displays",
-            Self::Audio => "Switch audio",
-            Self::Fps => "Set an FPS limit",
-            Self::After => "Open apps or links afterwards",
-            Self::Leave => "Do something when leaving",
+            Self::Before => "Run a script or app first",
+            Self::Tv => "Wake it and switch to the PC input",
+            Self::Displays => "Switch to a saved monitor layout",
+            Self::Audio => "Switch to a saved sound setup",
+            Self::Fps => "Cap the frame rate",
+            Self::After => "Open apps or links when it’s done",
+            Self::Leave => "Close apps when you switch away",
         }
     }
     fn key(self) -> &'static str {
@@ -76,18 +76,119 @@ fn note(s: impl Into<String>) -> View {
         .into()
 }
 const BORDER: Color = Color::rgb(70, 70, 70);
-/// The width of the flow column and the left offset of the connector line.
+/// The widest the flow column gets.
 const FLOW_WIDTH: f64 = 720.0;
-const LINE_INSET: f64 = 31.0;
+/// Every step card, filled or empty, has this height.
+const CARD_HEIGHT: f64 = 64.0;
+/// The column that holds a step's icon. A card's content starts this far in: a 2 px inset
+/// inside its outline (so the hover highlight stays clear of it), the button's 11 px padding
+/// and 6 px of our own.
+const ICON_COLUMN: f64 = 32.0;
+const CONTENT_INSET: f64 = 19.0;
+/// Room kept free on the right of a card's text for the buttons drawn over it.
+const ACTIONS_RESERVE: f64 = 100.0;
+const ARROW: f64 = 14.0;
+const DASH: f64 = 6.0;
+const GAP: f64 = 4.0;
+const DASH_COLOR: Color = Color::rgb(95, 95, 95);
 
+/// A small down arrow between steps ("then"), centred on the cards' icon column.
 fn connector() -> View {
-    Border::new()
-        .width(2.0)
-        .height(18.0)
-        .margin(Thickness::new(LINE_INSET, 0.0, 0.0, 0.0))
+    StackPanel::new()
+        .opacity(0.55)
+        .margin(Thickness::new(
+            CONTENT_INSET + (ICON_COLUMN - ARROW) / 2.0,
+            4.0,
+            0.0,
+            4.0,
+        ))
         .horizontal_alignment(HorizontalAlignment::Left)
-        .background(BORDER)
-        .into()
+        .children((Viewbox::new()
+            .width(ARROW)
+            .height(ARROW)
+            .slot(ViewboxSlot::Child, FontIcon::new().glyph("\u{e74b}")),))
+}
+
+/// One dashed edge of `length`, drawn from short segments. Corners stay open, which keeps
+/// the outline looking rounded like the filled cards.
+fn dashed_edge(length: f64, horizontal: bool) -> View {
+    let inset = 8.0;
+    let usable = (length - 2.0 * inset).max(0.0);
+    let count = ((usable + GAP) / (DASH + GAP)).floor().max(0.0) as usize;
+    let used = count as f64 * (DASH + GAP) - GAP;
+    let start = inset + (usable - used.max(0.0)) / 2.0;
+    let dashes = (0..count)
+        .map(|i| {
+            KeyedView::new(
+                i.to_string(),
+                Border::new()
+                    .width(if horizontal { DASH } else { 1.0 })
+                    .height(if horizontal { 1.0 } else { DASH })
+                    .background(DASH_COLOR),
+            )
+        })
+        .collect::<Vec<_>>();
+    let panel = StackPanel::new()
+        .orientation(if horizontal {
+            Orientation::Horizontal
+        } else {
+            Orientation::Vertical
+        })
+        .spacing(GAP);
+    if horizontal {
+        panel
+            .margin(Thickness::new(start, 0.0, 0.0, 0.0))
+            .horizontal_alignment(HorizontalAlignment::Left)
+            .keyed_children(dashes)
+    } else {
+        panel
+            .margin(Thickness::new(0.0, start, 0.0, 0.0))
+            .vertical_alignment(VerticalAlignment::Top)
+            .keyed_children(dashes)
+    }
+}
+
+/// A dashed rectangle the size of a step card, for empty steps.
+fn dashed_outline(width: f64, height: f64) -> View {
+    Grid::new().width(width).height(height).keyed_children([
+        KeyedView::new(
+            "top",
+            Border::new()
+                .vertical_alignment(VerticalAlignment::Top)
+                .content(dashed_edge(width, true)),
+        ),
+        KeyedView::new(
+            "bottom",
+            Border::new()
+                .vertical_alignment(VerticalAlignment::Bottom)
+                .content(dashed_edge(width, true)),
+        ),
+        KeyedView::new(
+            "left",
+            Border::new()
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .content(dashed_edge(height, false)),
+        ),
+        KeyedView::new(
+            "right",
+            Border::new()
+                .horizontal_alignment(HorizontalAlignment::Right)
+                .content(dashed_edge(height, false)),
+        ),
+    ])
+}
+
+/// A step's icon in the shared icon column.
+fn step_icon(step: Step, muted: bool) -> View {
+    Border::new()
+        .width(ICON_COLUMN)
+        .opacity(if muted { 0.55 } else { 1.0 })
+        .content(
+            FontIcon::new()
+                .glyph(step.glyph())
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .vertical_alignment(VerticalAlignment::Center),
+        )
 }
 
 fn actions_summary(actions: &[Action]) -> String {
@@ -166,121 +267,158 @@ impl DirectorApp {
         }
     }
 
-    /// One step: a collapsed summary header, its editor when open, or a muted "+ Add" slot.
+    /// The width the flow column fills: the page minus the pane, page padding and scroll
+    /// bar, up to FLOW_WIDTH.
+    fn flow_width(&self) -> f64 {
+        let pane = if self.pane_open { 200.0 } else { 48.0 };
+        (self.window_width - pane - 56.0 - 28.0).clamp(320.0, FLOW_WIDTH)
+    }
+
+    /// One step as a fixed-size card. A filled step shows its summary with edit and remove;
+    /// an empty one is a dashed outline with a hint and Add. Both open the step's dialog.
     fn step_block(&self, cx: &ViewContext<Self>, d: &Scene, step: Step) -> View {
         let available = !self.busy;
-        let open = self.scene.open == Some(step);
         let used = self.step_used(d, step);
-        let toggle = if open { None } else { Some(step) };
-        if !used && !open {
-            return Button::new()
-                .automation_name(format!("Add {}", step.title()))
-                .style(ButtonStyle::Subtle)
-                .horizontal_alignment(HorizontalAlignment::Stretch)
-                .horizontal_content_alignment(HorizontalAlignment::Left)
-                .is_enabled(available)
-                .on_click(cx.message(msg(SceneMessage::Open(Some(step)))))
-                .content(
-                    Border::new().padding(Thickness::xy(6.0, 4.0)).content(
-                        StackPanel::new()
-                            .orientation(Orientation::Horizontal)
-                            .spacing(12.0)
-                            .opacity(0.65)
-                            .children((
-                                FontIcon::new().glyph("\u{e710}"),
-                                TextBlock::new().text(format!(
-                                    "{} · {}",
-                                    step.title(),
-                                    step.add_label()
-                                )),
-                            )),
-                    ),
-                );
-        }
-        let summary = self.step_summary(d, step);
+        let text = if used {
+            self.step_summary(d, step)
+        } else {
+            step.hint().to_string()
+        };
         let header = Button::new()
             .automation_name(format!(
                 "{} {}",
-                if open { "Collapse" } else { "Edit" },
+                if used { "Open" } else { "Add" },
                 step.title()
             ))
             .style(ButtonStyle::Subtle)
             .horizontal_alignment(HorizontalAlignment::Stretch)
+            .vertical_alignment(VerticalAlignment::Stretch)
             .horizontal_content_alignment(HorizontalAlignment::Stretch)
-            .on_click(cx.message(msg(SceneMessage::Open(toggle))))
+            .is_enabled(available)
+            .on_click(cx.message(msg(SceneMessage::Open(Some(step)))))
             .content(
-                Border::new().padding(Thickness::xy(6.0, 4.0)).content(
-                    Grid::new()
-                        .columns([
-                            GridLength::Auto,
-                            GridLength::Star(1.0),
-                            GridLength::Auto,
-                            GridLength::Auto,
-                        ])
-                        .column_spacing(12.0)
-                        .children((
-                            FontIcon::new()
-                                .grid_column(0)
-                                .glyph(step.glyph())
-                                .vertical_alignment(VerticalAlignment::Center),
-                            StackPanel::new().grid_column(1).spacing(2.0).children((
-                                TextBlock::new()
-                                    .text(step.title())
-                                    .font_weight(FontWeight::SEMI_BOLD),
-                                if summary.is_empty() {
-                                    View::empty()
-                                } else {
-                                    TextBlock::new()
-                                        .text(summary)
-                                        .opacity(0.72)
-                                        .text_trimming(TextTrimming::CharacterEllipsis)
-                                        .into()
-                                },
+                Border::new()
+                    .padding(Thickness::new(6.0, 0.0, ACTIONS_RESERVE, 0.0))
+                    .content(
+                        Grid::new()
+                            .columns([GridLength::Auto, GridLength::Star(1.0)])
+                            .column_spacing(10.0)
+                            .children((
+                                step_icon(step, !used),
+                                StackPanel::new()
+                                    .grid_column(1)
+                                    .spacing(2.0)
+                                    .vertical_alignment(VerticalAlignment::Center)
+                                    .children((
+                                        TextBlock::new()
+                                            .text(step.title())
+                                            .font_weight(FontWeight::SEMI_BOLD)
+                                            .opacity(if used { 1.0 } else { 0.75 }),
+                                        TextBlock::new()
+                                            .text(text)
+                                            .opacity(if used { 0.72 } else { 0.55 })
+                                            .text_trimming(TextTrimming::CharacterEllipsis),
+                                    )),
                             )),
-                            Border::new()
-                                .grid_column(2)
-                                .vertical_alignment(VerticalAlignment::Center)
-                                .content(View::empty()),
-                            FontIcon::new()
-                                .grid_column(3)
-                                .glyph(if open { "\u{e70e}" } else { "\u{e70d}" })
-                                .opacity(0.72)
-                                .vertical_alignment(VerticalAlignment::Center),
-                        )),
-                ),
+                    ),
             );
-        let remove = if used {
-            crate::preset_cards_ui::card_icon_button(Button::new())
-                .automation_name(format!("Remove {}", step.title()))
-                .is_enabled(available)
-                .vertical_alignment(VerticalAlignment::Top)
-                .margin(Thickness::new(0.0, 6.0, 6.0, 0.0))
-                .on_click(cx.message(msg(SceneMessage::ClearStep(step))))
-                .content(crate::icons::delete_small())
-                .tooltip(format!("Remove {} from this scene", step.title()))
+        let actions: View = if used {
+            StackPanel::new()
+                .orientation(Orientation::Horizontal)
+                .spacing(2.0)
+                .margin(Thickness::new(0.0, 0.0, 8.0, 0.0))
+                .vertical_alignment(VerticalAlignment::Center)
+                .children((
+                    crate::preset_cards_ui::card_icon_button(Button::new())
+                        .automation_name(format!("Edit {}", step.title()))
+                        .is_enabled(available)
+                        .on_click(cx.message(msg(SceneMessage::Open(Some(step)))))
+                        .content(crate::preset_cards_ui::card_edit_icon())
+                        .tooltip(format!("Edit {}", step.title())),
+                    crate::preset_cards_ui::card_icon_button(Button::new())
+                        .automation_name(format!("Remove {}", step.title()))
+                        .is_enabled(available)
+                        .on_click(cx.message(msg(SceneMessage::ClearStep(step))))
+                        .content(crate::icons::delete_small())
+                        .tooltip(format!("Remove {} from this scene", step.title())),
+                ))
         } else {
-            View::empty()
-        };
-        Border::new()
-            .corner_radius(8.0)
-            .border_thickness(1.0)
-            .border_brush(BORDER)
-            .content(
-                StackPanel::new().children((
-                    Grid::new()
-                        .columns([GridLength::Star(1.0), GridLength::Auto])
+            Button::new()
+                .automation_name(format!("Add {} step", step.title()))
+                .is_enabled(available)
+                .margin(Thickness::new(0.0, 0.0, 12.0, 0.0))
+                .vertical_alignment(VerticalAlignment::Center)
+                .on_click(cx.message(msg(SceneMessage::Open(Some(step)))))
+                .content(
+                    StackPanel::new()
+                        .orientation(Orientation::Horizontal)
+                        .spacing(8.0)
                         .children((
-                            Border::new().grid_column(0).content(header),
-                            Border::new().grid_column(1).content(remove),
+                            Viewbox::new()
+                                .width(12.0)
+                                .height(12.0)
+                                .vertical_alignment(VerticalAlignment::Center)
+                                .slot(ViewboxSlot::Child, FontIcon::new().glyph("\u{e710}")),
+                            TextBlock::new().text("Add"),
                         )),
-                    if open {
+                )
+        };
+        let content = Grid::new()
+            .columns([GridLength::Star(1.0), GridLength::Auto])
+            .children((
+                // The card's main button spans the whole card, so its hover highlight fills it;
+                // the step's own buttons sit on top at the right.
+                Border::new()
+                    .grid_column(0)
+                    .grid_column_span(2)
+                    .content(header),
+                Border::new().grid_column(1).content(actions),
+            ));
+        if used {
+            Border::new()
+                .height(CARD_HEIGHT)
+                .corner_radius(8.0)
+                .border_thickness(1.0)
+                .border_brush(BORDER)
+                .background(Color::argb(12, 128, 128, 128))
+                .padding(1.0)
+                .content(content)
+        } else {
+            let width = self.flow_width();
+            Grid::new().height(CARD_HEIGHT).keyed_children([
+                KeyedView::new("outline", dashed_outline(width, CARD_HEIGHT)),
+                KeyedView::new(
+                    "content",
+                    // The same 2 px inset as filled cards, inside the dashed outline.
+                    Border::new()
+                        .margin(Thickness::new(2.0, 2.0, 2.0, 2.0))
+                        .content(content),
+                ),
+            ])
+        }
+    }
+
+    /// The open step's editor as a dialog. Done keeps the changes; Cancel puts the step back.
+    pub(crate) fn step_dialog(&self, cx: &ViewContext<Self>) -> View {
+        let (Some(step), Some(d)) = (self.scene.open, &self.scene.draft) else {
+            return View::empty();
+        };
+        ContentDialog::new()
+            .is_open(true)
+            .title(step.title())
+            .primary_button_text("Done")
+            .close_button_text("Cancel")
+            .on_closed(cx.callback(|r| msg(SceneMessage::StepClosed(r))))
+            .content(
+                ScrollViewer::new()
+                    .max_height(480.0)
+                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
+                    .content(
                         Border::new()
-                            .padding(Thickness::new(16.0, 4.0, 16.0, 16.0))
-                            .content(self.step_editor(cx, d, step))
-                    } else {
-                        View::empty()
-                    },
-                )),
+                            .min_width(440.0)
+                            .padding(Thickness::new(0.0, 0.0, 12.0, 0.0))
+                            .content(self.step_editor(cx, d, step)),
+                    ),
             )
     }
 
@@ -681,8 +819,9 @@ impl DirectorApp {
         }
         let problem =
             scenes::resolve(d, &self.scene.displays, &self.scene.audio, &self.scene.tvs).err();
+        // Fill the page up to FLOW_WIDTH: the pane, page padding and scroll bar take the rest.
         let column = StackPanel::new()
-            .max_width(FLOW_WIDTH)
+            .width(self.flow_width())
             .horizontal_alignment(HorizontalAlignment::Left)
             .spacing(20.0)
             .children((
@@ -697,7 +836,13 @@ impl DirectorApp {
                         .is_enabled(available)
                         .on_text_changed(cx.callback(|s| msg(SceneMessage::Name(s)))),
                 )),
-                StackPanel::new().keyed_children(blocks),
+                StackPanel::new().spacing(8.0).children((
+                    TextBlock::new()
+                        .text("Steps")
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .opacity(0.85),
+                    StackPanel::new().keyed_children(blocks),
+                )),
                 StackPanel::new().spacing(8.0).children((
                     TextBlock::new()
                         .text("When you leave this scene")
@@ -705,9 +850,6 @@ impl DirectorApp {
                         .opacity(0.85),
                     self.step_block(cx, d, Step::Leave),
                 )),
-                note(
-                    "If a step fails, Director restores your previous settings. Change this in Options.",
-                ),
             ));
         let can_save = self.scene_ready() && problem.is_none() && !d.name.trim().is_empty();
         Grid::new()
@@ -736,15 +878,24 @@ impl DirectorApp {
                     .column_spacing(16.0)
                     .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
                     .children((
-                        TextBlock::new()
+                        StackPanel::new()
                             .grid_column(0)
-                            .text(match &problem {
-                                Some(e) if !d.name.trim().is_empty() => e.clone(),
-                                _ => "Saving won’t change your setup.".into(),
-                            })
-                            .opacity(0.72)
-                            .text_wrapping(TextWrapping::Wrap)
-                            .vertical_alignment(VerticalAlignment::Center),
+                            .spacing(2.0)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .children((
+                                TextBlock::new()
+                                    .text(match &problem {
+                                        Some(e) if !d.name.trim().is_empty() => e.clone(),
+                                        _ => "Saving won’t change your setup.".into(),
+                                    })
+                                    .opacity(0.72)
+                                    .text_wrapping(TextWrapping::Wrap),
+                                TextBlock::new()
+                                    .text("If a step fails, Director restores your previous settings. Change this in Options.")
+                                    .font_size(12.0)
+                                    .opacity(0.55)
+                                    .text_wrapping(TextWrapping::Wrap),
+                            )),
                         StackPanel::new()
                             .grid_column(1)
                             .orientation(Orientation::Horizontal)

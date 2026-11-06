@@ -165,6 +165,8 @@ impl DirectorApp {
         let Some(next) = tag.as_deref().and_then(page_for) else {
             return;
         };
+        self.scene.open = None;
+        self.scene.snapshot = None;
         if self.page == next {
             return;
         }

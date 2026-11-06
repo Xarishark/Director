@@ -38,8 +38,10 @@ pub(crate) enum SceneMessage {
     ActionToggle(ActionList, usize, bool),
     Move(ActionList, usize, bool),
     Remove(ActionList, usize),
-    /// Expand one step block in the editor, or collapse with `None`.
+    /// Open a step's editor dialog (`None` closes it, keeping the changes).
     Open(Option<crate::scene_editor_ui::Step>),
+    /// The step dialog closed: Done keeps the changes, anything else restores them.
+    StepClosed(ContentDialogResult),
     /// Reset a step to "leave unchanged".
     ClearStep(crate::scene_editor_ui::Step),
     End,
@@ -72,8 +74,10 @@ pub(crate) struct SceneState {
     events: Option<Arc<Mutex<mpsc::Receiver<Event>>>>,
     confirm: Option<mpsc::Sender<director::display_apply::Decision>>,
     remaining: Option<u64>,
-    /// The step block expanded in the editor.
+    /// The step whose editor dialog is open.
     pub(crate) open: Option<crate::scene_editor_ui::Step>,
+    /// The draft as it was when the step dialog opened, for Cancel.
+    pub(crate) snapshot: Option<Scene>,
     /// The scene applied last during this Windows session.
     pub(crate) active: Option<String>,
 }
@@ -396,7 +400,18 @@ impl DirectorApp {
                     d.list_mut(list).remove(i);
                 }
             }
-            SceneMessage::Open(step) => self.scene.open = step,
+            SceneMessage::Open(step) => {
+                self.scene.snapshot = step.and(self.scene.draft.clone());
+                self.scene.open = step;
+            }
+            SceneMessage::StepClosed(result) => {
+                self.scene.open = None;
+                if let Some(before) = self.scene.snapshot.take()
+                    && result != ContentDialogResult::Primary
+                {
+                    self.scene.draft = Some(before);
+                }
+            }
             SceneMessage::ClearStep(step) if !self.busy => {
                 use crate::scene_editor_ui::Step;
                 if let Some(d) = &mut self.scene.draft {
@@ -415,6 +430,7 @@ impl DirectorApp {
                 }
                 if self.scene.open == Some(step) {
                     self.scene.open = None;
+                    self.scene.snapshot = None;
                 }
             }
             SceneMessage::End if ready => {
@@ -882,6 +898,9 @@ impl DirectorApp {
             ))
     }
     pub(crate) fn scene_dialog(&self, cx: &ViewContext<Self>) -> View {
+        if self.scene.open.is_some() && self.scene.draft.is_some() {
+            return self.step_dialog(cx);
+        }
         if let Some(seconds) = self.scene.remaining {
             return ContentDialog::new()
                 .is_open(true)
