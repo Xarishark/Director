@@ -1160,46 +1160,46 @@ impl DirectorApp {
             vec![],
         )
     }
+    /// One line per step the scene changes, in run order. Steps it leaves alone are omitted.
     fn scene_summary(&self, s: &Scene) -> String {
-        let display = s
-            .display
-            .as_ref()
-            .map(|id| {
-                self.scene
-                    .displays
-                    .iter()
-                    .find(|p| &p.id == id)
-                    .map_or("Missing display preset", |p| p.name.as_str())
-            })
-            .unwrap_or("Unchanged");
-        let sound = s
-            .sound
-            .as_ref()
-            .map_or("Unchanged".into(), |sound| self.sound_label(sound));
-        let tv =
-            s.tv.as_ref()
-                .map(|p| {
-                    self.scene
-                        .tvs
-                        .iter()
-                        .find(|t| t.id == p.id)
-                        .map_or("Missing TV", |t| t.name.as_str())
-                })
-                .unwrap_or("None");
+        let actions = |n: usize| {
+            if n == 1 {
+                "1 action".to_string()
+            } else {
+                format!("{n} actions")
+            }
+        };
         let mut lines = vec![];
         if !s.before.is_empty() {
-            lines.push(format!("Before: {} action(s)", s.before.len()));
+            lines.push(format!("Before: {}", actions(s.before.len())));
         }
-        lines.push(format!("TV: {tv}"));
-        lines.push(format!("Displays: {display}"));
-        lines.push(format!("Sound: {sound}"));
-        lines.push(format!(
-            "FPS: {}",
-            s.fps
-                .as_ref()
-                .map_or("Leave unchanged".into(), |r| r.label())
-        ));
-        lines.push(format!("After: {} action(s)", s.actions.len()));
+        if let Some(p) = &s.tv {
+            let tv = self
+                .scene
+                .tvs
+                .iter()
+                .find(|t| t.id == p.id)
+                .map_or("Missing TV", |t| t.name.as_str());
+            lines.push(format!("TV: {tv}"));
+        }
+        if let Some(id) = &s.display {
+            let display = self
+                .scene
+                .displays
+                .iter()
+                .find(|p| &p.id == id)
+                .map_or("Missing display preset", |p| p.name.as_str());
+            lines.push(format!("Displays: {display}"));
+        }
+        if let Some(sound) = &s.sound {
+            lines.push(format!("Sound: {}", self.sound_label(sound)));
+        }
+        if let Some(fps) = &s.fps {
+            lines.push(format!("FPS: {}", fps.label()));
+        }
+        if !s.actions.is_empty() {
+            lines.push(format!("After: {}", actions(s.actions.len())));
+        }
         let tv_off = s.tv.as_ref().filter(|t| t.off_when_leaving).map(|p| {
             self.scene
                 .tvs
@@ -1211,11 +1211,15 @@ impl DirectorApp {
         });
         match (tv_off, s.leave.len()) {
             (None, 0) => {}
-            (None, n) => lines.push(format!("When leaving: {n} action(s)")),
+            (None, n) => lines.push(format!("When leaving: {}", actions(n))),
             (Some(off), 0) => lines.push(format!("When leaving: {off}")),
-            (Some(off), n) => lines.push(format!("When leaving: {off} · {n} action(s)")),
+            (Some(off), n) => lines.push(format!("When leaving: {off} · {}", actions(n))),
         }
-        lines.join("\n")
+        if lines.is_empty() {
+            "This scene doesn’t change anything yet. Edit it to add steps.".into()
+        } else {
+            lines.join("\n")
+        }
     }
     pub(crate) fn scene_dialog(&self, cx: &ViewContext<Self>) -> View {
         if self.scene.open.is_some() && self.scene.draft.is_some() {

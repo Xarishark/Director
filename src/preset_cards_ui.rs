@@ -39,6 +39,15 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
                 .keyed_children(cards),
         )
 }
+/// The widest a card's name can be next to its command button and `actions` buttons.
+fn name_width(actions: usize) -> f64 {
+    // Inner width, less the ">_" button, Apply (about 72) and 40 per icon button.
+    let buttons = match actions {
+        0 => 0.0,
+        n => 72.0 + 40.0 * (n as f64 - 1.0) + 4.0 * n as f64,
+    };
+    (CARD_WIDTH - 28.0 - 36.0 - buttons).max(60.0)
+}
 /// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
 pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, height: f64) -> View {
     Border::new()
@@ -54,25 +63,25 @@ pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, he
         .border_thickness(1.0)
         .content(
             StackPanel::new().spacing(12.0).children((
+                // The name shrinks (with an ellipsis and the full name on hover) so the
+                // buttons always fit, however long the name is.
                 Grid::new()
-                    .columns([
-                        GridLength::Auto,
-                        GridLength::Auto,
-                        GridLength::Star(1.0),
-                        GridLength::Auto,
-                    ])
+                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
                     .column_spacing(4.0)
                     .children((
                         TextBlock::new()
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
-                            .max_width(150.0)
+                            .max_width(name_width(actions.len()))
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
-                        Border::new().grid_column(1).content(command),
-                        Border::new().grid_column(3).content(action_row(actions)),
+                        Border::new()
+                            .grid_column(1)
+                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .content(command),
+                        Border::new().grid_column(2).content(action_row(actions)),
                     )),
                 body,
             )),
