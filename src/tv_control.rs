@@ -174,6 +174,19 @@ pub fn power(backend: &mut impl Backend, action: PowerAction) -> Result<Report, 
         }
     }
 }
+/// Turn the TV off when it reports awake, or wake it when it reports off or
+/// standby. Sends nothing when the TV can't be read or reports Unknown.
+pub fn toggle(backend: &mut impl Backend) -> Result<Report, String> {
+    let state = crate::diagnostics::measure("tv.toggle.preflight", "fresh power state", || {
+        backend.power()
+    })
+    .map_err(|e| format!("Could not read the TV's power status. Nothing was sent. {e}"))?;
+    crate::diagnostics::event("tv.toggle.preflight.state", "reported", state.label());
+    if state == PowerState::Unknown {
+        return Err("The TV did not report a recognized power state. Nothing was sent.".into());
+    }
+    power(backend, state.button_action())
+}
 /// Select an input. Stops a running input guard first, so it can't switch back.
 pub fn switch_input(backend: &mut impl Backend, id: &str) -> Result<Report, String> {
     // Not in unit tests: they run in parallel with the guard's own tests.
@@ -332,6 +345,26 @@ mod tests {
         power(&mut b, PowerAction::Wake).unwrap();
         assert_eq!(b.events.last().unwrap(), "wake");
         assert_eq!(PowerState::ScreenOff.button_action(), PowerAction::Off);
+    }
+    #[test]
+    fn toggle_follows_reported_state_and_sends_nothing_when_unknown() {
+        let mut b = Fake::new(PowerState::On);
+        toggle(&mut b).unwrap();
+        assert_eq!(b.events.last().unwrap(), "off");
+        for state in [PowerState::Standby, PowerState::Off] {
+            b.events.clear();
+            b.state = Ok(state);
+            toggle(&mut b).unwrap();
+            assert_eq!(b.events, ["read-power", "wake"]);
+        }
+        b.events.clear();
+        b.state = Ok(PowerState::Unknown);
+        assert!(toggle(&mut b).is_err());
+        assert_eq!(b.events, ["read-power"]);
+        b.events.clear();
+        b.state = Err("offline".into());
+        assert!(toggle(&mut b).is_err());
+        assert_eq!(b.events, ["read-power"]);
     }
     #[test]
     fn inputs_are_freshly_validated_and_read_back() {

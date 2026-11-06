@@ -13,7 +13,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     let _operation = crate::diagnostics::Operation::start("tv.cli", None);
     if let Some(command) = args.first().filter(|c| {
         [
-            "list", "pair", "check", "learn", "wake", "status", "off", "input",
+            "list", "pair", "check", "learn", "wake", "status", "off", "toggle", "input",
         ]
         .contains(&c.as_str())
     }) {
@@ -27,12 +27,13 @@ pub fn run(args: &[String]) -> Result<i32, String> {
    let report=tv_control::switch_input(&mut WindowsTvControls::new(tv),id)?;
    println!("{}\n{}",report.message,report.details);Ok(0)
   }
-  [command,name] if ["pair","check","learn","wake","status","off"].contains(&command.as_str())=>{
+  [command,name] if ["pair","check","learn","wake","status","off","toggle"].contains(&command.as_str())=>{
    let _lock=OperationLock::acquire()?;let path=tvs::path()?;let expected=tvs::load(&path)?;
    let tv=find(&expected,name)?;
    match command.as_str(){
     "wake"=>{let report=crate::tv_control::Backend::wake(&mut WindowsTvControls::new(tv))?;println!("Wake request sent: {} request(s) for {} target(s). The TV’s power state has not been verified.",report.packets,report.targets);}
     "off"=>{let report=tv_control::power(&mut WindowsTvControls::new(tv),PowerAction::Off)?;println!("{}\n{}",report.message,report.details);}
+    "toggle"=>{let report=tv_control::toggle(&mut WindowsTvControls::new(tv))?;println!("{}\n{}",report.message,report.details);}
     "status"=>{
      let snapshot=tv_control::snapshot(&mut WindowsTvControls::new(tv));
      if snapshot.power==tv_control::PowerState::Unknown&&snapshot.inputs.is_empty()&&!snapshot.notes.is_empty(){return Err(snapshot.notes.join("\n"));}
