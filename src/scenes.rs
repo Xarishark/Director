@@ -116,11 +116,14 @@ fn file_name(path: &str) -> String {
 impl Action {
     pub fn label(&self) -> String {
         match self {
-            Self::App { path, wait, .. } => format!(
-                "{} {}",
-                if *wait { "Run" } else { "Launch" },
-                file_name(path)
-            ),
+            Self::App { path, wait, .. } => {
+                let name = file_name(path);
+                format!(
+                    "{} {}",
+                    if *wait { "Run" } else { "Launch" },
+                    if name.is_empty() { "app".into() } else { name }
+                )
+            }
             Self::Uri { target } => format!("Open {target}"),
             Self::Close { target, .. } => format!("Close {}", file_name(target)),
         }

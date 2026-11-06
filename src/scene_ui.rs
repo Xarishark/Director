@@ -38,6 +38,8 @@ pub(crate) enum SceneMessage {
     ActionToggle(ActionList, usize, bool),
     Move(ActionList, usize, bool),
     Remove(ActionList, usize),
+    /// Open or close an app action's Advanced options.
+    ActionAdvanced(ActionList, usize, bool),
     /// Open a step's editor dialog (`None` closes it, keeping the changes).
     Open(Option<crate::scene_editor_ui::Step>),
     /// The step dialog closed: Done keeps the changes, anything else restores them.
@@ -80,6 +82,8 @@ pub(crate) struct SceneState {
     pub(crate) snapshot: Option<Scene>,
     /// The scene applied last during this Windows session.
     pub(crate) active: Option<String>,
+    /// App actions whose Advanced options section is open.
+    pub(crate) advanced: Vec<(ActionList, usize)>,
 }
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
@@ -390,6 +394,7 @@ impl DirectorApp {
                         && j < actions.len()
                     {
                         actions.swap(i, j);
+                        self.scene.advanced.clear();
                     }
                 }
             }
@@ -398,6 +403,14 @@ impl DirectorApp {
                     && i < d.list(list).len()
                 {
                     d.list_mut(list).remove(i);
+                }
+                // Positions shift, so forget which sections were open.
+                self.scene.advanced.clear();
+            }
+            SceneMessage::ActionAdvanced(list, i, open) => {
+                self.scene.advanced.retain(|k| *k != (list, i));
+                if open {
+                    self.scene.advanced.push((list, i));
                 }
             }
             SceneMessage::Open(step) => {

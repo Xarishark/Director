@@ -662,53 +662,72 @@ impl DirectorApp {
                         args,
                         working_directory,
                         wait,
-                    } => StackPanel::new()
-                        .spacing(8.0)
-                        .children((
-                            StackPanel::new()
-                                .orientation(Orientation::Horizontal)
-                                .spacing(8.0)
+                    } => {
+                        let chosen = !path.trim().is_empty();
+                        let file = std::path::Path::new(path.trim());
+                        let app_name = file
+                            .file_name()
+                            .map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+                        let folder = file
+                            .parent()
+                            .map(|f| f.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        let open = self.scene.advanced.contains(&(list, i));
+                        let mut extras = vec![];
+                        if !args.is_empty() {
+                            extras.push(format!(
+                                "{} argument{}",
+                                args.len(),
+                                if args.len() == 1 { "" } else { "s" }
+                            ));
+                        }
+                        if working_directory.is_some() {
+                            extras.push("working folder".into());
+                        }
+                        let advanced_header = if extras.is_empty() {
+                            "Advanced options".to_string()
+                        } else {
+                            format!("Advanced options · {}", extras.join(" · "))
+                        };
+                        StackPanel::new().spacing(10.0).children((
+                            Grid::new()
+                                .columns([GridLength::Auto, GridLength::Star(1.0)])
+                                .column_spacing(12.0)
                                 .children((
                                     Button::new()
                                         .automation_name(format!("Browse action {} executable", i + 1))
                                         .is_enabled(available)
+                                        .vertical_alignment(VerticalAlignment::Center)
                                         .on_click(cx.callback(move |()| {
                                             msg(SceneMessage::Browse(list, i, false))
                                         }))
-                                        .content("Choose app…"),
-                                    Button::new()
-                                        .automation_name(format!("Browse action {} folder", i + 1))
-                                        .is_enabled(available)
-                                        .on_click(cx.callback(move |()| {
-                                            msg(SceneMessage::Browse(list, i, true))
-                                        }))
-                                        .content("Working folder…"),
+                                        .content(if chosen { "Change…" } else { "Choose app…" }),
+                                    if chosen {
+                                        StackPanel::new()
+                                            .grid_column(1)
+                                            .spacing(1.0)
+                                            .vertical_alignment(VerticalAlignment::Center)
+                                            .children((
+                                                TextBlock::new()
+                                                    .text(app_name)
+                                                    .font_weight(FontWeight::SEMI_BOLD)
+                                                    .text_trimming(TextTrimming::CharacterEllipsis),
+                                                TextBlock::new()
+                                                    .text(folder)
+                                                    .font_size(12.0)
+                                                    .opacity(0.65)
+                                                    .text_trimming(TextTrimming::CharacterEllipsis),
+                                            ))
+                                            .tooltip(path.clone())
+                                    } else {
+                                        TextBlock::new()
+                                            .grid_column(1)
+                                            .text("No app chosen yet")
+                                            .opacity(0.65)
+                                            .vertical_alignment(VerticalAlignment::Center)
+                                            .into()
+                                    },
                                 )),
-                            TextBox::new()
-                                .automation_name(format!("Action {} executable", i + 1))
-                                .placeholder_text("Full path to an .exe")
-                                .text(path.clone())
-                                .is_enabled(available)
-                                .on_text_changed(cx.callback(move |s| {
-                                    msg(SceneMessage::ActionText(list, i, 0, s))
-                                })),
-                            TextBox::new()
-                                .automation_name(format!("Action {} arguments", i + 1))
-                                .placeholder_text("Optional arguments · one per line")
-                                .accepts_return(true)
-                                .text(args.join("\n"))
-                                .is_enabled(available)
-                                .on_text_changed(cx.callback(move |s| {
-                                    msg(SceneMessage::ActionText(list, i, 1, s))
-                                })),
-                            TextBox::new()
-                                .automation_name(format!("Action {} working folder", i + 1))
-                                .placeholder_text("Optional working folder")
-                                .text(working_directory.clone().unwrap_or_default())
-                                .is_enabled(available)
-                                .on_text_changed(cx.callback(move |s| {
-                                    msg(SceneMessage::ActionText(list, i, 2, s))
-                                })),
                             ToggleSwitch::new()
                                 .automation_name(format!("Action {} wait until it finishes", i + 1))
                                 .is_on(*wait)
@@ -722,7 +741,78 @@ impl DirectorApp {
                             } else {
                                 View::empty()
                             },
-                        )),
+                            HyperlinkButton::new()
+                                .automation_name(format!("Action {} advanced options", i + 1))
+                                .on_click(cx.callback(move |()| {
+                                    msg(SceneMessage::ActionAdvanced(list, i, !open))
+                                }))
+                                .content(
+                                    StackPanel::new()
+                                        .orientation(Orientation::Horizontal)
+                                        .spacing(8.0)
+                                        .children((
+                                            TextBlock::new().text(advanced_header),
+                                            FontIcon::new()
+                                                .glyph(if open { "\u{e70e}" } else { "\u{e70d}" })
+                                                .vertical_alignment(VerticalAlignment::Center),
+                                        )),
+                                ),
+                            if open {
+                                Border::new()
+                                    .padding(Thickness::new(14.0, 2.0, 0.0, 2.0))
+                                    .border_thickness(Thickness::new(2.0, 0.0, 0.0, 0.0))
+                                    .border_brush(BORDER)
+                                    .content(
+                                        StackPanel::new().spacing(10.0).children((
+                                            TextBox::new()
+                                                .automation_name(format!("Action {} arguments", i + 1))
+                                                .placeholder_text("One per line")
+                                                .accepts_return(true)
+                                                .text(args.join("\n"))
+                                                .is_enabled(available)
+                                                .on_text_changed(cx.callback(move |s| {
+                                                    msg(SceneMessage::ActionText(list, i, 1, s))
+                                                }))
+                                                .slot(TextBoxSlot::Header, "Arguments"),
+                                            Grid::new()
+                                                .columns([GridLength::Star(1.0), GridLength::Auto])
+                                                .column_spacing(8.0)
+                                                .children((
+                                                    TextBox::new()
+                                                        .automation_name(format!("Action {} working folder", i + 1))
+                                                        .placeholder_text("Same as the app")
+                                                        .text(working_directory.clone().unwrap_or_default())
+                                                        .is_enabled(available)
+                                                        .on_text_changed(cx.callback(move |s| {
+                                                            msg(SceneMessage::ActionText(list, i, 2, s))
+                                                        }))
+                                                        .slot(TextBoxSlot::Header, "Working folder"),
+                                                    Button::new()
+                                                        .grid_column(1)
+                                                        .automation_name(format!("Browse action {} folder", i + 1))
+                                                        .vertical_alignment(VerticalAlignment::Bottom)
+                                                        .is_enabled(available)
+                                                        .on_click(cx.callback(move |()| {
+                                                            msg(SceneMessage::Browse(list, i, true))
+                                                        }))
+                                                        .content("Browse…"),
+                                                )),
+                                            TextBox::new()
+                                                .automation_name(format!("Action {} executable", i + 1))
+                                                .placeholder_text("Full path to an .exe")
+                                                .text(path.clone())
+                                                .is_enabled(available)
+                                                .on_text_changed(cx.callback(move |s| {
+                                                    msg(SceneMessage::ActionText(list, i, 0, s))
+                                                }))
+                                                .slot(TextBoxSlot::Header, "App path"),
+                                        )),
+                                    )
+                            } else {
+                                View::empty()
+                            },
+                        ))
+                    }
                 };
                 KeyedView::new(
                     format!("action-{i}"),
