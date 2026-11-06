@@ -564,6 +564,44 @@ impl Drag {
             (x, y) = candidates
                 .ok_or("No free position was found. Try moving this display further out.")?;
         }
+        // Like Windows, a display dropped away from the others moves back to touch the
+        // nearest one, sharing part of an edge, so the desktop stays in one piece.
+        let (w, h) = (d.width as i64, d.height as i64);
+        let touches = |x: i64, y: i64| {
+            others.iter().any(|b| {
+                let (bx, by, bw, bh) = (b.x as i64, b.y as i64, b.width as i64, b.height as i64);
+                let rows = y < by + bh && by < y + h;
+                let columns = x < bx + bw && bx < x + w;
+                (rows && (x + w == bx || bx + bw == x))
+                    || (columns && (y + h == by || by + bh == y))
+            })
+        };
+        if !others.is_empty() && !touches(x as i64, y as i64) {
+            let (cx, cy) = (x as i64, y as i64);
+            (x, y) = others
+                .iter()
+                .flat_map(|b| {
+                    let (bx, by, bw, bh) =
+                        (b.x as i64, b.y as i64, b.width as i64, b.height as i64);
+                    // Keep at least one pixel of the shared edge.
+                    let along_y = cy.clamp(by - h + 1, by + bh - 1);
+                    let along_x = cx.clamp(bx - w + 1, bx + bw - 1);
+                    [
+                        (bx - w, along_y),
+                        (bx + bw, along_y),
+                        (along_x, by - h),
+                        (along_x, by + bh),
+                    ]
+                })
+                .filter_map(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)))
+                .filter(|(x, y)| valid(*x, *y))
+                .min_by_key(|(x, y)| {
+                    let dx = *x as i128 - cx as i128;
+                    let dy = *y as i128 - cy as i128;
+                    dx * dx + dy * dy
+                })
+                .ok_or("No free position was found next to the other displays.")?;
+        }
         let moved = next.monitors[self.index].desktop.as_mut().unwrap();
         moved.x = x;
         moved.y = y;
@@ -617,6 +655,39 @@ mod drag_tests {
         let width = 5120.0 * big.scale;
         assert!((big.left - (1000.0 - width) / 2.0).abs() < 1e-9);
         assert!(big.top > 0.0 && big.top + 1440.0 * big.scale < 450.0);
+    }
+    #[test]
+    fn a_display_dropped_away_from_the_others_moves_back_to_touch_them() {
+        let l = layout();
+        let drag = Drag::begin(&l, 1, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
+        // Far to the right and a little down: it comes back to the first display's right edge.
+        let mut moved = l.clone();
+        let d = moved.monitors[1].desktop.as_mut().unwrap();
+        d.x = 9000;
+        d.y = 300;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (2560, 300));
+        // Far below: it comes back under the first display (x 100 also snaps to its left edge).
+        let mut moved = l.clone();
+        let d = moved.monitors[1].desktop.as_mut().unwrap();
+        d.x = 100;
+        d.y = 8000;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (0, 1440));
+        // Touching already: left as it is.
+        let mut moved = l.clone();
+        moved.monitors[1].desktop.as_mut().unwrap().y = 500;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (2560, 500));
     }
     #[test]
     fn dragging_primary_preserves_primary_and_snaps_overlaps() {
