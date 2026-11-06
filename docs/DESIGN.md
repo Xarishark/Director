@@ -16,6 +16,21 @@ Every page is built from `src/ui.rs`, so pages line up and follow the system the
 
 The pane lists Scenes, Now, Displays and TVs, with Options in the pane footer. The Library group was removed once it only held Displays and TVs. Reactor 0.100 has no footer menu items, so Options is a button styled like a navigation item that shows the same selection pill and fill when open. This supersedes "Library is an expanded, non-selectable parent item" below.
 
+## Display editor — current (comparison)
+
+The arrangement map follows Windows Settings › Display: it spans the editor (up to 1000 DIP) and is 240 DIP tall. Pressing a screen selects it, drawn in the accent colour, and dragging still moves it. Displays that are off aren't on the map, so they're listed under it as buttons that select them.
+
+Under the map, temporary tabs switch between two layouts so they can be compared; one will be removed:
+
+- **One display** (Windows-style): the selected display's header (name, Primary or Make primary, the On switch), then settings rows grouped into **Layout** (Desktop mode, Resolution, Refresh rate, Orientation) and **Picture** (HDR), each with a compact control on the right.
+- **All displays**: a card per display, with Resolution beside Refresh rate and Desktop mode beside Orientation.
+
+Settings rows use a regular-weight title and a caption; only group headings are semibold.
+
+## FPS card — current
+
+FPS limit is one card: its title and current state on the left, the switch on the right, and its rows (Method, Limit, VRR-safe cap, Frames per second) always shown below. While the switch is off the rows are greyed out and show what turning it on would use, so switching it on never changes the page's height. A scene's FPS step uses the same rows without the card.
+
 ## Now — current
 
 Now has three sections in this order: Displays and FPS limit, which stage edits, then a divider captioned "Sound changes below apply right away", then Sound, which applies each change as it is made. The page subtitle is "Changes here aren’t saved." The Apply bar belongs only to the staged sections: it appears once something is staged, says what, and offers Discard and **Apply changes**, which applies displays and then, if that succeeded, the FPS limit. Save as display preset… and Save as scene… sit beside their section titles; Save as scene… copies the output and microphone with volume and mute and opens the new scene on its Sound step dialog. Mute buttons read Mute or Unmute with matching icons, and the FPS section starts with what each method has set now. This supersedes "Keep separate Apply display changes and Apply audio changes actions, plus Discard edits" below.
