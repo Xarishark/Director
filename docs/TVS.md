@@ -63,7 +63,7 @@ director tv toggle living-room-tv
 director tv input living-room-tv HDMI_1
 ```
 
-Each TV is named by its CLI name (its name in lowercase with dashes, as `director tv list` shows) or its ID. Pair stores protected pairing and attempts metadata learning. Check authenticates and reads inputs without changing the TV or saving metadata. Learn refreshes and saves input/wake information without changing the selected PC mapping or TV state. Wake dispatches packets only; exit zero does not establish physical wake. Toggle reads the power state first: it turns the TV off when it reports on, wakes it when it reports off or standby, and sends nothing when the TV can't be reached or reports an unknown state. Add/edit/remove and PC/display mapping are configured in the window.
+Each TV is named by its CLI name (its name in lowercase with dashes, as `director tv list` shows) or its ID. Pair stores protected pairing and attempts metadata learning. Check authenticates and reads inputs without changing the TV or saving metadata. Learn refreshes and saves input/wake information without changing the selected PC mapping or TV state. Wake dispatches packets only; exit zero does not establish physical wake. Toggle reads the power state first: it turns the TV off when it reports on, wakes it when it reports off or standby or can't be reached (a fully-off TV often drops off the network), and sends nothing when the TV answers with an unknown state. Add/edit/remove and PC/display mapping are configured in the window.
 
 ## Validation and remaining work
 
