@@ -26,7 +26,7 @@ The bottom status area is hidden when nothing needs attention. Work in progress 
 
 Save is enabled only when the draft can be saved and has changed: it differs from how it opened, or it's a new item that isn't saved yet (a draft seeded from Now counts). Data that loads into an opened draft doesn't count as a change. The scene editor's footer says "No changes to save." meanwhile.
 
-Scene, display and audio cards have a borderless ">_" (CommandPrompt glyph) button right after the name. It opens a dialog with the command by name and by ID, each in selectable text with a Copy button and a one-line subtitle, plus `director scene end` for scenes that do something when left.
+Scene, display and audio cards have a borderless ">_" (CommandPrompt glyph) button right after the name. It opens a dialog with the command by CLI name (unquoted, for example `director scene apply tv-gaming`) and by ID, each in selectable text with a Copy button and a one-line subtitle, plus `director scene end` for scenes that do something when left.
 
 ## Title bar — current
 
@@ -38,7 +38,7 @@ Use genuine WinUI 3 controls through Microsoft Windows Reactor. Follow the syste
 
 Audio presets is the main NavigationView page. Use a compact ListView with one selectable row per preset and an Add/plus control. Each row has visible native icon buttons: green check for Apply, pencil for Edit, red bin for Delete. Accessible names and native tooltips explain each action. Selection alone never applies anything. Deletion uses a native ContentDialog.
 
-Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, and Save/Cancel. Saving stores choices only; Cancel discards the draft. The endpoint ID is not shown (it was noise for most people); `director audio list` prints it. Failure policy is global in Options.
+Add/Edit stays in the same window: name TextBox, output ComboBox, optional Set volume ToggleSwitch and percentage NumberBox, and Save/Cancel. Saving stores choices only; Cancel discards the draft. The endpoint ID is not shown (it was noise for most people); `director audio outputs` prints it. Failure policy is global in Options.
 
 InfoBar communicates status and errors. Disable mutations while work is active, keeping the UI responsive. Deferred features must not pretend to work. The default client size is 1000 x 700 logical pixels, minimum 760 x 600. Scroll constrained list/editor content, keep actions reachable, and make full device identity available on demand.
 
@@ -139,3 +139,9 @@ Monitor-card headers align the display name, a Primary indicator or Make primary
 Audio and display pages use the same native GridView card vocabulary, title row and apply/edit/delete placement. Display cards show a saved-layout miniature with grouped mirror numbers plus a readable per-monitor legend (resolution, exact-rate label and HDR intent); disabled screens are listed as Display off. Details remain scrollable for larger layouts. Audio cards show the remembered/current device name and either a volume percentage or Keep current device volume. Merely selecting a card does not apply it. Normal native hover/selection/focus behavior is preserved.
 
 The mirror selector sits in each enabled display card. Mirrored outputs share one draggable desktop tile. Primary means a source group; an individual primary-group member can be disabled while another remains. The final primary output remains protected by the disabled switch and tooltip. The scene editor is described in [Scenes](SCENES.md).
+
+## Sound — current
+
+Audio presets and the Library › Audio page are retired; this supersedes the Audio page, audio preset cards and "New audio preset…" above. Sound lives in two places. Now's Sound card has live controls: an output picker, a mute button and a volume slider, and the same row for the microphone; each change applies at once, with no Apply button, and **Save as scene…** opens a scene whose Sound step holds the current output and volume. A scene's **Sound** step dialog holds an Output picker (Leave as is, the devices Director knows, or "TV's sound · TV name"), a Set volume switch with a slider, a Mute choice (Leave as is, Unmute, Mute), "Use a different device for calls" and "Change microphone" checkboxes that reveal their pickers, and Relink device when a saved device is offline. Like every step dialog, it has no tooltips.
+
+A scene card's top area shows the scene's main change. With a display preset it is the layout miniature; otherwise a 124 px panel shows a large icon and the main value: for sound, the output name with a volume bar (or "Muted") and the calls and mic devices; for a TV, its name and input; then the FPS limit, then the number of actions.

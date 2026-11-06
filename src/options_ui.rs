@@ -69,9 +69,6 @@ impl DirectorApp {
             OptionsMessage::LogsLoaded(summary, details, selected_run) => {
                 self.end();
                 self.status = "Ready.".into();
-                if selected_run && !self.store_ready {
-                    let _ = cx.sender().send(Message::Refresh);
-                }
                 self.options_dialog = Some(OptionsDialog::Logs {
                     summary,
                     details,
@@ -79,11 +76,7 @@ impl DirectorApp {
                 });
             }
             OptionsMessage::Backup(save) if self.ready() => {
-                if !save
-                    && (self.draft.is_some()
-                        || self.display.draft.is_some()
-                        || self.scene.draft.is_some())
-                {
+                if !save && (self.display.draft.is_some() || self.scene.draft.is_some()) {
                     self.failure(
                         "Save or cancel open preset and scene drafts before restoring a backup."
                             .into(),

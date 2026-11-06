@@ -19,14 +19,17 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 && rest != ["--confirm"])
         {
             return Err(
-                "Use display check <name-or-id> or display apply <name-or-id> [--yes | --confirm]."
-                    .into(),
+                "Use display check <preset> or display apply <preset> [--yes | --confirm].".into(),
             );
         }
-        let preset = displays::load(&displays::path()?)?
-            .into_iter()
-            .find(|p| p.id == *name || p.name.to_lowercase() == name.to_lowercase())
-            .ok_or_else(|| format!("No display preset named “{name}”."))?;
+        let presets = displays::load(&displays::path()?)?;
+        let preset = crate::cli_name::find(
+            &presets,
+            name,
+            |p| (&p.id, &p.name),
+            "display preset",
+            "display",
+        )?;
         let _lock = OperationLock::acquire()?;
         let mut backend = WindowsDisplays::default();
         if command == "check" {
@@ -73,33 +76,6 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         return Ok(if report.succeeded() { 0 } else { 1 });
     }
     match args {
-        [command, rest @ ..] if command == "current" && (rest.is_empty() || rest == ["--json"]) => {
-            let layout = windows_displays::capture()?;
-            if rest == ["--json"] {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&layout).map_err(|e| e.to_string())?
-                );
-            } else {
-                println!("{}", layout.summary());
-                for m in &layout.monitors {
-                    println!("{} — {}", m.name, m.summary());
-                }
-            }
-        }
-        [command, rest @ ..] if command == "presets" && (rest.is_empty() || rest == ["--json"]) => {
-            let presets = displays::load(&displays::path()?)?;
-            if rest == ["--json"] {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&presets).map_err(|e| e.to_string())?
-                );
-            } else {
-                for p in presets {
-                    println!("{} — {}", p.name, p.layout.summary());
-                }
-            }
-        }
         [command, name] if command == "capture" => {
             let name = name.trim();
             if name.is_empty() || name.len() > 160 {
@@ -108,12 +84,6 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             let _lock = OperationLock::acquire()?;
             let path = displays::path()?;
             let old = displays::load(&path)?;
-            if old
-                .iter()
-                .any(|p| p.name.to_lowercase() == name.to_lowercase())
-            {
-                return Err("Each display preset needs a unique name.".into());
-            }
             let layout = windows_displays::capture()?;
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -129,7 +99,10 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             next.push(preset);
             next.sort_by_key(|p| p.name.to_lowercase());
             displays::save(&path, &old, &next)?;
-            println!("Captured display preset “{name}”. Your screens are unchanged.");
+            println!(
+                "Captured display preset “{name}” ({}). Your screens are unchanged.",
+                crate::cli_name::cli_name(name)
+            );
         }
         _ => return Err("Unknown display command. Use director --help.".into()),
     }

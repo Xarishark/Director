@@ -111,9 +111,11 @@ fn displays() -> Vec<displays::Preset> {
 impl DirectorApp {
     pub(crate) fn preview_cards_message(&mut self, message: &Message) -> bool {
         match message {
-            Message::Loaded(_) => {
+            // The first scene load seeds every page's preview data.
+            Message::Scene(
+                crate::scene_ui::SceneMessage::Load | crate::scene_ui::SceneMessage::Loaded(..),
+            ) if !self.scene.ready => {
                 self.end();
-                self.store_ready = true;
                 self.display.store_ready = true;
                 self.outputs = vec![Output {
                     communications: false,
@@ -124,6 +126,7 @@ impl DirectorApp {
                     console: true,
                     multimedia: true,
                     volume_percent: Some(45),
+                    muted: None,
                 }];
                 self.outputs.push(Output {
                     id: "fixture-chat".into(),
@@ -134,6 +137,7 @@ impl DirectorApp {
                     multimedia: false,
                     communications: true,
                     volume_percent: Some(35),
+                    muted: None,
                 });
                 self.inputs = vec![Output {
                     id: "fixture-mic".into(),
@@ -144,39 +148,11 @@ impl DirectorApp {
                     multimedia: true,
                     communications: true,
                     volume_percent: Some(55),
+                    muted: None,
                 }];
-                self.presets = [
-                    ("Desk working", Some(45)),
-                    ("Desk gaming", None),
-                    ("TV", Some(35)),
-                ]
-                .into_iter()
-                .enumerate()
-                .map(|(i, (name, volume))| director::presets::Preset {
-                    communications_output: None,
-                    input: None,
-                    id: format!("fixture-audio-{i}"),
-                    name: name.into(),
-                    output_id: if i == 2 {
-                        "fixture-tv"
-                    } else {
-                        "fixture-output"
-                    }
-                    .into(),
-                    output_name: if i == 2 {
-                        "TV speakers"
-                    } else {
-                        "Desk speakers"
-                    }
-                    .into(),
-                    volume_percent: volume,
-                    keep_changes: false,
-                })
-                .collect();
                 self.display.presets = displays();
                 self.display.current = Some(layout());
                 self.scene.displays = self.display.presets.clone();
-                self.scene.audio = self.presets.clone();
                 self.scene.tvs = vec![director::tvs::Tv {
                     id: "fixture-tv".into(),
                     name: "Living room TV".into(),
@@ -189,7 +165,7 @@ impl DirectorApp {
                         device_path: "preview-2".into(),
                         name: "Living room TV".into(),
                     }),
-                    audio: Some(director::presets::DeviceSelection {
+                    audio: Some(director::audio::DeviceSelection {
                         id: "fixture-tv-output".into(),
                         name: "TV HDMI audio".into(),
                     }),
@@ -206,7 +182,13 @@ impl DirectorApp {
                 }];
                 let mut scene = director::scenes::Scene::new("fixture-scene", "TV gaming scene");
                 scene.display = Some("fixture-display-1".into());
-                scene.tv_audio = Some("fixture-tv".into());
+                scene.sound = Some(director::scenes::Sound {
+                    output: Some(director::scenes::SoundOutput::Tv {
+                        id: "fixture-tv".into(),
+                    }),
+                    volume: Some(35),
+                    ..Default::default()
+                });
                 scene.tv = Some(director::scenes::TvPreparation {
                     off_when_leaving: false,
                     id: "fixture-tv".into(),
@@ -219,7 +201,25 @@ impl DirectorApp {
                 scene.leave = vec![director::scenes::Action::Uri {
                     target: "steam://close/bigpicture".into(),
                 }];
-                self.scene.scenes = vec![scene];
+                let mut headphones =
+                    director::scenes::Scene::new("fixture-headphones", "Headphones");
+                headphones.sound = Some(director::scenes::Sound {
+                    output: Some(director::scenes::SoundOutput::Device {
+                        id: "fixture-chat".into(),
+                        name: "Chat headset".into(),
+                    }),
+                    volume: Some(30),
+                    mic: Some(director::scenes::Mic {
+                        device: director::audio::DeviceSelection {
+                            id: "fixture-mic".into(),
+                            name: "Desk microphone".into(),
+                        },
+                        volume: Some(80),
+                        mute: None,
+                    }),
+                    ..Default::default()
+                });
+                self.scene.scenes = vec![headphones, scene];
                 self.scene.ready = true;
                 self.fps = crate::fps_ui::FpsState::fixture();
                 self.tv.tvs = self.scene.tvs.clone();
@@ -260,10 +260,7 @@ impl DirectorApp {
                 self.status = "Draft preview. Your screens are unchanged.".into();
                 true
             }
-            Message::Save
-            | Message::Apply(_)
-            | Message::DeleteClosed(_)
-            | Message::Display(
+            Message::Display(
                 DisplayMessage::Apply(_)
                 | DisplayMessage::Save
                 | DisplayMessage::DeleteClosed(_)
@@ -279,7 +276,6 @@ impl DirectorApp {
             ) => {
                 self.end();
                 self.scene.displays = self.display.presets.clone();
-                self.scene.audio = self.presets.clone();
                 self.scene.tvs = self.tv.tvs.clone();
                 self.scene.ready = true;
                 self.status = "Ready.".into();

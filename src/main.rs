@@ -30,36 +30,14 @@ use display_ui::{DisplayMessage, DisplayState};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Current,
-    Audio,
     Displays,
     Tvs,
     Options,
     Scenes,
 }
-use director::{
-    audio::{self, Output},
-    presets::{self, Preset},
-    windows_audio::{OperationLock, WindowsAudio},
-};
+use director::audio::Output;
 use windows_reactor::*;
 
-type Loaded = (
-    Result<Vec<Preset>, String>,
-    Result<Vec<Output>, String>,
-    Result<Vec<Output>, String>,
-);
-#[derive(Clone, PartialEq)]
-struct Draft {
-    id: Option<String>,
-    name: String,
-    output_id: String,
-    communications_output_id: Option<String>,
-    input_id: Option<String>,
-    input_set_volume: bool,
-    input_volume: Option<f64>,
-    set_volume: bool,
-    volume: Option<f64>,
-}
 #[derive(Clone)]
 enum Message {
     WindowSize(WindowSize),
@@ -80,29 +58,8 @@ enum Message {
     OpenLogs,
     Options(options_ui::OptionsMessage),
     LogsOpened(Result<String, String>),
-    Refresh,
-    Loaded(Loaded),
     GuardReady(Result<(), String>),
-    Add,
-    Edit(String),
-    Cancel,
-    Name(String),
-    Output(Option<usize>),
-    SeparateCommunications(bool),
-    CommunicationsOutput(Option<usize>),
-    ChangeInput(bool),
-    InputDevice(Option<usize>),
-    SetInputVolume(bool),
-    InputVolume(Option<f64>),
-    SetVolume(bool),
-    Volume(Option<f64>),
     Pane(bool),
-    Save,
-    Saved(Result<Vec<Preset>, String>),
-    Delete(String),
-    DeleteClosed(ContentDialogResult),
-    Apply(String),
-    Applied(audio::Report, Result<Vec<Output>, String>),
     Error(String),
 }
 struct DirectorApp {
@@ -121,16 +78,13 @@ struct DirectorApp {
     crash: Option<director::crash::Report>,
     notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
-    presets: Vec<Preset>,
+    /// Windows audio devices, for TV audio links and relinking.
     outputs: Vec<Output>,
     inputs: Vec<Output>,
-    draft: Option<Draft>,
     pane_open: bool,
     options_dialog: Option<options_ui::OptionsDialog>,
-    pending_delete: Option<String>,
     audio_relink: Option<audio_relink_ui::RelinkDraft>,
     busy: bool,
-    store_ready: bool,
     guard_ready: bool,
     guard_error: Option<String>,
     error: bool,
@@ -190,8 +144,6 @@ impl DirectorApp {
             self.update_display(DisplayMessage::Refresh, context);
         } else if next == Page::Tvs && self.tv.draft.is_none() {
             self.update_tv(tv_ui::TvMessage::Load, context);
-        } else if next == Page::Audio && self.draft.is_none() {
-            let _ = context.sender().send(Message::Refresh);
         }
     }
     fn failure(&mut self, error: String) {
@@ -202,71 +154,9 @@ impl DirectorApp {
         self.status = "Could not complete the request.".into();
         self.details = error;
     }
+    /// Ready for work that saves settings: nothing running and close protection installed.
     fn ready(&self) -> bool {
-        !self.busy && self.store_ready && self.guard_ready
-    }
-    fn draft_valid(&self) -> bool {
-        self.ready()
-            && self.draft.as_ref().is_some_and(|d| {
-                !d.name.trim().is_empty()
-                    && d.name.trim().len() <= 160
-                    && !d.output_id.is_empty()
-                    && d.communications_output_id
-                        .as_ref()
-                        .is_none_or(|id| !id.is_empty())
-                    && d.input_id.as_ref().is_none_or(|id| !id.is_empty())
-                    && (d.input_id.is_none()
-                        || !d.input_set_volume
-                        || d.input_volume.is_some_and(|v| {
-                            v.is_finite() && (0.0..=100.0).contains(&v) && v.fract() == 0.0
-                        }))
-                    && (!d.set_volume
-                        || d.volume.is_some_and(|v| {
-                            v.is_finite() && (0.0..=100.0).contains(&v) && v.fract() == 0.0
-                        }))
-            })
-    }
-    fn current(&self) -> String {
-        let name = |role| {
-            self.outputs
-                .iter()
-                .find(|o| match role {
-                    audio::Role::Console => o.console,
-                    audio::Role::Multimedia => o.multimedia,
-                    audio::Role::Communications => o.communications,
-                })
-                .map_or("None", |o| o.name.as_str())
-        };
-        if self
-            .outputs
-            .iter()
-            .any(|o| o.console && o.multimedia && o.communications)
-        {
-            name(audio::Role::Console).into()
-        } else {
-            format!(
-                "{} (system) · {} (media) · {} (calls)",
-                name(audio::Role::Console),
-                name(audio::Role::Multimedia),
-                name(audio::Role::Communications)
-            )
-        }
-    }
-    fn persist(&mut self, next: Vec<Preset>, context: &ComponentContext<Self>) {
-        let expected = self.presets.clone();
-        self.begin("Saving presets…");
-        work(context, move || {
-            Message::Saved((|| {
-                let _lock = OperationLock::acquire()?;
-                for old in &expected {
-                    if !next.iter().any(|p| p.id == old.id) {
-                        director::scenes::check_delete("audio", &old.id)?;
-                    }
-                }
-                presets::save(&presets::path()?, &expected, &next)?;
-                Ok(next)
-            })())
-        });
+        !self.busy && self.guard_ready
     }
     fn nav_item(&self, page: Page, tag: &str, label: &str, glyph: &str) -> View {
         NavigationViewItem::new()
@@ -278,88 +168,6 @@ impl DirectorApp {
                 SlotView::new(NavigationViewItemSlot::Icon, FontIcon::new().glyph(glyph)),
             ])
     }
-    fn main_view(&self, cx: &ViewContext<Self>) -> View {
-        let rows = self.audio_preset_cards(cx);
-        let list = if self.presets.is_empty() {
-            Border::new().grid_row(1).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
-                TextBlock::new().text(if self.busy {"Loading your presets…"}else{"Your first preset starts here"}).font_size(20.0),
-                TextBlock::new().text("Choose an output, give it a name, and keep it ready. Saving does not change your audio. You can also save the sound you’ve set in Now.").text_wrapping(TextWrapping::Wrap).max_width(500.0).horizontal_alignment(HorizontalAlignment::Left),
-                Button::new().is_enabled(!self.busy).on_click(cx.message(Message::Navigate(Some("current".into())))).content("Open Now"),
-            )))
-        } else {
-            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::AUDIO_CARD_HEIGHT, rows)
-        };
-        Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0)])
-            .children((
-                crate::preset_ui::header(
-                    "Audio",
-                    "Saved sound setups you can use in scenes.",
-                    vec![
-                        crate::preset_ui::current("CURRENT OUTPUT", self.current()),
-                        Button::new()
-                            .style(ButtonStyle::Accent)
-                            .automation_name("Add preset")
-                            .is_enabled(self.ready())
-                            .on_click(cx.message(Message::Add))
-                            .content(FontIcon::new().glyph(""))
-                            .tooltip("Add audio preset"),
-                    ],
-                ),
-                list,
-            ))
-    }
-    fn editor_view(&self, cx: &ViewContext<Self>, d: &Draft) -> View {
-        let index = self.outputs.iter().position(|o| o.id == d.output_id);
-        let detail = self
-            .outputs
-            .iter()
-            .find(|o| o.id == d.output_id)
-            .map(|o| format!("{} · {}", o.name, o.state))
-            .unwrap_or("Choose an output device.".into());
-        Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
-            StackPanel::new().grid_row(0).spacing(6.0).margin(Thickness::new(0.0,0.0,0.0,20.0)).children((TextBlock::new().text(if d.id.is_some(){"Edit audio preset"}else{"New audio preset"}).font_size(28.0).font_weight(FontWeight::SEMI_BOLD),TextBlock::new().text("Save your choices. Apply them when you’re ready.").opacity(0.72))),
-            ScrollViewer::new().grid_row(1).horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(14.0).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left).children((
-                TextBlock::new().text("Preset name").font_weight(FontWeight::SEMI_BOLD),
-                TextBox::new().text(d.name.clone()).placeholder_text("e.g. Desk, Headphones, or TV").automation_name("Preset name").is_enabled(!self.busy).on_text_changed(cx.callback(Message::Name)),
-                TextBlock::new().text("Output device").font_weight(FontWeight::SEMI_BOLD),
-                ComboBox::new().automation_name("Output device").horizontal_alignment(HorizontalAlignment::Stretch).items_source(self.outputs.iter().map(audio_relink_ui::device_label)).selected_index(index).is_enabled(!self.busy).on_selection_changed(cx.callback(Message::Output)),
-                TextBlock::new().text(detail).font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap),
-                self.audio_relink_button(cx, &d.output_id, None, false),
-                Grid::new().columns([GridLength::Star(1.0),GridLength::Pixel(130.0)]).children((
-                    ToggleSwitch::new().grid_column(0).automation_name("Set volume").is_on(d.set_volume).is_enabled(!self.busy).on_toggled(cx.callback(Message::SetVolume)).slot(ToggleSwitchSlot::Header,"Set volume"),
-                    NumberBox::new().grid_column(1).automation_name("Volume percentage").height(36.0).vertical_alignment(VerticalAlignment::Center).minimum(0.0).maximum(100.0).value(d.volume).is_enabled(!self.busy && d.set_volume).on_value_changed(cx.callback(Message::Volume)),
-                )),
-                TextBlock::new().text("Off keeps the device’s current volume. Use a whole percentage from 0 to 100.").font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap),
-                ToggleSwitch::new().automation_name("Separate communications output").is_on(d.communications_output_id.is_some()).is_enabled(!self.busy).on_toggled(cx.callback(Message::SeparateCommunications)).slot(ToggleSwitchSlot::Header,"Separate communications output"),
-                if let Some(id)=&d.communications_output_id {
-                    StackPanel::new().spacing(8.0).children((
-                        ComboBox::new().automation_name("Communications output device").horizontal_alignment(HorizontalAlignment::Stretch)
-                            .items_source(self.outputs.iter().map(audio_relink_ui::device_label))
-                            .selected_index(self.outputs.iter().position(|o|&o.id==id)).is_enabled(!self.busy)
-                            .on_selection_changed(cx.callback(Message::CommunicationsOutput)).slot(ComboBoxSlot::Header,"Calls output"),
-                        self.audio_relink_button(cx, id, None, false),
-                    ))
-                }else{TextBlock::new().text("Calls use the main output too. All three Windows output roles follow it.").font_size(12.0).opacity(0.72).text_wrapping(TextWrapping::Wrap).into()},
-                ToggleSwitch::new().automation_name("Change microphone").is_on(d.input_id.is_some()).is_enabled(!self.busy).on_toggled(cx.callback(Message::ChangeInput)).slot(ToggleSwitchSlot::Header,"Change microphone"),
-                if let Some(id)=&d.input_id {
-                    StackPanel::new().spacing(12.0).children((
-                        ComboBox::new().automation_name("Microphone device").horizontal_alignment(HorizontalAlignment::Stretch)
-                            .items_source(self.inputs.iter().map(audio_relink_ui::device_label))
-                            .selected_index(self.inputs.iter().position(|o|&o.id==id)).is_enabled(!self.busy)
-                            .on_selection_changed(cx.callback(Message::InputDevice)).slot(ComboBoxSlot::Header,"Microphone"),
-                        self.audio_relink_button(cx, id, None, true),
-                        ToggleSwitch::new().automation_name("Set microphone volume").is_on(d.input_set_volume).is_enabled(!self.busy).on_toggled(cx.callback(Message::SetInputVolume)).slot(ToggleSwitchSlot::Header,"Set microphone volume"),
-                        if d.input_set_volume{NumberBox::new().automation_name("Microphone volume percentage").minimum(0.0).maximum(100.0).value(d.input_volume).is_enabled(!self.busy).on_value_changed(cx.callback(Message::InputVolume)).into()}else{View::empty()},
-                    ))
-                }else{TextBlock::new().text("Microphone and input roles stay unchanged.").font_size(12.0).opacity(0.72).into()},
-            ))),
-            Grid::new().grid_row(2).margin(Thickness::new(0.0,20.0,0.0,0.0)).columns([GridLength::Star(1.0),GridLength::Auto]).children((
-                TextBlock::new().grid_column(0).text("Saving won’t change your audio.").opacity(0.72).vertical_alignment(VerticalAlignment::Center),
-                StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((Button::new().is_enabled(!self.busy).on_click(cx.message(Message::Cancel)).content("Cancel"),Button::new().style(ButtonStyle::Accent).is_enabled(self.draft_valid()&&self.draft_changed(Page::Audio)).on_click(cx.message(Message::Save)).content("Save preset"))),
-            )),
-        ))
-    }
 }
 /// The page a navigation tag names.
 fn page_for(tag: &str) -> Option<Page> {
@@ -369,7 +177,6 @@ fn page_for(tag: &str) -> Option<Page> {
         "tvs" => Page::Tvs,
         "options" => Page::Options,
         "scenes" => Page::Scenes,
-        "audio" => Page::Audio,
         _ => return None,
     })
 }
@@ -386,11 +193,6 @@ impl Component for DirectorApp {
                     id.clone(),
                 ))));
         } else {
-            // The card fixture seeds its preview data from the audio load.
-            #[cfg(test)]
-            if preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
-                let _ = context.sender().send(Message::Refresh);
-            }
             // Scenes is the start page; Library pages reload themselves on entry.
             let _ = context
                 .sender()
@@ -414,17 +216,13 @@ impl Component for DirectorApp {
             crash: director::crash::pending(),
             notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
-            presets: vec![],
             outputs: vec![],
             inputs: vec![],
-            draft: None,
             window_width: 1000.0,
             pane_open: true,
-            pending_delete: None,
             audio_relink: None,
             options_dialog: None,
             busy: false,
-            store_ready: false,
             guard_ready: false,
             guard_error: None,
             error: false,
@@ -453,13 +251,12 @@ impl Component for DirectorApp {
         self.track_unsaved();
         // Track before and after handling: before so a draft's first edit is compared with how
         // it opened, after so a draft that just opened already has its baseline.
-        (|| {
-            #[cfg(test)]
-            if preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire)
-                && self.preview_cards_message(&message)
-            {
-                return;
-            }
+        #[cfg(test)]
+        let skip = preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire)
+            && self.preview_cards_message(&message);
+        #[cfg(not(test))]
+        let skip = false;
+        if !skip {
             match message {
                 Message::WindowSize(size) => self.window_width = size.width,
                 Message::AudioRelink(message) => self.update_audio_relink(message, context),
@@ -500,383 +297,11 @@ impl Component for DirectorApp {
                         self.failure(e);
                     }
                 },
-                Message::Refresh if !self.busy => {
-                    self.begin("Reading presets and Windows audio…");
-                    work(context, || {
-                        Message::Loaded((
-                            presets::path().and_then(|p| presets::load(&p)),
-                            WindowsAudio::new().and_then(|mut b| b.picker_devices(false)),
-                            WindowsAudio::new().and_then(|mut b| b.picker_devices(true)),
-                        ))
-                    });
-                }
-                Message::Loaded((loaded, outputs, inputs)) => {
-                    self.end();
-                    let mut errors = self.guard_error.clone().into_iter().collect::<Vec<_>>();
-                    match loaded {
-                        Ok(p) => {
-                            self.presets = p;
-                            self.store_ready = true;
-                        }
-                        Err(e) => {
-                            self.store_ready = false;
-                            errors.push(e);
-                        }
-                    }
-                    match outputs {
-                        Ok(mut o) => {
-                            match director::tvs::path().and_then(|p| director::tvs::load(&p)) {
-                                Ok(tvs) => {
-                                    for tv in tvs {
-                                        if let Some(link) = tv.audio
-                                            && !o.iter().any(|d| d.id == link.id)
-                                        {
-                                            o.push(Output {
-                                                id: link.id,
-                                                name: link.name,
-                                                state: "Remembered · unavailable".into(),
-                                                active: false,
-                                                console: false,
-                                                multimedia: false,
-                                                communications: false,
-                                                volume_percent: None,
-                                            });
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    errors.push(format!("Could not read remembered TV audio: {e}"))
-                                }
-                            }
-                            self.outputs = o;
-                        }
-                        Err(e) => errors.push(e),
-                    }
-                    match inputs {
-                        Ok(list) => self.inputs = list,
-                        Err(e) => errors.push(format!("Could not read microphone devices: {e}")),
-                    }
-                    self.error = !errors.is_empty();
-                    self.status = if self.error {
-                        "Could not refresh everything."
-                    } else {
-                        "Ready."
-                    }
-                    .into();
-                    self.details = errors.join("\n");
-                    self.library_resume(context);
-                }
-                Message::Add if self.ready() => {
-                    let output = self
-                        .outputs
-                        .iter()
-                        .find(|o| o.console && o.active)
-                        .or_else(|| self.outputs.iter().find(|o| o.active));
-                    self.draft = Some(Draft {
-                        id: None,
-                        name: String::new(),
-                        output_id: output.map_or(String::new(), |o| o.id.clone()),
-                        communications_output_id: None,
-                        input_id: None,
-                        input_set_volume: false,
-                        input_volume: Some(50.0),
-                        set_volume: false,
-                        volume: Some(
-                            output
-                                .and_then(|o| o.volume_percent)
-                                .map_or(50.0, f64::from),
-                        ),
-                    });
-                    self.error = false;
-                    self.status = "Create an audio preset.".into();
-                    self.details.clear();
-                }
-                Message::Edit(id) if self.ready() => {
-                    if let Some(p) = self.presets.iter().find(|p| p.id == id) {
-                        if !self.outputs.iter().any(|o| o.id == p.output_id) {
-                            self.outputs.push(Output {
-                                communications: false,
-                                id: p.output_id.clone(),
-                                name: p.output_name.clone(),
-                                state: "Unavailable".into(),
-                                active: false,
-                                console: false,
-                                multimedia: false,
-                                volume_percent: None,
-                            });
-                        }
-                        for selection in p.communications_output.iter() {
-                            if !self.outputs.iter().any(|o| o.id == selection.id) {
-                                self.outputs.push(Output {
-                                    id: selection.id.clone(),
-                                    name: selection.name.clone(),
-                                    state: "Remembered · unavailable".into(),
-                                    active: false,
-                                    console: false,
-                                    multimedia: false,
-                                    communications: false,
-                                    volume_percent: None,
-                                });
-                            }
-                        }
-                        for selection in p.input.iter() {
-                            if !self.inputs.iter().any(|o| o.id == selection.id) {
-                                self.inputs.push(Output {
-                                    id: selection.id.clone(),
-                                    name: selection.name.clone(),
-                                    state: "Remembered · unavailable".into(),
-                                    active: false,
-                                    console: false,
-                                    multimedia: false,
-                                    communications: false,
-                                    volume_percent: None,
-                                });
-                            }
-                        }
-                        self.draft = Some(Draft {
-                            id: Some(p.id.clone()),
-                            name: p.name.clone(),
-                            output_id: p.output_id.clone(),
-                            communications_output_id: p
-                                .communications_output
-                                .as_ref()
-                                .map(|d| d.id.clone()),
-                            input_id: p.input.as_ref().map(|d| d.id.clone()),
-                            input_set_volume: p
-                                .input
-                                .as_ref()
-                                .is_some_and(|d| d.volume_percent.is_some()),
-                            input_volume: Some(f64::from(
-                                p.input
-                                    .as_ref()
-                                    .and_then(|d| d.volume_percent)
-                                    .unwrap_or(50),
-                            )),
-                            set_volume: p.volume_percent.is_some(),
-                            volume: Some(f64::from(p.volume_percent.unwrap_or(50))),
-                        });
-                        self.error = false;
-                        self.status = "Edit your audio preset.".into();
-                        self.details.clear();
-                    }
-                }
-                Message::Cancel if !self.busy => {
-                    self.draft = None;
-                    self.error = false;
-                    self.status = "Ready.".into();
-                    self.details.clear();
-                    self.library_cancelled(library_flow::Slot::Audio, context);
-                }
-                Message::Name(name) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.name = name;
-                    }
-                }
-                Message::Output(index) if !self.busy => {
-                    if let (Some(d), Some(o)) =
-                        (&mut self.draft, index.and_then(|i| self.outputs.get(i)))
-                    {
-                        d.output_id = o.id.clone();
-                    }
-                }
-                Message::SeparateCommunications(on) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.communications_output_id = on.then(|| {
-                            self.outputs
-                                .iter()
-                                .find(|o| o.active && o.communications)
-                                .map_or(d.output_id.clone(), |o| o.id.clone())
-                        });
-                    }
-                }
-                Message::CommunicationsOutput(index) if !self.busy => {
-                    if let Some(d) = &mut self.draft
-                        && d.communications_output_id.is_some()
-                    {
-                        d.communications_output_id = Some(
-                            index
-                                .and_then(|i| self.outputs.get(i))
-                                .map_or(String::new(), |o| o.id.clone()),
-                        );
-                    }
-                }
-                Message::ChangeInput(on) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.input_id = on.then(|| {
-                            self.inputs
-                                .iter()
-                                .find(|o| o.active && o.console)
-                                .or_else(|| self.inputs.iter().find(|o| o.active))
-                                .map_or(String::new(), |o| o.id.clone())
-                        });
-                    }
-                }
-                Message::InputDevice(index) if !self.busy => {
-                    if let Some(d) = &mut self.draft
-                        && d.input_id.is_some()
-                    {
-                        d.input_id = Some(
-                            index
-                                .and_then(|i| self.inputs.get(i))
-                                .map_or(String::new(), |o| o.id.clone()),
-                        );
-                    }
-                }
-                Message::SetInputVolume(on) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.input_set_volume = on;
-                    }
-                }
-                Message::InputVolume(value) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.input_volume = value;
-                    }
-                }
-                Message::SetVolume(value) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.set_volume = value;
-                    }
-                }
-                Message::Volume(value) if !self.busy => {
-                    if let Some(d) = &mut self.draft {
-                        d.volume = value;
-                    }
-                }
                 Message::Pane(value) => self.pane_open = value,
-                Message::Save if self.draft_valid() => {
-                    let d = self.draft.as_ref().unwrap();
-                    let Some(o) = self.outputs.iter().find(|o| o.id == d.output_id) else {
-                        return;
-                    };
-                    let id = d.id.clone().unwrap_or_else(|| {
-                        format!(
-                            "{}-{}",
-                            std::process::id(),
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_nanos()
-                        )
-                    });
-                    let p = Preset {
-                        communications_output: d
-                            .communications_output_id
-                            .as_ref()
-                            .and_then(|id| self.outputs.iter().find(|o| &o.id == id))
-                            .map(|o| presets::DeviceSelection {
-                                id: o.id.clone(),
-                                name: o.name.clone(),
-                            }),
-                        input: d
-                            .input_id
-                            .as_ref()
-                            .and_then(|id| self.inputs.iter().find(|o| &o.id == id))
-                            .map(|o| presets::InputSelection {
-                                id: o.id.clone(),
-                                name: o.name.clone(),
-                                volume_percent: if d.input_set_volume {
-                                    d.input_volume.map(|v| v as u8)
-                                } else {
-                                    None
-                                },
-                            }),
-                        id: id.clone(),
-                        name: d.name.trim().into(),
-                        output_id: d.output_id.clone(),
-                        output_name: o.name.clone(),
-                        volume_percent: if d.set_volume {
-                            d.volume.map(|v| v as u8)
-                        } else {
-                            None
-                        },
-                        keep_changes: false,
-                    };
-                    let mut next = self.presets.clone();
-                    if let Some(existing) = next.iter_mut().find(|p| p.id == id) {
-                        *existing = p;
-                    } else {
-                        next.push(p);
-                    }
-                    next.sort_by_key(|p| p.name.to_lowercase());
-                    self.persist(next, context);
-                }
-                Message::Saved(result) => match result {
-                    Ok(p) => {
-                        self.end();
-                        let added = library_flow::added_id(
-                            self.presets.iter().map(|p| p.id.as_str()),
-                            p.iter().map(|p| p.id.as_str()),
-                        );
-                        self.presets = p;
-                        self.draft = None;
-                        self.pending_delete = None;
-                        self.status = "Presets saved. Your audio is unchanged.".into();
-                        self.guard_saved(true, context);
-                        self.announce(context);
-                        self.library_saved(library_flow::Slot::Audio, added, context);
-                    }
-                    Err(e) => self.failure(e),
-                },
-                Message::Delete(id) if self.ready() => {
-                    self.pending_delete = Some(id);
-                }
-                Message::DeleteClosed(result) if !self.busy => {
-                    if let Some(id) = self.pending_delete.take()
-                        && result == ContentDialogResult::Primary
-                    {
-                        let next = self
-                            .presets
-                            .iter()
-                            .filter(|p| p.id != id)
-                            .cloned()
-                            .collect();
-                        self.persist(next, context);
-                    }
-                }
-                Message::Apply(id) if self.ready() => {
-                    if let Some(p) = self.presets.iter().find(|p| p.id == id).cloned() {
-                        self.begin(format!(
-                            "Applying “{}”… Please wait before closing.",
-                            p.name
-                        ));
-                        work(context, move || {
-                            let result = (|| {
-                                let mut backend = WindowsAudio::new()?;
-                                let _lock = OperationLock::acquire()?;
-                                let report = audio::apply(
-                                    &mut backend,
-                                    &p.request(),
-                                    director::preferences::current().audio_policy(),
-                                    |_| {},
-                                );
-                                let outputs = backend.picker_devices(false);
-                                Ok((report, outputs))
-                            })();
-                            match result {
-                                Ok((report, outputs)) => Message::Applied(report, outputs),
-                                Err(e) => Message::Error(e),
-                            }
-                        });
-                    }
-                }
-                Message::Applied(report, outputs) => {
-                    self.end();
-                    self.error = !report.succeeded();
-                    self.status = report.message;
-                    self.details = report.details.join("\n");
-                    self.announce(context);
-                    match outputs {
-                        Ok(o) => self.outputs = o,
-                        Err(e) => {
-                            self.details
-                                .push_str(&format!("\nCould not refresh device status: {e}"));
-                        }
-                    }
-                }
                 Message::Error(e) => self.failure(e),
                 _ => {}
             }
-        })();
+        }
         self.track_unsaved();
     }
     fn view(&self, _: &(), cx: &mut ViewContext<Self>) -> View {
@@ -938,18 +363,13 @@ impl Component for DirectorApp {
             self.tv_view(cx)
         } else if self.page == Page::Scenes {
             self.scene_view(cx)
-        } else if self.page == Page::Options {
-            self.options_view(cx)
-        } else if let Some(d) = &self.draft {
-            self.editor_view(cx, d)
         } else {
-            self.main_view(cx)
+            self.options_view(cx)
         };
         // Keep each page's native scroll/focus tree separate; drafts remain in state.
         let content = Grid::new().keyed_children([KeyedView::new(
             match self.page {
                 Page::Current => "current-page",
-                Page::Audio => "audio-page",
                 Page::Displays => "display-page",
                 Page::Tvs => "tv-page",
                 Page::Options => "options-page",
@@ -1025,15 +445,6 @@ impl Component for DirectorApp {
                                                 ),
                                             ),
                                             KeyedView::new(
-                                                "audio",
-                                                self.nav_item(
-                                                    Page::Audio,
-                                                    "audio",
-                                                    "Audio",
-                                                    "\u{e767}",
-                                                ),
-                                            ),
-                                            KeyedView::new(
                                                 "tvs",
                                                 self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}"),
                                             ),
@@ -1063,24 +474,6 @@ impl Component for DirectorApp {
                 ),
                 SlotView::new(NavigationViewSlot::Content, body),
             ]);
-        let dialog = self
-            .pending_delete
-            .as_ref()
-            .map(|id| {
-                let name = self
-                    .presets
-                    .iter()
-                    .find(|p| &p.id == id)
-                    .map_or("this preset", |p| p.name.as_str());
-                ContentDialog::new()
-                    .is_open(true)
-                    .title(format!("Delete “{name}”?"))
-                    .primary_button_text("Delete preset")
-                    .close_button_text("Cancel")
-                    .on_closed(cx.callback(Message::DeleteClosed))
-                    .content("This removes the saved preset. Your current audio will not change.")
-            })
-            .unwrap_or_else(View::empty);
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .keyed_children([
@@ -1097,7 +490,6 @@ impl Component for DirectorApp {
                     ),
                     nav,
                 ),
-                KeyedView::new("audio-dialog", dialog),
                 KeyedView::new("guard-dialog", self.guard_dialog(cx)),
                 KeyedView::new("command-dialog", self.command_dialog(cx)),
                 KeyedView::new("crash-dialog", self.crash_dialog(cx)),

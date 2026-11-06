@@ -1,7 +1,8 @@
 //! Native scene cards and editor; device work stays on the shared worker runner.
 use crate::{DirectorApp, Message, work};
 use director::{
-    scenes::{self, Action, ActionList, Scene, TvPreparation},
+    audio::{DeviceSelection, Output},
+    scenes::{self, Action, ActionList, Scene, Sound, SoundOutput, TvPreparation},
     windows_audio::OperationLock,
 };
 use std::sync::{
@@ -10,24 +11,85 @@ use std::sync::{
     mpsc,
 };
 use windows_reactor::*;
+/// Scenes, display presets, TVs, and the audio outputs and inputs the Sound step can pick.
 type Catalog = (
     Vec<Scene>,
     Vec<director::displays::Preset>,
-    Vec<director::presets::Preset>,
     Vec<director::tvs::Tv>,
+    Vec<Output>,
+    Vec<Output>,
 );
+/// An edit in the Sound step dialog.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SoundEdit {
+    /// 0 leaves the output as is, then the devices, then each TV's sound.
+    Output(Option<usize>),
+    SetVolume(bool),
+    Volume(f64),
+    /// 0 leaves mute as is, 1 unmutes, 2 mutes.
+    Mute(Option<usize>),
+    Calls(bool),
+    CallsDevice(Option<usize>),
+    Mic(bool),
+    MicDevice(Option<usize>),
+    SetMicVolume(bool),
+    MicVolume(f64),
+    MicMute(Option<usize>),
+}
+/// Device choices for a Sound step ComboBox: what Windows lists (including remembered offline
+/// devices), plus the saved device when Windows no longer knows it.
+pub(crate) fn device_choices(
+    devices: &[Output],
+    saved: Option<&DeviceSelection>,
+) -> Vec<DeviceSelection> {
+    let mut list = devices
+        .iter()
+        .map(|d| DeviceSelection {
+            id: d.id.clone(),
+            name: d.name.clone(),
+        })
+        .collect::<Vec<_>>();
+    if let Some(saved) = saved
+        && !list.iter().any(|d| d.id == saved.id)
+    {
+        list.push(saved.clone());
+    }
+    list
+}
+/// The device a Sound step's output names, if it names one.
+pub(crate) fn sound_device(sound: &Sound) -> Option<DeviceSelection> {
+    match &sound.output {
+        Some(SoundOutput::Device { id, name }) => Some(DeviceSelection {
+            id: id.clone(),
+            name: name.clone(),
+        }),
+        _ => None,
+    }
+}
+pub(crate) fn mute_choice(mute: Option<bool>) -> usize {
+    match mute {
+        None => 0,
+        Some(false) => 1,
+        Some(true) => 2,
+    }
+}
+fn mute_from(index: usize) -> Option<bool> {
+    match index {
+        1 => Some(false),
+        2 => Some(true),
+        _ => None,
+    }
+}
 #[derive(Clone)]
 pub(crate) enum SceneMessage {
     Load,
-    Loaded(Result<Catalog, String>),
+    Loaded(Box<Result<Catalog, String>>),
     Add,
     Edit(String),
     Cancel,
     Name(String),
     Display(Option<usize>),
-    Audio(Option<usize>),
-    /// Volume for a TV's linked audio; none keeps the current volume.
-    TvVolume(Option<u8>),
+    Sound(SoundEdit),
     Tv(Option<usize>),
     Wake(bool),
     /// Turn the scene's TV off when the scene is left.
@@ -72,7 +134,6 @@ pub(crate) enum Event {
 pub(crate) struct SceneState {
     pub(crate) scenes: Vec<Scene>,
     pub(crate) displays: Vec<director::displays::Preset>,
-    pub(crate) audio: Vec<director::presets::Preset>,
     pub(crate) tvs: Vec<director::tvs::Tv>,
     pub(crate) draft: Option<Scene>,
     pub(crate) ready: bool,
@@ -103,7 +164,86 @@ fn note(s: impl Into<String>) -> View {
         .opacity(0.72)
         .into()
 }
-fn id() -> String {
+/// What a hero panel's bar shows.
+enum Level {
+    None,
+    Percent(u8),
+    Muted,
+}
+/// The large panel at the top of a scene card that has no screens to preview: a big icon,
+/// the main value and an optional volume bar.
+fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> View {
+    const BAR: f64 = 150.0;
+    let bar: View = match level {
+        Level::None => View::empty(),
+        Level::Muted => TextBlock::new().text("Muted").opacity(0.72).into(),
+        Level::Percent(v) => StackPanel::new()
+            .orientation(Orientation::Horizontal)
+            .spacing(8.0)
+            .children((
+                Grid::new()
+                    .width(BAR)
+                    .height(4.0)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .children((
+                        Border::new()
+                            .corner_radius(2.0)
+                            .background(Color::argb(60, 128, 128, 128)),
+                        Border::new()
+                            .corner_radius(2.0)
+                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .width(BAR * f64::from(v.min(100)) / 100.0)
+                            .background(Color::rgb(76, 194, 255)),
+                    )),
+                TextBlock::new().text(format!("{v}%")).opacity(0.72),
+            )),
+    };
+    let lines = lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| {
+            KeyedView::new(
+                i.to_string(),
+                TextBlock::new()
+                    .text(line)
+                    .font_size(12.0)
+                    .opacity(0.72)
+                    .text_trimming(TextTrimming::CharacterEllipsis),
+            )
+        })
+        .collect::<Vec<_>>();
+    Border::new()
+        .height(124.0)
+        .padding(Thickness::xy(16.0, 12.0))
+        .corner_radius(6.0)
+        .background(Color::argb(18, 128, 128, 128))
+        .content(
+            Grid::new()
+                .columns([GridLength::Auto, GridLength::Star(1.0)])
+                .column_spacing(16.0)
+                .children((
+                    Viewbox::new()
+                        .width(36.0)
+                        .height(36.0)
+                        .opacity(0.8)
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .slot(ViewboxSlot::Child, FontIcon::new().glyph(glyph)),
+                    StackPanel::new()
+                        .grid_column(1)
+                        .spacing(6.0)
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .children((
+                            TextBlock::new()
+                                .text(title)
+                                .font_weight(FontWeight::SEMI_BOLD)
+                                .text_trimming(TextTrimming::CharacterEllipsis),
+                            bar,
+                            StackPanel::new().spacing(2.0).keyed_children(lines),
+                        )),
+                )),
+        )
+}
+pub(crate) fn new_id() -> String {
     format!(
         "scene-{}-{}",
         std::process::id(),
@@ -140,10 +280,10 @@ impl DirectorApp {
         work(cx, move || {
             msg(SceneMessage::Saved((|| {
                 let _lock = OperationLock::acquire()?;
-                let (_, displays, audio, tvs) = director::windows_scenes::catalog()?;
+                let (_, displays, tvs) = director::windows_scenes::catalog()?;
                 for scene in &next {
                     if !expected.iter().any(|old| old == scene) {
-                        scenes::resolve(scene, &displays, &audio, &tvs)?;
+                        scenes::resolve(scene, &displays, &tvs)?;
                     }
                 }
                 scenes::save(&scenes::path()?, &expected, &next)?;
@@ -172,13 +312,9 @@ impl DirectorApp {
         // The last item of each section's dropdown creates a new Library item in place.
         if ready && self.scene.draft.is_some() {
             use crate::library_flow::{LibraryMessage, Slot};
-            let linked = self.scene.tvs.iter().filter(|t| t.audio.is_some()).count();
             let create = match &m {
                 SceneMessage::Display(Some(i)) if *i == self.scene.displays.len() + 1 => {
                     Some(Slot::Display)
-                }
-                SceneMessage::Audio(Some(i)) if *i == self.scene.audio.len() + linked + 1 => {
-                    Some(Slot::Audio)
                 }
                 SceneMessage::Tv(Some(i)) if *i == self.scene.tvs.len() + 1 => Some(Slot::Tv),
                 _ => None,
@@ -192,21 +328,34 @@ impl DirectorApp {
             SceneMessage::Load if !self.busy => {
                 self.begin("Reading scenes and presets…");
                 work(cx, || {
-                    msg(SceneMessage::Loaded(director::windows_scenes::catalog()))
+                    msg(SceneMessage::Loaded(Box::new(
+                        director::windows_scenes::catalog().map(|(scenes, displays, tvs)| {
+                            // Device lists only feed the Sound step's pickers; a failure
+                            // leaves them empty rather than blocking Scenes.
+                            let devices = |input| {
+                                director::windows_audio::WindowsAudio::new()
+                                    .and_then(|mut a| a.picker_devices(input))
+                                    .unwrap_or_default()
+                            };
+                            (scenes, displays, tvs, devices(false), devices(true))
+                        }),
+                    )))
                 });
             }
             SceneMessage::Loaded(result) => {
                 self.end();
-                match result {
-                    Ok((s, d, a, t)) => {
+                match *result {
+                    Ok((s, d, t, outputs, inputs)) => {
                         self.scene.scenes = s;
                         self.scene.displays = d;
-                        self.scene.audio = a;
                         self.scene.tvs = t;
+                        self.outputs = outputs;
+                        self.inputs = inputs;
                         self.scene.ready = true;
                         self.scene.active = director::scene_session::active();
                         self.status = "Ready.".into();
                         self.library_select_in_scene(cx);
+                        self.library_resume(cx);
                         self.starter_loaded(cx);
                     }
                     Err(e) => {
@@ -217,7 +366,7 @@ impl DirectorApp {
             }
             SceneMessage::Starter(m) => self.update_starter(m, cx),
             SceneMessage::Add if ready => {
-                self.scene.draft = Some(Scene::new(id(), ""));
+                self.scene.draft = Some(Scene::new(new_id(), ""));
                 self.scene.open = None;
                 self.status =
                     "Choose what this scene changes. Saving leaves your setup untouched.".into();
@@ -248,30 +397,7 @@ impl DirectorApp {
                     d.display = selected;
                 }
             }
-            SceneMessage::Audio(index) if !self.busy && index.is_some() => {
-                let chosen = index.and_then(|i| i.checked_sub(1));
-                let preset = chosen
-                    .and_then(|i| self.scene.audio.get(i))
-                    .map(|p| p.id.clone());
-                let linked = chosen
-                    .and_then(|i| i.checked_sub(self.scene.audio.len()))
-                    .and_then(|i| self.scene.tvs.iter().filter(|t| t.audio.is_some()).nth(i))
-                    .map(|t| t.id.clone());
-                if let Some(d) = &mut self.scene.draft {
-                    if d.tv_audio != linked {
-                        d.tv_audio_volume = None;
-                    }
-                    d.audio = preset;
-                    d.tv_audio = linked;
-                }
-            }
-            SceneMessage::TvVolume(volume) if !self.busy => {
-                if let Some(d) = &mut self.scene.draft
-                    && d.tv_audio.is_some()
-                {
-                    d.tv_audio_volume = volume;
-                }
-            }
+            SceneMessage::Sound(edit) if !self.busy => self.edit_sound(edit),
             SceneMessage::Tv(index) if !self.busy && index.is_some() => {
                 let selected = index
                     .and_then(|i| i.checked_sub(1))
@@ -447,6 +573,12 @@ impl DirectorApp {
                 {
                     self.scene.draft = Some(before);
                 }
+                // A Sound step left with nothing to change is the same as no Sound step.
+                if let Some(d) = &mut self.scene.draft
+                    && d.sound.as_ref().is_some_and(|s| !s.changes_something())
+                {
+                    d.sound = None;
+                }
             }
             SceneMessage::ClearStep(step) if !self.busy => {
                 use crate::scene_editor_ui::Step;
@@ -455,10 +587,7 @@ impl DirectorApp {
                         Step::Before => d.before.clear(),
                         Step::Tv => d.tv = None,
                         Step::Displays => d.display = None,
-                        Step::Audio => {
-                            d.audio = None;
-                            d.tv_audio = None;
-                        }
+                        Step::Sound => d.sound = None,
                         Step::Fps => d.fps = None,
                         Step::After => d.actions.clear(),
                         Step::Leave => d.leave.clear(),
@@ -489,12 +618,7 @@ impl DirectorApp {
             SceneMessage::Save if ready => {
                 if let Some(mut d) = self.scene.draft.clone() {
                     d.name = d.name.trim().into();
-                    if let Err(e) = scenes::resolve(
-                        &d,
-                        &self.scene.displays,
-                        &self.scene.audio,
-                        &self.scene.tvs,
-                    ) {
+                    if let Err(e) = scenes::resolve(&d, &self.scene.displays, &self.scene.tvs) {
                         self.failure(e);
                         return;
                     }
@@ -700,8 +824,7 @@ impl DirectorApp {
                 let apply = s.id.clone();
                 let edit = s.id.clone();
                 let delete = s.id.clone();
-                let resolved =
-                    scenes::resolve(s, &self.scene.displays, &self.scene.audio, &self.scene.tvs);
+                let resolved = scenes::resolve(s, &self.scene.displays, &self.scene.tvs);
                 let name = s.name.clone();
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
                 let body = StackPanel::new().spacing(8.0).children((
@@ -714,15 +837,7 @@ impl DirectorApp {
                     } else {
                         View::empty()
                     },
-                    s.display
-                        .as_ref()
-                        .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
-                        .map(|p| crate::preset_cards_ui::layout_preview(&p.layout, 124.0))
-                        .unwrap_or_else(|| {
-                            Border::new()
-                                .height(100.0)
-                                .content(note("Displays unchanged"))
-                        }),
+                    self.scene_hero(s),
                     note(self.scene_summary(s)),
                     if let Err(e) = resolved {
                         TextBlock::new()
@@ -757,7 +872,6 @@ impl DirectorApp {
                                             && scenes::resolve(
                                                 s,
                                                 &self.scene.displays,
-                                                &self.scene.audio,
                                                 &self.scene.tvs,
                                             )
                                             .is_ok(),
@@ -839,6 +953,215 @@ impl DirectorApp {
                 },
             ))
     }
+    /// Apply an edit from the Sound step dialog to the draft.
+    fn edit_sound(&mut self, edit: SoundEdit) {
+        let tvs = self
+            .scene
+            .tvs
+            .iter()
+            .filter(|t| t.audio.is_some())
+            .map(|t| t.id.clone())
+            .collect::<Vec<_>>();
+        let (outputs, inputs) = (&self.outputs, &self.inputs);
+        let Some(d) = &mut self.scene.draft else {
+            return;
+        };
+        let sound = d.sound.get_or_insert_with(Sound::default);
+        let percent = |v: f64| v.round().clamp(0.0, 100.0) as u8;
+        let level_of = |devices: &[Output], id: Option<&str>| {
+            id.and_then(|id| devices.iter().find(|o| o.id == id))
+                .and_then(|o| o.volume_percent)
+                .unwrap_or(50)
+        };
+        let default_device = |devices: &[Output], prefer: fn(&Output) -> bool| {
+            devices
+                .iter()
+                .find(|o| o.active && prefer(o))
+                .or_else(|| devices.iter().find(|o| o.active))
+                .map(|o| DeviceSelection {
+                    id: o.id.clone(),
+                    name: o.name.clone(),
+                })
+        };
+        match edit {
+            SoundEdit::Output(Some(i)) => {
+                let devices = device_choices(outputs, sound_device(sound).as_ref());
+                sound.output = match i.checked_sub(1) {
+                    None => None,
+                    Some(i) if i < devices.len() => Some(SoundOutput::Device {
+                        id: devices[i].id.clone(),
+                        name: devices[i].name.clone(),
+                    }),
+                    Some(i) => tvs
+                        .get(i - devices.len())
+                        .map(|id| SoundOutput::Tv { id: id.clone() }),
+                };
+            }
+            SoundEdit::SetVolume(on) => {
+                let id = sound_device(sound).map(|d| d.id);
+                sound.volume = on.then(|| level_of(outputs, id.as_deref()));
+            }
+            SoundEdit::Volume(v) if sound.volume.is_some() && v.is_finite() => {
+                sound.volume = Some(percent(v));
+            }
+            SoundEdit::Mute(Some(i)) => sound.mute = mute_from(i),
+            SoundEdit::Calls(on) => {
+                sound.calls = if on {
+                    sound
+                        .calls
+                        .clone()
+                        .or_else(|| default_device(outputs, |o| o.communications))
+                } else {
+                    None
+                };
+            }
+            SoundEdit::CallsDevice(Some(i)) if sound.calls.is_some() => {
+                if let Some(device) = device_choices(outputs, sound.calls.as_ref()).get(i) {
+                    sound.calls = Some(device.clone());
+                }
+            }
+            SoundEdit::Mic(on) => {
+                sound.mic = if on {
+                    sound.mic.clone().or_else(|| {
+                        default_device(inputs, |o| o.console).map(|device| scenes::Mic {
+                            device,
+                            volume: None,
+                            mute: None,
+                        })
+                    })
+                } else {
+                    None
+                };
+            }
+            SoundEdit::MicDevice(Some(i)) => {
+                if let Some(mic) = &mut sound.mic
+                    && let Some(device) = device_choices(inputs, Some(&mic.device)).get(i)
+                {
+                    mic.device = device.clone();
+                }
+            }
+            SoundEdit::SetMicVolume(on) => {
+                if let Some(mic) = &mut sound.mic {
+                    mic.volume = on.then(|| level_of(inputs, Some(&mic.device.id)));
+                }
+            }
+            SoundEdit::MicVolume(v) if v.is_finite() => {
+                if let Some(mic) = &mut sound.mic
+                    && mic.volume.is_some()
+                {
+                    mic.volume = Some(percent(v));
+                }
+            }
+            SoundEdit::MicMute(Some(i)) => {
+                if let Some(mic) = &mut sound.mic {
+                    mic.mute = mute_from(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    /// A Sound step in a few words, for example "SOUNDBAR · 35% · mic Astro".
+    pub(crate) fn sound_label(&self, sound: &Sound) -> String {
+        let mut parts = vec![match &sound.output {
+            Some(SoundOutput::Device { name, .. }) => name.clone(),
+            Some(SoundOutput::Tv { id }) => self
+                .scene
+                .tvs
+                .iter()
+                .find(|t| &t.id == id)
+                .map_or("Missing TV".into(), |t| format!("{}'s sound", t.name)),
+            None => "Current output".into(),
+        }];
+        if let Some(v) = sound.volume {
+            parts.push(format!("{v}%"));
+        }
+        match sound.mute {
+            Some(true) => parts.push("muted".into()),
+            Some(false) => parts.push("unmuted".into()),
+            None => {}
+        }
+        if let Some(calls) = &sound.calls {
+            parts.push(format!("calls on {}", calls.name));
+        }
+        if let Some(mic) = &sound.mic {
+            parts.push(format!("mic {}", mic.device.name));
+        }
+        if !sound.changes_something() {
+            return "Nothing set".into();
+        }
+        parts.join(" · ")
+    }
+    /// The top of a scene card shows the scene's main change: its screens, else its sound,
+    /// its TV, its FPS limit or its actions.
+    fn scene_hero(&self, s: &Scene) -> View {
+        if let Some(p) = s
+            .display
+            .as_ref()
+            .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
+        {
+            return crate::preset_cards_ui::layout_preview(&p.layout, 124.0);
+        }
+        if let Some(sound) = &s.sound {
+            let output = match &sound.output {
+                Some(SoundOutput::Device { name, .. }) => name.clone(),
+                Some(SoundOutput::Tv { id }) => self
+                    .scene
+                    .tvs
+                    .iter()
+                    .find(|t| &t.id == id)
+                    .map_or("Missing TV".into(), |t| format!("TV's sound · {}", t.name)),
+                None => "Current output".into(),
+            };
+            let mut lines = vec![];
+            if let Some(calls) = &sound.calls {
+                lines.push(format!("Calls: {}", calls.name));
+            }
+            if let Some(mic) = &sound.mic {
+                lines.push(format!(
+                    "Mic: {}{}",
+                    mic.device.name,
+                    mic.volume.map_or(String::new(), |v| format!(" · {v}%"))
+                ));
+            }
+            return hero_panel(
+                "\u{e767}",
+                output,
+                if sound.mute == Some(true) {
+                    Level::Muted
+                } else {
+                    sound.volume.map_or(Level::None, Level::Percent)
+                },
+                lines,
+            );
+        }
+        if let Some(prep) = &s.tv {
+            let tv = self.scene.tvs.iter().find(|t| t.id == prep.id);
+            let input = tv.and_then(|tv| {
+                prep.input.as_ref().and_then(|id| {
+                    tv.control_inputs()
+                        .iter()
+                        .find(|i| &i.id == id)
+                        .map(|i| i.label.clone())
+                })
+            });
+            return hero_panel(
+                "\u{e7f4}",
+                tv.map_or("Missing TV".into(), |t| t.name.clone()),
+                Level::None,
+                input.into_iter().collect(),
+            );
+        }
+        if let Some(fps) = &s.fps {
+            return hero_panel("\u{e916}", fps.label(), Level::None, vec![]);
+        }
+        let actions = s.before.len() + s.actions.len();
+        hero_panel(
+            "\u{e768}",
+            format!("{actions} action{}", if actions == 1 { "" } else { "s" }),
+            Level::None,
+            vec![],
+        )
+    }
     fn scene_summary(&self, s: &Scene) -> String {
         let display = s
             .display
@@ -851,29 +1174,10 @@ impl DirectorApp {
                     .map_or("Missing display preset", |p| p.name.as_str())
             })
             .unwrap_or("Unchanged");
-        let audio = s
-            .audio
+        let sound = s
+            .sound
             .as_ref()
-            .map(|id| {
-                self.scene
-                    .audio
-                    .iter()
-                    .find(|p| &p.id == id)
-                    .map_or("Missing audio preset", |p| p.name.as_str())
-                    .to_string()
-            })
-            .or_else(|| {
-                s.tv_audio.as_ref().map(|id| {
-                    self.scene
-                        .tvs
-                        .iter()
-                        .find(|t| &t.id == id)
-                        .and_then(|t| t.audio.as_ref())
-                        .map_or("Missing TV audio", |a| a.name.as_str())
-                        .into()
-                })
-            })
-            .unwrap_or("Unchanged".into());
+            .map_or("Unchanged".into(), |sound| self.sound_label(sound));
         let tv =
             s.tv.as_ref()
                 .map(|p| {
@@ -890,7 +1194,7 @@ impl DirectorApp {
         }
         lines.push(format!("TV: {tv}"));
         lines.push(format!("Displays: {display}"));
-        lines.push(format!("Audio: {audio}"));
+        lines.push(format!("Sound: {sound}"));
         lines.push(format!(
             "FPS: {}",
             s.fps

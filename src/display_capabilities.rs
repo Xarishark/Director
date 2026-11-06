@@ -22,7 +22,7 @@ struct Document {
     entries: Vec<Entry>,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("display-capabilities.json")
+    crate::storage::settings_path("display-capabilities.json")
 }
 pub fn load(path: &Path) -> Result<Vec<Entry>, String> {
     let bytes = match std::fs::read(path) {
@@ -88,7 +88,7 @@ pub fn remember(path: &Path, learned: &Learned) -> Result<(), String> {
         desktop: learned.desktop.clone(),
     });
     validate(&entries)?;
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: 1,

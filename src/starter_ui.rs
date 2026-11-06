@@ -20,7 +20,8 @@ pub(crate) enum StarterMessage {
     Sound(bool),
     Fps(bool),
     Save,
-    Saved(Result<director::scenes::Scene, String>),
+    /// The saved scene's name.
+    Saved(Result<String, String>),
 }
 
 pub(crate) struct StarterState {
@@ -138,15 +139,17 @@ impl DirectorApp {
                 let choice = self.starter_choice();
                 self.begin("Saving your scene…");
                 work(cx, move || {
-                    msg(StarterMessage::Saved(director::starter::save(&choice)))
+                    msg(StarterMessage::Saved(
+                        director::starter::save(&choice).map(|scene| scene.name),
+                    ))
                 });
             }
             StarterMessage::Saved(result) => {
                 self.end();
                 match result {
-                    Ok(scene) => {
+                    Ok(name) => {
                         self.scene.starter = StarterState {
-                            saved: Some(scene.name),
+                            saved: Some(name),
                             ..Default::default()
                         };
                         // Reload scenes and presets; the notice follows once they're in.

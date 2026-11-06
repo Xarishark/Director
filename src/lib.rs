@@ -1,10 +1,15 @@
 pub mod audio;
-pub mod presets;
+pub mod audio_control;
+pub mod cli_name;
 #[cfg(windows)]
 pub mod windows_audio;
 
 #[cfg(windows)]
+pub mod audio_cli;
+#[cfg(windows)]
 pub mod cli;
+#[cfg(windows)]
+pub mod cli_list;
 
 pub mod displays;
 #[cfg(windows)]
@@ -51,6 +56,7 @@ pub mod display_mirroring;
 pub mod scene_session;
 pub mod scenes;
 pub mod starter;
+pub mod storage;
 #[cfg(windows)]
 pub mod windows_close;
 #[cfg(windows)]

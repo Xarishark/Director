@@ -1,7 +1,7 @@
 use crate::{DirectorApp, Message, work};
 use director::{
     audio::Output,
-    presets, tvs,
+    scenes, tvs,
     windows_audio::{OperationLock, WindowsAudio},
 };
 use windows_reactor::*;
@@ -92,18 +92,16 @@ impl DirectorApp {
                         }
                         let matches = |saved: &str| audio.references_audio_id(saved, &id, input);
                         let mut affected = Vec::new();
-                        for preset in presets::load(&presets::path()?)? {
+                        for scene in scenes::load(&scenes::path()?)? {
+                            let Some(sound) = &scene.sound else { continue };
                             let uses_device = if input {
-                                preset.input.as_ref().is_some_and(|d| matches(&d.id))
+                                sound.mic.as_ref().is_some_and(|m| matches(&m.device.id))
                             } else {
-                                matches(&preset.output_id)
-                                    || preset
-                                        .communications_output
-                                        .as_ref()
-                                        .is_some_and(|d| matches(&d.id))
+                                matches!(&sound.output, Some(scenes::SoundOutput::Device { id, .. }) if matches(id))
+                                    || sound.calls.as_ref().is_some_and(|d| matches(&d.id))
                             };
                             if uses_device {
-                                affected.push(format!("Preset: {}", preset.name));
+                                affected.push(format!("Scene: {}", scene.name));
                             }
                         }
                         if !input {

@@ -12,7 +12,7 @@ pub(crate) enum Step {
     Before,
     Tv,
     Displays,
-    Audio,
+    Sound,
     Fps,
     After,
     Leave,
@@ -23,7 +23,7 @@ impl Step {
             Self::Before => "Before",
             Self::Tv => "Prepare TV",
             Self::Displays => "Displays",
-            Self::Audio => "Audio",
+            Self::Sound => "Sound",
             Self::Fps => "FPS limit",
             Self::After => "After",
             Self::Leave => "When leaving",
@@ -34,7 +34,7 @@ impl Step {
             Self::Before => "\u{e756}",
             Self::Tv => "\u{e7f4}",
             Self::Displays => "\u{e7f8}",
-            Self::Audio => "\u{e767}",
+            Self::Sound => "\u{e767}",
             Self::Fps => "\u{e916}",
             Self::After => "\u{e768}",
             Self::Leave => "\u{e7e8}",
@@ -46,7 +46,7 @@ impl Step {
             Self::Before => "Run a script or app first",
             Self::Tv => "Wake it and switch to the PC input",
             Self::Displays => "Switch to a saved monitor layout",
-            Self::Audio => "Switch to a saved sound setup",
+            Self::Sound => "Switch output, volume or mic",
             Self::Fps => "Cap the frame rate",
             Self::After => "Open apps or links when it’s done",
             Self::Leave => "Close apps when you switch away",
@@ -57,7 +57,7 @@ impl Step {
             Self::Before => "before",
             Self::Tv => "tv",
             Self::Displays => "displays",
-            Self::Audio => "audio",
+            Self::Sound => "sound",
             Self::Fps => "fps",
             Self::After => "after",
             Self::Leave => "leave",
@@ -205,7 +205,7 @@ impl DirectorApp {
             Step::Before => !d.before.is_empty(),
             Step::Tv => d.tv.is_some(),
             Step::Displays => d.display.is_some(),
-            Step::Audio => d.audio.is_some() || d.tv_audio.is_some(),
+            Step::Sound => d.sound.is_some(),
             Step::Fps => d.fps.is_some(),
             Step::After => !d.actions.is_empty(),
             Step::Leave => !d.leave.is_empty(),
@@ -243,32 +243,10 @@ impl DirectorApp {
                     },
                 )
             }),
-            Step::Audio => {
-                if let Some(id) = &d.audio {
-                    s.audio
-                        .iter()
-                        .find(|p| &p.id == id)
-                        .map_or("Missing audio preset".into(), |p| {
-                            format!("{} · {}", p.name, p.output_name)
-                        })
-                } else if let Some(id) = &d.tv_audio {
-                    s.tvs
-                        .iter()
-                        .find(|t| &t.id == id)
-                        .and_then(|t| t.audio.as_ref().map(|a| (t, a)))
-                        .map_or("Missing TV audio".into(), |(t, a)| {
-                            format!(
-                                "{} linked audio · {}{}",
-                                t.name,
-                                a.name,
-                                d.tv_audio_volume
-                                    .map_or(String::new(), |v| format!(" · {v}%"))
-                            )
-                        })
-                } else {
-                    String::new()
-                }
-            }
+            Step::Sound => d
+                .sound
+                .as_ref()
+                .map_or(String::new(), |sound| self.sound_label(sound)),
             Step::Fps => d.fps.as_ref().map_or(String::new(), |r| r.label()),
         }
     }
@@ -654,91 +632,214 @@ impl DirectorApp {
                             .content("Manage display presets"),
                     ))
             }
-            Step::Audio => {
-                let labels = std::iter::once("Leave audio unchanged".into())
-                    .chain(
-                        self.scene
-                            .audio
-                            .iter()
-                            .map(|p| format!("{} · {}", p.name, p.output_name)),
-                    )
-                    .chain(self.scene.tvs.iter().filter_map(|t| {
-                        t.audio
-                            .as_ref()
-                            .map(|a| format!("{} linked audio · {}", t.name, a.name))
-                    }))
-                    .chain(std::iter::once("New audio preset…".into()))
-                    .collect::<Vec<String>>();
-                let selected = d
-                    .audio
-                    .as_ref()
-                    .and_then(|id| self.scene.audio.iter().position(|p| &p.id == id))
-                    .map(|i| i + 1)
-                    .or_else(|| {
-                        d.tv_audio
-                            .as_ref()
-                            .and_then(|id| {
-                                self.scene
-                                    .tvs
-                                    .iter()
-                                    .filter(|t| t.audio.is_some())
-                                    .position(|t| &t.id == id)
-                            })
-                            .map(|i| i + 1 + self.scene.audio.len())
-                    })
-                    .unwrap_or(0);
-                StackPanel::new()
-                    .spacing(10.0)
+            Step::Sound => self.sound_editor(cx, d),
+            Step::Fps => self.fps_controls(cx, crate::fps_ui::Target::Scene),
+        }
+    }
+
+    /// The Sound step: output (a device or a TV's sound), volume, mute, a separate calls
+    /// device and the microphone. Anything left as is stays as it is when the scene runs.
+    fn sound_editor(&self, cx: &ViewContext<Self>, d: &Scene) -> View {
+        use crate::scene_ui::{SoundEdit, device_choices, mute_choice, sound_device};
+        let available = !self.busy;
+        let edit = |e: SoundEdit| msg(SceneMessage::Sound(e));
+        let empty = scenes::Sound::default();
+        let sound = d.sound.as_ref().unwrap_or(&empty);
+        let label = |devices: &[director::audio::Output],
+                     device: &director::audio::DeviceSelection| {
+            devices
+                .iter()
+                .find(|o| o.id == device.id)
+                .map_or(format!("{} — not found", device.name), |o| {
+                    crate::audio_relink_ui::device_label(o)
+                })
+        };
+        let outputs = device_choices(&self.outputs, sound_device(sound).as_ref());
+        let tvs = self
+            .scene
+            .tvs
+            .iter()
+            .filter(|t| t.audio.is_some())
+            .collect::<Vec<_>>();
+        let output_labels = std::iter::once("Leave as is".to_string())
+            .chain(outputs.iter().map(|o| label(&self.outputs, o)))
+            .chain(tvs.iter().map(|t| format!("TV's sound · {}", t.name)))
+            .collect::<Vec<_>>();
+        let output_index = match &sound.output {
+            None => 0,
+            Some(scenes::SoundOutput::Device { id, .. }) => outputs
+                .iter()
+                .position(|o| &o.id == id)
+                .map_or(0, |i| i + 1),
+            Some(scenes::SoundOutput::Tv { id }) => tvs
+                .iter()
+                .position(|t| &t.id == id)
+                .map_or(0, |i| i + 1 + outputs.len()),
+        };
+        let mute_labels = || ["Leave as is", "Unmute", "Mute"].map(String::from).to_vec();
+        let slider = |name: &str, value: u8, on: fn(f64) -> SoundEdit| {
+            Slider::new()
+                .automation_name(name)
+                .minimum(0.0)
+                .maximum(100.0)
+                .step_frequency(1.0)
+                .value(f64::from(value))
+                .is_enabled(available)
+                .on_value_changed(cx.callback(move |v: f64| edit(on(v))))
+        };
+        StackPanel::new()
+            .spacing(12.0)
+            .children((
+                ComboBox::new()
+                    .automation_name("Scene sound output")
+                    .items_source(output_labels)
+                    .selected_index(Some(output_index))
+                    .is_enabled(available)
+                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .on_selection_changed(cx.callback(move |i| edit(SoundEdit::Output(i))))
+                    .slot(ComboBoxSlot::Header, "Output"),
+                if sound.output.is_none() && (sound.volume.is_some() || sound.mute.is_some()) {
+                    note("Volume and mute apply to whichever output is the default when the scene runs.")
+                } else {
+                    View::empty()
+                },
+                Grid::new()
+                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Pixel(44.0)])
+                    .column_spacing(12.0)
                     .children((
-                        ComboBox::new()
-                            .automation_name("Scene audio preset")
-                            .items_source(labels)
-                            .selected_index(Some(selected))
+                        ToggleSwitch::new()
+                            .automation_name("Set volume")
+                            .is_on(sound.volume.is_some())
                             .is_enabled(available)
-                            .horizontal_alignment(HorizontalAlignment::Stretch)
-                            .on_selection_changed(cx.callback(|i| msg(SceneMessage::Audio(i)))),
-                        if d.tv_audio.is_some() {
-                            StackPanel::new()
-                                .spacing(8.0)
-                                .children((
-                                    ToggleSwitch::new()
-                                        .automation_name("Set TV audio volume")
-                                        .is_on(d.tv_audio_volume.is_some())
-                                        .is_enabled(available)
-                                        .on_toggled(cx.callback(|on: bool| {
-                                            msg(SceneMessage::TvVolume(on.then_some(50)))
-                                        }))
-                                        .slot(ToggleSwitchSlot::Header, "Set volume"),
-                                    if let Some(v) = d.tv_audio_volume {
-                                        NumberBox::new()
-                                            .automation_name("TV audio volume percentage")
-                                            .minimum(0.0)
-                                            .maximum(100.0)
-                                            .value(Some(f64::from(v)))
-                                            .is_enabled(available)
-                                            .on_value_changed(cx.callback(|v: Option<f64>| {
-                                                msg(SceneMessage::TvVolume(
-                                                    v.filter(|v| v.is_finite())
-                                                        .map(|v| v.round().clamp(0.0, 100.0) as u8),
-                                                ))
-                                            }))
-                                            .slot(NumberBoxSlot::Header, "Volume (%)")
-                                    } else {
-                                        note("Off keeps the TV output’s current volume.")
-                                    },
-                                ))
+                            .on_toggled(cx.callback(move |on| edit(SoundEdit::SetVolume(on))))
+                            .slot(ToggleSwitchSlot::Header, "Set volume"),
+                        if let Some(v) = sound.volume {
+                            slider("Scene volume", v, SoundEdit::Volume)
+                                .grid_column(1)
+                                .vertical_alignment(VerticalAlignment::Bottom)
+                                .into()
                         } else {
                             View::empty()
                         },
-                        note("Audio switches after the displays, so a TV’s HDMI audio is ready. A linked TV output changes all three output roles and leaves the microphone unchanged; choose an audio preset for more control."),
-                        Button::new()
-                            .is_enabled(available)
-                            .on_click(cx.message(Message::Go("audio".into())))
-                            .content("Manage audio presets"),
-                    ))
-            }
-            Step::Fps => self.fps_controls(cx, crate::fps_ui::Target::Scene),
-        }
+                        TextBlock::new()
+                            .grid_column(2)
+                            .text(sound.volume.map_or(String::new(), |v| format!("{v}%")))
+                            .vertical_alignment(VerticalAlignment::Bottom)
+                            .margin(Thickness::new(0.0, 0.0, 0.0, 8.0)),
+                    )),
+                ComboBox::new()
+                    .automation_name("Scene mute")
+                    .items_source(mute_labels())
+                    .selected_index(Some(mute_choice(sound.mute)))
+                    .is_enabled(available)
+                    .on_selection_changed(cx.callback(move |i| edit(SoundEdit::Mute(i))))
+                    .slot(ComboBoxSlot::Header, "Mute"),
+                CheckBox::new()
+                    .automation_name("Use a different device for calls")
+                    .is_checked(sound.calls.is_some())
+                    .is_enabled(available)
+                    .on_is_checked_changed(cx.callback(move |on| edit(SoundEdit::Calls(on))))
+                    .content("Use a different device for calls"),
+                if let Some(calls) = &sound.calls {
+                    let devices = device_choices(&self.outputs, Some(calls));
+                    StackPanel::new()
+                        .spacing(8.0)
+                        .children((
+                            ComboBox::new()
+                                .automation_name("Calls output")
+                                .items_source(
+                                    devices
+                                        .iter()
+                                        .map(|o| label(&self.outputs, o))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .selected_index(devices.iter().position(|o| o.id == calls.id))
+                                .is_enabled(available)
+                                .horizontal_alignment(HorizontalAlignment::Stretch)
+                                .on_selection_changed(
+                                    cx.callback(move |i| edit(SoundEdit::CallsDevice(i))),
+                                ),
+                            self.audio_relink_button(cx, &calls.id, Some(&calls.name), false),
+                        ))
+                } else {
+                    View::empty()
+                },
+                CheckBox::new()
+                    .automation_name("Change microphone")
+                    .is_checked(sound.mic.is_some())
+                    .is_enabled(available)
+                    .on_is_checked_changed(cx.callback(move |on| edit(SoundEdit::Mic(on))))
+                    .content("Change microphone"),
+                if let Some(mic) = &sound.mic {
+                    let devices = device_choices(&self.inputs, Some(&mic.device));
+                    StackPanel::new()
+                        .spacing(10.0)
+                        .children((
+                            ComboBox::new()
+                                .automation_name("Microphone")
+                                .items_source(
+                                    devices
+                                        .iter()
+                                        .map(|o| label(&self.inputs, o))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .selected_index(devices.iter().position(|o| o.id == mic.device.id))
+                                .is_enabled(available)
+                                .horizontal_alignment(HorizontalAlignment::Stretch)
+                                .on_selection_changed(
+                                    cx.callback(move |i| edit(SoundEdit::MicDevice(i))),
+                                ),
+                            self.audio_relink_button(cx, &mic.device.id, Some(&mic.device.name), true),
+                            Grid::new()
+                                .columns([
+                                    GridLength::Auto,
+                                    GridLength::Star(1.0),
+                                    GridLength::Pixel(44.0),
+                                ])
+                                .column_spacing(12.0)
+                                .children((
+                                    ToggleSwitch::new()
+                                        .automation_name("Set microphone volume")
+                                        .is_on(mic.volume.is_some())
+                                        .is_enabled(available)
+                                        .on_toggled(
+                                            cx.callback(move |on| edit(SoundEdit::SetMicVolume(on))),
+                                        )
+                                        .slot(ToggleSwitchSlot::Header, "Set mic volume"),
+                                    if let Some(v) = mic.volume {
+                                        slider("Microphone volume", v, SoundEdit::MicVolume)
+                                            .grid_column(1)
+                                            .vertical_alignment(VerticalAlignment::Bottom)
+                                            .into()
+                                    } else {
+                                        View::empty()
+                                    },
+                                    TextBlock::new()
+                                        .grid_column(2)
+                                        .text(mic.volume.map_or(String::new(), |v| format!("{v}%")))
+                                        .vertical_alignment(VerticalAlignment::Bottom)
+                                        .margin(Thickness::new(0.0, 0.0, 0.0, 8.0)),
+                                )),
+                            ComboBox::new()
+                                .automation_name("Microphone mute")
+                                .items_source(mute_labels())
+                                .selected_index(Some(mute_choice(mic.mute)))
+                                .is_enabled(available)
+                                .on_selection_changed(
+                                    cx.callback(move |i| edit(SoundEdit::MicMute(i))),
+                                )
+                                .slot(ComboBoxSlot::Header, "Microphone mute"),
+                        ))
+                } else {
+                    View::empty()
+                },
+                if let Some(device) = sound_device(sound) {
+                    self.audio_relink_button(cx, &device.id, Some(&device.name), false)
+                } else {
+                    View::empty()
+                },
+                note("Sound changes after the displays, so a TV's HDMI audio is ready. The output takes all three Windows roles unless calls use a different device."),
+            ))
     }
 
     /// The shared editor for Before, After and When leaving actions.
@@ -1026,7 +1127,7 @@ impl DirectorApp {
             Step::Before,
             Step::Tv,
             Step::Displays,
-            Step::Audio,
+            Step::Sound,
             Step::Fps,
             Step::After,
         ];
@@ -1037,8 +1138,7 @@ impl DirectorApp {
             }
             blocks.push(KeyedView::new(step.key(), self.step_block(cx, d, step)));
         }
-        let problem =
-            scenes::resolve(d, &self.scene.displays, &self.scene.audio, &self.scene.tvs).err();
+        let problem = scenes::resolve(d, &self.scene.displays, &self.scene.tvs).err();
         // Fill the page up to FLOW_WIDTH: the pane, page padding and scroll bar take the rest.
         let column = StackPanel::new()
             .width(self.flow_width())
@@ -1173,6 +1273,14 @@ mod tests {
                     "pub(crate) static PREVIEW",
                 ),
             ),
+            (
+                "relink button (Sound step)",
+                region(
+                    include_str!("audio_relink_ui.rs"),
+                    "pub(crate) fn audio_relink_button",
+                    "pub(crate) fn update_audio_relink",
+                ),
+            ),
             ("crash dialog", include_str!("crash_ui.rs")),
             (
                 "command dialog",
@@ -1190,6 +1298,8 @@ mod tests {
         let safe = [
             "crate::icons::delete(",
             "crate::preset_cards_ui::layout_preview_in_dialog(",
+            // Returns a String label.
+            "crate::audio_relink_ui::device_label(",
         ];
         let steps = region(
             editor,

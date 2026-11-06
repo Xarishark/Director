@@ -205,3 +205,24 @@ The first-run checklist sent people to Now and to each Library page before they 
 ### D064 — Windows 11 24H2 is the minimum (2026-11-06)
 
 Director declared no Windows support: no app manifest (so version APIs reported 6.2.9200), no installer check and no documented baseline. HDR switching needs display-configuration requests added in Windows 11 24H2, and only current Windows 11 is tested, so the user chose 24H2 (build 26100) as the minimum rather than a partly working Windows 10 install. The executable embeds a manifest (Windows 10/11 supportedOS, maxversiontested 10.0.26100.0, per-monitor v2 DPI), and setup.exe and the MSI refuse older builds.
+
+### D065 — CLI names, and `list` in every area (2026-11-06)
+
+Commands found items by name ignoring case, so any name with a space needed quotes, and the shortcut dialog copied commands such as `director scene apply "TV ""Gaming"""`. Lists were also inconsistent: `audio list` printed devices while `scene list` and `tv list` printed saved items, display presets were under `display presets`, and there was no way to see everything at once.
+
+Every scene, preset, TV, screen and audio device now has a CLI name derived from its name: lowercase letters and digits, with each run of other characters replaced by one dash ("Desk View" is `desk-view`). It is computed rather than stored, so no file format changed and renaming updates it. Lookups accept an exact ID first, then anything that normalizes to the same CLI name, so older quoted commands keep working. Saving a new or renamed item whose CLI name is empty or already used by another item of the same kind is refused (the user chose this over auto-numbering, which would let names shift as items come and go). Existing files with a clash still load; looking up the clashing name reports both IDs.
+
+`director list` prints every category, and each area has `list` for its saved items: `scene list`, `display list`, `audio list`, `tv list`, plus `display screens`, `audio outputs` and `audio inputs` for devices. All take `--json` with a `cli_name` field. The user accepted that `audio list` now lists audio presets instead of output devices (use `audio outputs`); `audio presets`, `display presets` and `display current` remain as aliases. D066 later retired audio presets: `audio list` prints outputs and inputs, and `audio presets` was removed.
+
+### D066 — Live sound controls; scenes hold their sound; audio presets retired (2026-11-06)
+
+Audio mixed two jobs. `audio apply` took either a preset or a raw endpoint ID with `--volume`, Now ran a live change through the full preset transaction behind an Apply button, `audio volume` was the only real live command, and nothing could mute. Scenes pointed at audio presets by ID and also carried a separate `tv_audio` / `tv_audio_volume` special case.
+
+The user wants to change the active device and volume easily without a preset, and have scenes keep their sound. Sound is now split in two:
+
+- **Live controls** (`audio_control`) change one thing right away: make a device the default (all roles, or one), set or step the volume (35, +5, -5), and mute, unmute or toggle, for the output or the microphone. No device means the current default. Each change is verified and put back when Windows does not confirm it. Now's Sound card uses them directly (no Apply button; sliders send their level once they rest), and so do `director audio status | use | volume | mute | unmute | mute toggle` with `--mic`.
+- **A scene's Sound step** holds its settings inline: an output device or a TV's sound, volume, mute, an optional calls device and an optional microphone with its own volume and mute. It replaces both the audio preset reference and the linked TV audio fields, and runs through `audio::apply` as part of the scene's transaction, which now snapshots and restores mute too.
+
+The user chose to retire audio presets rather than keep them as an optional choice: a scene with only a Sound step does everything a preset did, including Stream Deck use through `director scene apply`, and sharing one sound setup across scenes was rare. The Library Audio page, `audio apply`, `audio presets` and the scene editor's "New audio preset…" are gone; Now's save button opens a new scene instead. Breaking changes were acceptable because nobody else uses the app yet.
+
+Scene files move to version 3 and backups to version 2. Version 1–2 scenes migrate when they load: an audio preset reference becomes the preset's output, volume, calls device and microphone (read once from `audio-presets.json` or, for a backup, from the backup's own presets), and linked TV audio becomes the TV's sound with its volume. A preset that can't be found leaves an empty Sound step that the scene card reports. Scene cards show the scene's main change at the top, so a sound-only scene shows its output and volume rather than an empty display box. Settings-file helpers moved from `presets.rs` to `storage.rs`.

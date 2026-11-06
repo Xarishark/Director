@@ -1,4 +1,6 @@
-//! Alternative live setup view. It never reads or writes preset documents.
+//! Now: what's active right now. Display and FPS edits are staged and applied together;
+//! sound changes (output, volume, mute, microphone) apply as soon as they're made. It never
+//! reads or writes saved scenes or presets.
 use crate::{
     DirectorApp, Message,
     display_editor_ui::EditorTarget,
@@ -6,7 +8,8 @@ use crate::{
     work,
 };
 use director::{
-    audio::{self, AudioBackend, Output, Request},
+    audio::{AudioBackend, Output},
+    audio_control::{self, Level, MuteChange},
     display_apply,
     display_editor::{Editor, Options},
     displays::{Layout, Preset},
@@ -16,19 +19,36 @@ use director::{
 };
 use windows_reactor::*;
 type Displays = Result<(Layout, Vec<Options>), String>;
+/// Audio outputs and inputs.
+type Devices = Result<(Vec<Output>, Vec<Output>), String>;
+/// How long a volume slider must rest before the level is sent to Windows.
+const SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
+/// A live sound change, applied right away.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SoundChange {
+    Use { input: bool },
+    Volume { input: bool, percent: u8 },
+    ToggleMute { input: bool },
+}
 #[derive(Clone)]
 pub(crate) enum CurrentMessage {
     Load,
-    Loaded(Displays, Result<Vec<Output>, String>),
+    Loaded(Displays, Devices),
     Display(DisplayMessage),
     ApplyDisplays,
-    DisplaysApplied(display_apply::Report, Displays, Result<Vec<Output>, String>),
-    Output(Option<usize>),
-    Volume(Option<f64>),
-    ApplyAudio,
-    AudioApplied(audio::Report, Result<Vec<Output>, String>),
-    /// Open a new Library preset from what Now has staged.
+    DisplaysApplied(display_apply::Report, Displays, Devices),
+    /// Pick the default output (false) or microphone (true).
+    Device(bool, Option<usize>),
+    /// A volume slider moved, for the output (false) or microphone (true).
+    Volume(bool, f64),
+    /// A slider has rested since change u64; send its level if nothing newer came in.
+    VolumeSettled(bool, u64),
+    ToggleMute(bool),
+    /// A live sound change finished, with the devices read afterwards.
+    SoundDone(Result<String, String>, Devices),
+    /// Open a new display preset from what Now has staged.
     SaveDisplays,
+    /// Open a new scene whose Sound step holds the current output and volume.
     SaveAudio,
 }
 #[derive(Default)]
@@ -36,15 +56,22 @@ pub(crate) struct CurrentState {
     pub display: DisplayState,
     baseline: Option<Layout>,
     outputs: Vec<Output>,
-    output_id: String,
+    inputs: Vec<Output>,
+    /// The slider positions, which lead the device while a change settles.
     volume: Option<f64>,
-    volume_dirty: bool,
-    audio_dirty: bool,
+    mic_volume: Option<f64>,
+    /// Bumped on every slider move, so only the last move of a drag is sent.
+    volume_token: u64,
+    mic_token: u64,
+    /// A live sound change is running.
+    sound_pending: bool,
+    /// The slider tokens when that change started; a slider moved since then keeps its place.
+    tokens_at_start: (u64, u64),
     pub(crate) fps_dirty: bool,
 }
 impl CurrentState {
     pub fn dirty(&self) -> bool {
-        self.audio_dirty || self.fps_dirty || self.display_dirty()
+        self.fps_dirty || self.display_dirty()
     }
     fn display_dirty(&self) -> bool {
         self.display
@@ -64,23 +91,31 @@ impl CurrentState {
             layout,
         });
     }
-    fn set_outputs(&mut self, outputs: Vec<Output>, reset: bool) {
+    /// The default output or microphone right now.
+    fn default_device(&self, input: bool) -> Option<&Output> {
+        let list = if input { &self.inputs } else { &self.outputs };
+        list.iter().find(|o| o.console && o.active)
+    }
+    /// The devices a picker offers: the connected ones, plus the default if it isn't.
+    fn shown(&self, input: bool) -> Vec<&Output> {
+        let list = if input { &self.inputs } else { &self.outputs };
+        let current = self.default_device(input).map(|d| d.id.clone());
+        list.iter()
+            .filter(|o| o.active || current.as_ref() == Some(&o.id))
+            .collect()
+    }
+    /// Take fresh device lists; the sliders follow the devices again.
+    fn set_devices(&mut self, outputs: Vec<Output>, inputs: Vec<Output>) {
         self.outputs = outputs;
-        if reset {
-            self.output_id = self
-                .outputs
-                .iter()
-                .find(|o| o.console && o.active)
-                .map_or(String::new(), |o| o.id.clone());
-            self.volume = self
-                .outputs
-                .iter()
-                .find(|o| o.id == self.output_id)
-                .and_then(|o| o.volume_percent)
-                .map(f64::from);
-            self.audio_dirty = false;
-            self.volume_dirty = false;
-        }
+        self.inputs = inputs;
+        self.volume = self
+            .default_device(false)
+            .and_then(|o| o.volume_percent)
+            .map(f64::from);
+        self.mic_volume = self
+            .default_device(true)
+            .and_then(|o| o.volume_percent)
+            .map(f64::from);
     }
 }
 fn msg(value: CurrentMessage) -> Message {
@@ -91,10 +126,47 @@ fn read_displays() -> Displays {
     let options = windows_display_modes::discover(&layout)?;
     Ok((layout, options))
 }
-fn outputs() -> Result<Vec<Output>, String> {
-    WindowsAudio::new()?.outputs()
+fn devices() -> Devices {
+    let mut audio = WindowsAudio::new()?;
+    Ok((audio.outputs()?, audio.inputs()?))
 }
 impl DirectorApp {
+    /// Run one live sound change in the background, then reread the devices.
+    fn sound_change(
+        &mut self,
+        change: SoundChange,
+        target: Option<String>,
+        cx: &ComponentContext<Self>,
+    ) {
+        if !self.guard_ready || self.current.sound_pending {
+            return;
+        }
+        let state = &mut self.current;
+        state.sound_pending = true;
+        state.tokens_at_start = (state.volume_token, state.mic_token);
+        crate::close_guard::set_busy(true);
+        work(cx, move || {
+            let result = (|| {
+                let _lock = OperationLock::acquire()?;
+                let mut audio = WindowsAudio::new()?;
+                match change {
+                    SoundChange::Use { input } => audio_control::use_device(
+                        &mut audio,
+                        target.as_deref().unwrap_or_default(),
+                        input,
+                        &[],
+                    ),
+                    SoundChange::Volume { input, percent } => {
+                        audio_control::set_volume(&mut audio, None, input, Level::Absolute(percent))
+                    }
+                    SoundChange::ToggleMute { input } => {
+                        audio_control::set_mute(&mut audio, None, input, MuteChange::Toggle)
+                    }
+                }
+            })();
+            msg(CurrentMessage::SoundDone(result, devices()))
+        });
+    }
     pub(crate) fn load_current(&mut self, cx: &ComponentContext<Self>) {
         if self.busy {
             return;
@@ -110,7 +182,7 @@ impl DirectorApp {
         self.update_fps(crate::fps_ui::FpsMessage::Discover, cx);
         self.begin("Reading your current setup…");
         work(cx, || {
-            msg(CurrentMessage::Loaded(read_displays(), outputs()))
+            msg(CurrentMessage::Loaded(read_displays(), devices()))
         });
     }
     pub(crate) fn update_current(&mut self, event: CurrentMessage, cx: &ComponentContext<Self>) {
@@ -128,9 +200,9 @@ impl DirectorApp {
                     }
                 }
                 match audio {
-                    Ok(list) => self.current.set_outputs(list, true),
+                    Ok((outputs, inputs)) => self.current.set_devices(outputs, inputs),
                     Err(e) => {
-                        self.current.set_outputs(vec![], true);
+                        self.current.set_devices(vec![], vec![]);
                         errors.push(e);
                     }
                 }
@@ -203,7 +275,7 @@ impl DirectorApp {
                         msg(CurrentMessage::DisplaysApplied(
                             report,
                             read_displays(),
-                            outputs(),
+                            devices(),
                         ))
                     });
                 }
@@ -227,91 +299,93 @@ Could not read the resulting display state: {e}"
                     }
                 }
                 match audio {
-                    Ok(list) => {
-                        let reset = !self.current.audio_dirty;
-                        self.current.set_outputs(list, reset)
-                    }
+                    Ok((outputs, inputs)) => self.current.set_devices(outputs, inputs),
                     Err(e) => self.details.push_str(&format!(
                         "
 Could not read audio outputs: {e}"
                     )),
                 }
             }
-            CurrentMessage::Output(Some(index)) if !self.busy => {
-                if let Some(output) = self.current.outputs.get(index)
-                    && output.id != self.current.output_id
+            CurrentMessage::Device(input, Some(index)) if !self.busy => {
+                if let Some(device) = self.current.shown(input).get(index)
+                    && self.current.default_device(input).map(|d| &d.id) != Some(&device.id)
                 {
-                    self.current.output_id = output.id.clone();
-                    self.current.volume = output.volume_percent.map(f64::from);
-                    self.current.volume_dirty = false;
-                    self.current.audio_dirty = true;
+                    let id = device.id.clone();
+                    self.sound_change(SoundChange::Use { input }, Some(id), cx);
                 }
             }
-            CurrentMessage::Volume(value) if !self.busy && value != self.current.volume => {
-                self.current.volume = value;
-                self.current.volume_dirty = true;
-                self.current.audio_dirty = true;
-            }
-            CurrentMessage::ApplyAudio if !self.busy && self.guard_ready => {
-                let active = self
-                    .current
-                    .outputs
-                    .iter()
-                    .any(|o| o.id == self.current.output_id && o.active);
-                let volume = if self.current.volume_dirty {
-                    match self.current.volume {
-                        Some(v) if v.is_finite() && (0.0..=100.0).contains(&v) => {
-                            Some(v.round() as u8)
-                        }
-                        _ => {
-                            self.failure("Choose a volume between 0 and 100%.".into());
-                            return;
-                        }
-                    }
+            CurrentMessage::Volume(input, value) if !self.busy && value.is_finite() => {
+                let state = &mut self.current;
+                let (slider, token) = if input {
+                    (&mut state.mic_volume, &mut state.mic_token)
                 } else {
-                    None
+                    (&mut state.volume, &mut state.volume_token)
                 };
-                if !active {
-                    self.failure("Choose an available audio output.".into());
+                // Re-rendering moves the slider to the device level too; that isn't an edit.
+                // Without a device level (still loading, or no device) there's nothing to change.
+                if slider.is_none_or(|old| (old - value).abs() < 0.5) {
                     return;
                 }
-                let request = Request {
-                    communications_output_id: None,
-                    input: None,
-                    output_id: self.current.output_id.clone(),
-                    volume_percent: volume,
-                };
-                self.begin("Applying audio changes…");
+                *slider = Some(value);
+                *token = token.wrapping_add(1);
+                let token = *token;
                 work(cx, move || {
-                    let result = (|| {
-                        let _lock = OperationLock::acquire()?;
-                        let mut backend = WindowsAudio::new()?;
-                        Ok::<_, String>(audio::apply(
-                            &mut backend,
-                            &request,
-                            director::preferences::current().audio_policy(),
-                            |_| {},
-                        ))
-                    })();
-                    let report = result.unwrap_or_else(|e| audio::Report {
-                        outcome: audio::Outcome::PreflightFailed,
-                        message: "No audio changes made.".into(),
-                        details: vec![e],
-                    });
-                    msg(CurrentMessage::AudioApplied(report, outputs()))
+                    std::thread::sleep(SETTLE);
+                    msg(CurrentMessage::VolumeSettled(input, token))
                 });
             }
-            CurrentMessage::AudioApplied(report, audio) => {
-                self.end();
-                self.error = !report.succeeded();
-                self.status = report.message;
-                self.details = report.details.join("\n");
-                self.announce(cx);
-                match audio {
-                    Ok(list) => self.current.set_outputs(list, true),
+            CurrentMessage::VolumeSettled(input, token) => {
+                let state = &self.current;
+                let (latest, value) = if input {
+                    (state.mic_token, state.mic_volume)
+                } else {
+                    (state.volume_token, state.volume)
+                };
+                if token != latest {
+                    return;
+                }
+                if self.busy || state.sound_pending {
+                    // Try again once the running change has finished.
+                    work(cx, move || {
+                        std::thread::sleep(SETTLE);
+                        msg(CurrentMessage::VolumeSettled(input, token))
+                    });
+                    return;
+                }
+                if let Some(value) = value {
+                    let percent = value.round().clamp(0.0, 100.0) as u8;
+                    self.sound_change(SoundChange::Volume { input, percent }, None, cx);
+                }
+            }
+            CurrentMessage::ToggleMute(input) if !self.busy && !self.current.sound_pending => {
+                self.sound_change(SoundChange::ToggleMute { input }, None, cx);
+            }
+            CurrentMessage::SoundDone(result, devices) => {
+                self.current.sound_pending = false;
+                crate::close_guard::set_busy(false);
+                match &result {
+                    Ok(message) => {
+                        self.error = false;
+                        self.status = message.clone();
+                        self.details.clear();
+                    }
                     Err(e) => {
                         self.error = true;
-                        self.details.push_str(&e)
+                        self.status = "Could not change the sound.".into();
+                        self.details = e.clone();
+                    }
+                }
+                if let Ok((outputs, inputs)) = devices {
+                    // Keep a slider that moved again while this change ran where it is.
+                    let (volume, mic) = (self.current.volume, self.current.mic_volume);
+                    self.current.set_devices(outputs, inputs);
+                    let state = &mut self.current;
+                    let (output_at_start, mic_at_start) = state.tokens_at_start;
+                    if state.volume_token != output_at_start {
+                        state.volume = volume.or(state.volume);
+                    }
+                    if state.mic_token != mic_at_start {
+                        state.mic_volume = mic.or(state.mic_volume);
                     }
                 }
             }
@@ -330,19 +404,117 @@ Could not read audio outputs: {e}"
                     );
                 }
             }
-            CurrentMessage::SaveAudio if !self.busy && !self.current.output_id.is_empty() => {
-                let seed = crate::library_flow::AudioSeed {
-                    output_id: self.current.output_id.clone(),
-                    volume: self.current.volume,
-                    set_volume: self.current.volume_dirty,
+            CurrentMessage::SaveAudio if !self.busy => {
+                let Some(output) = self.current.default_device(false) else {
+                    return;
                 };
+                let mut scene = director::scenes::Scene::new(crate::scene_ui::new_id(), "");
+                scene.sound = Some(director::scenes::Sound {
+                    output: Some(director::scenes::SoundOutput::Device {
+                        id: output.id.clone(),
+                        name: output.name.clone(),
+                    }),
+                    volume: self
+                        .current
+                        .volume
+                        .filter(|v| v.is_finite())
+                        .map(|v| v.round().clamp(0.0, 100.0) as u8),
+                    ..Default::default()
+                });
                 self.update_library(
-                    crate::library_flow::LibraryMessage::NewAudio(Some(seed)),
+                    crate::library_flow::LibraryMessage::NewScene(Box::new(scene)),
                     cx,
                 );
             }
             _ => {}
         }
+    }
+    /// The output (false) or microphone (true): device picker, mute button and volume slider.
+    fn sound_row(&self, cx: &ViewContext<Self>, input: bool) -> View {
+        let state = &self.current;
+        let current = state.default_device(input);
+        let available = !self.busy && !state.sound_pending && self.guard_ready;
+        let muted = current.and_then(|d| d.muted) == Some(true);
+        let volume = if input {
+            state.mic_volume
+        } else {
+            state.volume
+        };
+        let kind = if input { "microphone" } else { "output" };
+        let devices = state.shown(input);
+        StackPanel::new().spacing(8.0).children((
+            ComboBox::new()
+                .automation_name(if input {
+                    "Default microphone"
+                } else {
+                    "Default audio output"
+                })
+                .horizontal_alignment(HorizontalAlignment::Stretch)
+                .items_source(devices.iter().map(|o| o.name.clone()).collect::<Vec<_>>())
+                .selected_index(current.and_then(|c| devices.iter().position(|o| o.id == c.id)))
+                .placeholder_text(if input {
+                    "No microphone"
+                } else {
+                    "No audio output"
+                })
+                .is_enabled(available)
+                .on_selection_changed(cx.callback(move |i: Option<usize>| {
+                    // The index is into the connected devices shown, not the full list.
+                    msg(CurrentMessage::Device(input, i))
+                }))
+                .slot(
+                    ComboBoxSlot::Header,
+                    if input { "Microphone" } else { "Output" },
+                ),
+            Grid::new()
+                .columns([
+                    GridLength::Auto,
+                    GridLength::Star(1.0),
+                    GridLength::Pixel(44.0),
+                ])
+                .column_spacing(12.0)
+                .children((
+                    Button::new()
+                        .automation_name(format!(
+                            "{} {kind}",
+                            if muted { "Unmute" } else { "Mute" }
+                        ))
+                        .is_enabled(available && current.is_some_and(|c| c.muted.is_some()))
+                        .on_click(cx.message(msg(CurrentMessage::ToggleMute(input))))
+                        .content(
+                            StackPanel::new()
+                                .orientation(Orientation::Horizontal)
+                                .spacing(8.0)
+                                .children((
+                                    FontIcon::new().glyph(match (input, muted) {
+                                        (false, false) => "\u{e767}",
+                                        (false, true) => "\u{e74f}",
+                                        (true, _) => "\u{e720}",
+                                    }),
+                                    TextBlock::new().text(if muted { "Muted" } else { "On" }),
+                                )),
+                        ),
+                    Slider::new()
+                        .grid_column(1)
+                        .automation_name(format!(
+                            "{} volume",
+                            if input { "Microphone" } else { "Output" }
+                        ))
+                        .minimum(0.0)
+                        .maximum(100.0)
+                        .step_frequency(1.0)
+                        .value(volume.unwrap_or(0.0))
+                        .is_enabled(!self.busy && self.guard_ready && volume.is_some())
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .on_value_changed(
+                            cx.callback(move |v: f64| msg(CurrentMessage::Volume(input, v))),
+                        ),
+                    TextBlock::new()
+                        .grid_column(2)
+                        .text(volume.map_or(String::new(), |v| format!("{}%", v.round())))
+                        .vertical_alignment(VerticalAlignment::Center),
+                )),
+        ))
     }
     pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
         let displays = if let (Some(draft), Some(editor)) =
@@ -383,37 +555,30 @@ Could not read audio outputs: {e}"
                 .text_wrapping(TextWrapping::Wrap)
                 .into()
         };
-        let selected = self
-            .current
-            .outputs
-            .iter()
-            .position(|o| o.id == self.current.output_id);
-        let active = selected.is_some_and(|i| self.current.outputs[i].active);
-        let audio=StackPanel::new().spacing(12.0).children((
-            TextBlock::new().text("Audio").font_size(24.0).font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new().text("Change the default output and its volume. All three output roles follow the chosen output. Microphone settings stay unchanged.").text_wrapping(TextWrapping::Wrap).opacity(0.72),
-            ComboBox::new().automation_name("Current audio output").horizontal_alignment(HorizontalAlignment::Stretch)
-                .items_source(self.current.outputs.iter().map(|o|format!("{}{}",o.name,if o.active{""}else{" — unavailable"})))
-                .selected_index(selected).is_enabled(!self.busy).placeholder_text("Choose an audio output")
-                .on_selection_changed(cx.callback(|i|msg(CurrentMessage::Output(i)))).slot(ComboBoxSlot::Header,"Output device"),
-            NumberBox::new().automation_name("Current output volume").minimum(0.0).maximum(100.0).value(self.current.volume).is_enabled(!self.busy&&active)
-                .on_value_changed(cx.callback(|v|msg(CurrentMessage::Volume(v)))).slot(NumberBoxSlot::Header,"Volume (%)"),
-            StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
-                Button::new().style(ButtonStyle::Accent).automation_name("Apply current audio changes")
-                    .is_enabled(!self.busy&&self.guard_ready&&self.current.audio_dirty&&active)
-                    .on_click(cx.message(msg(CurrentMessage::ApplyAudio))).content("Apply audio changes"),
-                Button::new().automation_name("Save this audio as a preset")
-                    .is_enabled(!self.busy&&selected.is_some())
-                    .on_click(cx.message(msg(CurrentMessage::SaveAudio))).content("Save as audio preset…")
-                    .tooltip("Open a new audio preset with this output and volume"),
-            )),
+        let audio = StackPanel::new().spacing(14.0).children((
+            TextBlock::new()
+                .text("Sound")
+                .font_size(24.0)
+                .font_weight(FontWeight::SEMI_BOLD),
+            TextBlock::new()
+                .text("Changes apply right away. The output takes all three Windows roles.")
+                .text_wrapping(TextWrapping::Wrap)
+                .opacity(0.72),
+            self.sound_row(cx, false),
+            self.sound_row(cx, true),
+            Button::new()
+                .automation_name("Save this sound as a scene")
+                .is_enabled(!self.busy && self.current.default_device(false).is_some())
+                .on_click(cx.message(msg(CurrentMessage::SaveAudio)))
+                .content("Save as scene…")
+                .tooltip("Open a new scene whose Sound step uses this output and volume"),
         ));
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
                 crate::preset_ui::header(
                     "Now",
-                    "Change what’s active right now. Nothing is saved unless you save it as a preset.",
+                    "Change what’s active right now. Nothing is saved unless you save it.",
                     vec![
                         Button::new()
                             .automation_name("Discard current setup edits")
@@ -488,6 +653,7 @@ mod tests {
             console: default,
             multimedia: default,
             volume_percent: Some(40),
+            muted: None,
         }
     }
     #[test]
@@ -521,19 +687,26 @@ mod tests {
         assert!(!state.dirty());
     }
     #[test]
-    fn audio_discovery_preserves_pending_edits_after_a_display_change() {
+    fn sliders_follow_the_default_devices_and_pickers_hide_disconnected_ones() {
         let mut state = CurrentState::default();
-        state.set_outputs(vec![output("desk", true)], true);
-        state.output_id = "tv".into();
-        state.audio_dirty = true;
-        state.volume = Some(25.0);
-        state.volume_dirty = true;
-        state.set_outputs(vec![output("desk", true), output("tv", false)], false);
-        assert_eq!(state.output_id, "tv");
-        assert_eq!(state.volume, Some(25.0));
-        assert!(state.audio_dirty && state.volume_dirty);
-        state.set_outputs(vec![output("desk", true), output("tv", false)], true);
-        assert_eq!(state.output_id, "desk");
-        assert!(!state.audio_dirty && !state.volume_dirty);
+        let mut gone = output("gone", false);
+        gone.active = false;
+        let mut mic = output("mic", true);
+        mic.volume_percent = Some(80);
+        state.set_devices(
+            vec![output("tv", false), output("desk", true), gone],
+            vec![mic],
+        );
+        assert_eq!(state.default_device(false).unwrap().id, "desk");
+        assert_eq!(state.volume, Some(40.0));
+        assert_eq!(state.mic_volume, Some(80.0));
+        let shown = state
+            .shown(false)
+            .iter()
+            .map(|o| o.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(shown, ["tv", "desk"]);
+        state.set_devices(vec![], vec![]);
+        assert!(state.default_device(false).is_none() && state.volume.is_none());
     }
 }

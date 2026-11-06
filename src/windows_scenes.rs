@@ -13,24 +13,22 @@ use std::{
 pub type Catalog = (
     Vec<scenes::Scene>,
     Vec<crate::displays::Preset>,
-    Vec<crate::presets::Preset>,
     Vec<crate::tvs::Tv>,
 );
 pub fn catalog() -> Result<Catalog, String> {
     Ok((
         scenes::load(&scenes::path()?)?,
         crate::displays::load(&crate::displays::path()?)?,
-        crate::presets::load(&crate::presets::path()?)?,
         crate::tvs::load(&crate::tvs::path()?)?,
     ))
 }
 pub fn load_plan(id: &str) -> Result<Plan, String> {
-    let (s, d, a, t) = catalog()?;
+    let (s, d, t) = catalog()?;
     let scene = s
         .iter()
         .find(|s| s.id == id)
         .ok_or("The scene was removed. Reopen Scenes.")?;
-    let mut plan = scenes::resolve(scene, &d, &a, &t)?;
+    let mut plan = scenes::resolve(scene, &d, &t)?;
     plan.policy = crate::preferences::current().scene_policy();
     for action in scene.before.iter().chain(&scene.actions) {
         if let Action::App {
@@ -100,7 +98,7 @@ pub fn run(
     let mut report = scenes::apply(backend, plan, cancel, |step| {
         if step.starts_with("Preparing TV")
             || step.starts_with("Applying displays")
-            || step.starts_with("Waiting for audio devices")
+            || step.starts_with("Waiting for sound devices")
             || step.starts_with("Applying FPS limit")
             || plan
                 .scene
@@ -175,6 +173,7 @@ pub struct WindowsScene<F: FnMut(&crate::displays::Preset) -> bool> {
     displays: WindowsDisplays,
     audio: Option<WindowsAudio>,
     levels: Vec<(String, f32)>,
+    mutes: Vec<(String, bool)>,
     display_attempted: bool,
     tv_attempted: bool,
     audio_attempted: bool,
@@ -188,6 +187,7 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> WindowsScene<F> {
             displays: WindowsDisplays::default(),
             audio: None,
             levels: vec![],
+            mutes: vec![],
             display_attempted: false,
             tv_attempted: false,
             audio_attempted: false,
@@ -195,6 +195,71 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> WindowsScene<F> {
             fps_attempted: false,
             confirm,
         }
+    }
+}
+/// The devices whose volume or mute a Sound step changes, as (input, resolved id, volume,
+/// mute). No output means the current default output.
+fn level_targets(
+    audio: &mut WindowsAudio,
+    request: &audio::Request,
+) -> Result<Vec<(bool, String, bool, bool)>, String> {
+    let mut targets = vec![];
+    if request.volume_percent.is_some() || request.mute.is_some() {
+        audio.outputs()?;
+        let id = match &request.output_id {
+            Some(id) => audio.resolve_id(id, false),
+            None => audio.default_output(Role::Console)?,
+        };
+        targets.push((
+            false,
+            id,
+            request.volume_percent.is_some(),
+            request.mute.is_some(),
+        ));
+    }
+    if let Some(input) = &request.input
+        && (input.volume_percent.is_some() || input.mute.is_some())
+    {
+        audio.inputs()?;
+        targets.push((
+            true,
+            audio.resolve_id(&input.device_id, true),
+            input.volume_percent.is_some(),
+            input.mute.is_some(),
+        ));
+    }
+    Ok(targets)
+}
+impl<F: FnMut(&crate::displays::Preset) -> bool> WindowsScene<F> {
+    /// Remember a device's volume and mute once, before the scene changes them. A device
+    /// that isn't connected yet is skipped; it is remembered when it appears.
+    fn remember(
+        &mut self,
+        audio: &mut WindowsAudio,
+        _input: bool,
+        id: &str,
+        volume: bool,
+        mute: bool,
+    ) -> Result<(), String> {
+        if id.is_empty() {
+            return Ok(());
+        }
+        if volume
+            && !self.levels.iter().any(|(old, _)| old == id)
+            && let Ok(v) = audio.volume(id)
+        {
+            if !v.is_finite() || !(0.0..=1.0).contains(&v) {
+                return Err("Could not snapshot an audio volume.".into());
+            }
+            self.levels.push((id.to_owned(), v));
+        }
+        if mute
+            && !self.mutes.iter().any(|(old, _)| old == id)
+            && let Ok(m) = audio.mute(id)
+        {
+            self.mutes.push((id.to_owned(), m));
+        }
+        Ok(())
     }
 }
 fn paused(cancel: &AtomicBool, deadline: Instant) -> Result<(), String> {
@@ -225,40 +290,19 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
             None
         };
         let mut routes = vec![];
-        if plan.audio.is_some() || plan.display.is_some() || plan.tv.is_some() {
+        if plan.sound.is_some() || plan.display.is_some() || plan.tv.is_some() {
             let mut audio = WindowsAudio::new()?;
             for role in audio::DEFAULT_ROLES {
                 routes.push((false, role, audio.default_output(role)?));
-                if plan.audio.as_ref().is_some_and(|p| p.input.is_some()) {
+                if plan.sound.as_ref().is_some_and(|p| p.input.is_some()) {
                     routes.push((true, role, audio.default_input(role)?));
                 }
             }
-            if let Some(preset) = &plan.audio {
-                for (input, id, enabled) in
-                    [(false, &preset.output_id, preset.volume_percent.is_some())]
-                        .into_iter()
-                        .chain(
-                            preset
-                                .input
-                                .iter()
-                                .map(|i| (true, &i.id, i.volume_percent.is_some())),
-                        )
-                {
-                    if !enabled {
-                        continue;
-                    }
-                    if input {
-                        audio.inputs()?;
-                    } else {
-                        audio.outputs()?;
-                    }
-                    let id = audio.resolve_id(id, input);
-                    if let Ok(v) = audio.volume(&id) {
-                        if !v.is_finite() || !(0.0..=1.0).contains(&v) {
-                            return Err("Could not snapshot an audio volume.".into());
-                        }
-                        self.levels.push((id.to_owned(), v));
-                    }
+            if let Some(request) = &plan.sound {
+                // Devices that are connected now; one that appears later is snapshotted
+                // just before the sound stage.
+                for (input, id, volume, mute) in level_targets(&mut audio, request)? {
+                    self.remember(&mut audio, input, &id, volume, mute)?;
                 }
             }
             self.audio = Some(audio);
@@ -334,70 +378,62 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(&str),
     ) -> Result<(), String> {
-        let p = plan.audio.as_ref().ok_or("Missing audio preset.")?;
-        let audio = self.audio.as_mut().ok_or("Audio snapshot unavailable.")?;
-        let deadline = Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
-        loop {
-            if cancel.load(Ordering::Acquire) {
-                return Err("Scene canceled.".into());
-            }
-            let outputs = audio.outputs()?;
-            let inputs = if p.input.is_some() {
-                audio.inputs()?
-            } else {
-                vec![]
-            };
-            let available = |id: &str, input, devices: &[audio::Output]| {
-                let resolved = audio.resolve_id(id, input);
-                devices.iter().any(|d| d.id == resolved && d.active)
-            };
-            if available(&p.output_id, false, &outputs)
-                && p.communications_output
-                    .as_ref()
-                    .is_none_or(|d| available(&d.id, false, &outputs))
-                && p.input
-                    .as_ref()
-                    .is_none_or(|d| available(&d.id, true, &inputs))
-            {
-                break;
-            }
-            progress("Waiting for the selected audio devices to appear…");
-            paused(cancel, deadline)?;
-        }
-        for (id, enabled, input) in [(&p.output_id, p.volume_percent.is_some(), false)]
-            .into_iter()
-            .chain(
-                p.input
-                    .iter()
-                    .map(|i| (&i.id, i.volume_percent.is_some(), true)),
-            )
-        {
-            let resolved = audio.resolve_id(id, input);
-            let id = &resolved;
-            if enabled && !self.levels.iter().any(|(old, _)| old == id) {
-                let v = audio.volume(id)?;
-                if !v.is_finite() || !(0.0..=1.0).contains(&v) {
-                    return Err("Could not snapshot the device volume.".into());
+        let p = plan.sound.as_ref().ok_or("Missing Sound step.")?;
+        let mut audio = self.audio.take().ok_or("Audio snapshot unavailable.")?;
+        let result = (|| {
+            let deadline =
+                Instant::now() + Duration::from_secs(u64::from(plan.policy.wait_seconds));
+            loop {
+                if cancel.load(Ordering::Acquire) {
+                    return Err("Scene canceled.".into());
                 }
-                self.levels.push((id.to_owned(), v));
+                let outputs = audio.outputs()?;
+                let inputs = if p.input.is_some() {
+                    audio.inputs()?
+                } else {
+                    vec![]
+                };
+                let available = |id: &str, input, devices: &[audio::Output]| {
+                    let resolved = audio.resolve_id(id, input);
+                    devices.iter().any(|d| d.id == resolved && d.active)
+                };
+                if p.output_id
+                    .as_deref()
+                    .is_none_or(|id| available(id, false, &outputs))
+                    && p.communications_output_id
+                        .as_deref()
+                        .is_none_or(|id| available(id, false, &outputs))
+                    && p.input
+                        .as_ref()
+                        .is_none_or(|d| available(&d.device_id, true, &inputs))
+                {
+                    break;
+                }
+                progress("Waiting for the selected sound devices to appear…");
+                paused(cancel, deadline)?;
             }
-        }
-        self.audio_attempted = true;
-        let report = audio::apply(
-            audio,
-            &p.request(),
-            if plan.policy.keep_completed {
-                audio::FailurePolicy::KeepChanges
+            for (input, id, volume, mute) in level_targets(&mut audio, p)? {
+                self.remember(&mut audio, input, &id, volume, mute)?;
+            }
+            self.audio_attempted = true;
+            let report = audio::apply(
+                &mut audio,
+                p,
+                if plan.policy.keep_completed {
+                    audio::FailurePolicy::KeepChanges
+                } else {
+                    audio::FailurePolicy::Revert
+                },
+                progress,
+            );
+            if report.succeeded() {
+                Ok(())
             } else {
-                audio::FailurePolicy::Revert
-            },
-            progress,
-        );
-        if report.succeeded() {
-            Ok(())
-        } else {
-            Err(format!("{} {}", report.message, report.details.join("; ")))
-        }
+                Err(format!("{} {}", report.message, report.details.join("; ")))
+            }
+        })();
+        self.audio = Some(audio);
+        result
     }
     fn fps(&mut self, plan: &Plan) -> Result<(), String> {
         use crate::fps::Backend;
@@ -505,6 +541,11 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         if self.audio_attempted
             && let Some(audio) = &mut self.audio
         {
+            for (id, muted) in &self.mutes {
+                if audio.set_mute(id, *muted).is_err() || audio.mute(id).ok() != Some(*muted) {
+                    errors.push("A previous mute state could not be restored.".into());
+                }
+            }
             for (id, volume) in &self.levels {
                 if let Err(e) = audio.set_volume(id, *volume) {
                     errors.push(e)
@@ -569,14 +610,69 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
     }
 }
 pub fn cli(args: &[String]) -> Result<i32, String> {
-    match args{
- [command]if command=="list"=>{let active=crate::scene_session::active();for scene in scenes::load(&scenes::path()?)?{println!("{} — {}{}",scene.id,scene.name,if active.as_deref()==Some(scene.id.as_str()){"  (active)"}else{""});}Ok(0)},
- [command]if command=="end"=>{let _lock=crate::windows_audio::OperationLock::acquire()?;let mut backend=WindowsScene::new(|_:&crate::displays::Preset|false);let report=end(&mut backend,|s|eprintln!("{s}"));println!("{}",report.message);for detail in report.details{println!("{detail}")}Ok(if report.success{0}else{1})},
- [command,name,rest @ ..]if (command=="apply"||command=="check")&&(rest.is_empty()||rest==["--yes"]||rest==["--confirm"])=>{
- let _lock=crate::windows_audio::OperationLock::acquire()?;let all=scenes::load(&scenes::path()?)?;let scene=all.iter().find(|s|s.id==*name||s.name.eq_ignore_ascii_case(name)).ok_or("No scene with that name or ID.")?;let mut plan=if command=="check"{load_plan(&scene.id)?}else{load_run_plan(&scene.id,&scene.name,true)?};
- if let Some(p)=&mut plan.display { if rest==["--yes"]{p.confirm_changes=false;}else if rest==["--confirm"]{p.confirm_changes=true;} }
- if command=="check"{println!("Scene references and launch paths are valid. No devices changed; live TV/display/audio readiness is checked during Apply.");return Ok(0)}
- let mut backend=WindowsScene::new(|_:&crate::displays::Preset|{let(tx,rx)=std::sync::mpsc::channel();std::thread::spawn(move||{let mut line=String::new();let keep=std::io::stdin().read_line(&mut line).is_ok()&&matches!(line.trim().to_lowercase().as_str(),"yes"|"y");let _=tx.send(if keep{display_apply::Decision::Keep}else{display_apply::Decision::Revert});});eprintln!("Keep display changes? Type yes within 15 seconds.");display_apply::wait_for_confirmation(&rx,Duration::from_secs(15),|_|true)});
- let report=run(&mut backend,&plan,&AtomicBool::new(false),true,|s|eprintln!("{s}"));println!("{}",report.message);for detail in report.details{println!("{detail}")}Ok(if report.success{0}else{1})
- },_=>Err("Use director scene list | end | check <name-or-id> | apply <name-or-id> [--yes | --confirm].".into())}
+    match args {
+        [command] if command == "end" => {
+            let _lock = crate::windows_audio::OperationLock::acquire()?;
+            let mut backend = WindowsScene::new(|_: &crate::displays::Preset| false);
+            let report = end(&mut backend, |s| eprintln!("{s}"));
+            println!("{}", report.message);
+            for detail in report.details {
+                println!("{detail}")
+            }
+            Ok(if report.success { 0 } else { 1 })
+        }
+        [command, name, rest @ ..]
+            if (command == "apply" || command == "check")
+                && (rest.is_empty() || rest == ["--yes"] || rest == ["--confirm"]) =>
+        {
+            let _lock = crate::windows_audio::OperationLock::acquire()?;
+            let all = scenes::load(&scenes::path()?)?;
+            let scene = crate::cli_name::find(&all, name, |s| (&s.id, &s.name), "scene", "scene")?;
+            let mut plan = if command == "check" {
+                load_plan(&scene.id)?
+            } else {
+                load_run_plan(&scene.id, &scene.name, true)?
+            };
+            if let Some(p) = &mut plan.display {
+                if rest == ["--yes"] {
+                    p.confirm_changes = false;
+                } else if rest == ["--confirm"] {
+                    p.confirm_changes = true;
+                }
+            }
+            if command == "check" {
+                println!(
+                    "Scene references and launch paths are valid. No devices changed; live TV/display/audio readiness is checked during Apply."
+                );
+                return Ok(0);
+            }
+            let mut backend = WindowsScene::new(|_: &crate::displays::Preset| {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let mut line = String::new();
+                    let keep = std::io::stdin().read_line(&mut line).is_ok()
+                        && matches!(line.trim().to_lowercase().as_str(), "yes" | "y");
+                    let _ = tx.send(if keep {
+                        display_apply::Decision::Keep
+                    } else {
+                        display_apply::Decision::Revert
+                    });
+                });
+                eprintln!("Keep display changes? Type yes within 15 seconds.");
+                display_apply::wait_for_confirmation(&rx, Duration::from_secs(15), |_| true)
+            });
+            let report = run(&mut backend, &plan, &AtomicBool::new(false), true, |s| {
+                eprintln!("{s}")
+            });
+            println!("{}", report.message);
+            for detail in report.details {
+                println!("{detail}")
+            }
+            Ok(if report.success { 0 } else { 1 })
+        }
+        _ => Err(
+            "Use director scene list | end | check <scene> | apply <scene> [--yes | --confirm]."
+                .into(),
+        ),
+    }
 }

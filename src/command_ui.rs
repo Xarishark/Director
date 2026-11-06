@@ -7,20 +7,18 @@ use windows_reactor::*;
 pub(crate) enum Kind {
     Scene,
     Display,
-    Audio,
 }
 impl Kind {
     fn area(self) -> &'static str {
         match self {
             Self::Scene => "scene",
             Self::Display => "display",
-            Self::Audio => "audio",
         }
     }
     fn noun(self) -> &'static str {
         match self {
             Self::Scene => "scene",
-            Self::Display | Self::Audio => "preset",
+            Self::Display => "preset",
         }
     }
 }
@@ -41,28 +39,26 @@ pub(crate) enum CommandMessage {
     Closed,
 }
 
-/// Quote a name for the command line. Names can contain spaces; inner quotes are doubled
-/// so cmd, PowerShell and Stream Deck all pass the name through as one argument.
-fn quoted(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
 fn commands(t: &Target) -> Vec<(&'static str, String, String)> {
-    let mut rows = vec![
-        (
+    // The CLI name ("Desk View" is desk-view) never needs quotes. A name made only of
+    // symbols has none, so only the ID command is offered.
+    let cli = director::cli_name::cli_name(&t.name);
+    let mut rows = Vec::new();
+    if !cli.is_empty() {
+        rows.push((
             "By name",
-            format!("director {} apply {}", t.kind.area(), quoted(&t.name)),
+            format!("director {} apply {cli}", t.kind.area()),
             format!(
                 "Easy to read. Copy it again if you rename this {}.",
                 t.kind.noun()
             ),
-        ),
-        (
-            "By ID",
-            format!("director {} apply {}", t.kind.area(), t.id),
-            "Keeps working after a rename.".into(),
-        ),
-    ];
+        ));
+    }
+    rows.push((
+        "By ID",
+        format!("director {} apply {}", t.kind.area(), t.id),
+        "Keeps working after a rename.".into(),
+    ));
     if t.kind == Kind::Scene && t.can_end {
         rows.push((
             "End the active scene",
@@ -73,19 +69,20 @@ fn commands(t: &Target) -> Vec<(&'static str, String, String)> {
     rows
 }
 
-/// The borderless ">_" button shown next to a card's name.
+/// A quiet ">_" next to a card's name: plain dimmed text rather than a framed icon, so it
+/// reads as a hint, not a primary action. The subtle button still highlights on hover.
 pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> View {
     Button::new()
         .automation_name(format!("Command for {}", target.name))
         .style(ButtonStyle::Subtle)
-        .height(32.0)
         .vertical_alignment(VerticalAlignment::Center)
         .on_click(cx.callback(move |()| Message::Command(CommandMessage::Show(target.clone()))))
         .content(
-            Viewbox::new()
-                .width(16.0)
-                .height(16.0)
-                .slot(ViewboxSlot::Child, FontIcon::new().glyph("\u{e756}")),
+            TextBlock::new()
+                .text(">_")
+                .font_size(13.0)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .opacity(0.5),
         )
         .tooltip("Command for shortcuts")
 }
@@ -177,7 +174,7 @@ impl DirectorApp {
 mod tests {
     use super::*;
     #[test]
-    fn commands_quote_names_and_offer_end_only_when_it_does_something() {
+    fn commands_use_cli_names_and_offer_end_only_when_it_does_something() {
         let mut t = Target {
             kind: Kind::Scene,
             name: "TV \"Gaming\"".into(),
@@ -185,12 +182,16 @@ mod tests {
             can_end: false,
         };
         let rows = commands(&t);
-        assert_eq!(rows[0].1, r#"director scene apply "TV ""Gaming""""#);
+        assert_eq!(rows[0].1, "director scene apply tv-gaming");
         assert_eq!(rows[1].1, "director scene apply abc-1");
         assert_eq!(rows.len(), 2);
         t.can_end = true;
         assert_eq!(commands(&t).len(), 3);
-        t.kind = Kind::Audio;
+        t.kind = Kind::Display;
         assert_eq!(commands(&t).len(), 2);
+        t.name = "★".into();
+        let rows = commands(&t);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1, "director display apply abc-1");
     }
 }

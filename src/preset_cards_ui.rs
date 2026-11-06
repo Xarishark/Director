@@ -6,7 +6,6 @@ use director::{
 };
 use windows_reactor::*;
 /// Sized to the content so short cards don't end in empty space.
-pub(crate) const AUDIO_CARD_HEIGHT: f64 = 240.0;
 pub(crate) const DISPLAY_CARD_HEIGHT: f64 = 300.0;
 pub(crate) const SCENE_CARD_HEIGHT: f64 = 340.0;
 pub(crate) const TV_CARD_HEIGHT: f64 = 220.0;
@@ -308,117 +307,6 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         )
 }
 impl DirectorApp {
-    pub(crate) fn audio_preset_cards(&self, cx: &ViewContext<Self>) -> Vec<KeyedView> {
-        self.presets
-            .iter()
-            .map(|p| {
-                let apply = p.id.clone();
-                let edit = p.id.clone();
-                let delete = p.id.clone();
-                let output = self.outputs.iter().find(|o| o.id == p.output_id);
-                let body = StackPanel::new().spacing(8.0).children((
-                    TextBlock::new()
-                        .text("OUTPUT DEVICE")
-                        .font_size(10.0)
-                        .opacity(0.65),
-                    Grid::new()
-                        .columns([GridLength::Auto, GridLength::Star(1.0)])
-                        .column_spacing(12.0)
-                        .children((
-                            FontIcon::new()
-                                .glyph("\u{e767}")
-                                .vertical_alignment(VerticalAlignment::Center),
-                            TextBlock::new()
-                                .grid_column(1)
-                                .text(output.map_or(p.output_name.as_str(), |o| o.name.as_str()))
-                                .font_size(17.0)
-                                .text_wrapping(TextWrapping::Wrap),
-                        )),
-                    TextBlock::new()
-                        .text(
-                            p.volume_percent
-                                .map_or("Keep current device volume".into(), |v| {
-                                    format!("Set volume to {v}%")
-                                }),
-                        )
-                        .font_size(13.0)
-                        .opacity(0.8),
-                    TextBlock::new()
-                        .text(
-                            p.communications_output
-                                .as_ref()
-                                .map_or("Calls: main output".into(), |d| {
-                                    format!("Calls: {}", d.name)
-                                }),
-                        )
-                        .font_size(12.0)
-                        .opacity(0.8)
-                        .max_height(32.0)
-                        .text_wrapping(TextWrapping::Wrap),
-                    TextBlock::new()
-                        .text(p.input.as_ref().map_or("Microphone unchanged".into(), |d| {
-                            format!(
-                                "Microphone: {}{}",
-                                d.name,
-                                d.volume_percent
-                                    .map_or(String::new(), |v| format!(" · {v}%"))
-                            )
-                        }))
-                        .font_size(12.0)
-                        .opacity(0.8)
-                        .max_height(32.0)
-                        .text_wrapping(TextWrapping::Wrap),
-                    TextBlock::new()
-                        .text(if output.is_some_and(|o| o.active) {
-                            ""
-                        } else {
-                            "Currently unavailable · remembered device"
-                        })
-                        .font_size(12.0)
-                        .opacity(0.65)
-                        .text_wrapping(TextWrapping::Wrap),
-                ));
-                KeyedView::new(
-                    p.id.clone(),
-                    card(
-                        &p.name,
-                        crate::command_ui::command_button(
-                            cx,
-                            crate::command_ui::Target {
-                                kind: crate::command_ui::Kind::Audio,
-                                name: p.name.clone(),
-                                id: p.id.clone(),
-                                can_end: false,
-                            },
-                        ),
-                        body,
-                        vec![
-                            apply_button(
-                                Button::new()
-                                    .automation_name(format!("Apply {}", p.name))
-                                    .is_enabled(self.ready())
-                                    .on_click(cx.callback(move |()| Message::Apply(apply.clone()))),
-                                "Apply audio preset",
-                            ),
-                            card_icon_button(Button::new())
-                                .automation_name(format!("Edit {}", p.name))
-                                .is_enabled(self.ready())
-                                .on_click(cx.callback(move |()| Message::Edit(edit.clone())))
-                                .content(card_edit_icon())
-                                .tooltip("Edit audio preset"),
-                            card_icon_button(Button::new())
-                                .automation_name(format!("Delete {}", p.name))
-                                .is_enabled(self.ready())
-                                .on_click(cx.callback(move |()| Message::Delete(delete.clone())))
-                                .content(crate::icons::delete_small())
-                                .tooltip("Delete audio preset"),
-                        ],
-                        AUDIO_CARD_HEIGHT,
-                    ),
-                )
-            })
-            .collect()
-    }
     pub(crate) fn display_preset_cards(&self, cx: &ViewContext<Self>) -> Vec<KeyedView> {
         self.display
             .presets

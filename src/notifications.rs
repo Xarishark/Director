@@ -50,7 +50,7 @@ pub(crate) fn report(run: &LastRun) -> Result<(), String> {
         .as_nanos()
         .to_string();
     let directory = directory()?;
-    crate::presets::write_document(&directory.join(format!("{id}.json")), run)?;
+    crate::storage::write_document(&directory.join(format!("{id}.json")), run)?;
     let mut records = fs::read_dir(&directory)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)

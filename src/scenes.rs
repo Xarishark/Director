@@ -1,4 +1,6 @@
-//! Independent preset references and a shared, ordered scene transaction.
+//! Scenes: display preset references, inline sound/TV/FPS steps and actions, applied as one
+//! ordered transaction.
+use crate::audio::DeviceSelection;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -11,12 +13,9 @@ pub struct Scene {
     pub id: String,
     pub name: String,
     pub display: Option<String>,
-    pub audio: Option<String>,
+    /// Output, volume, mute and microphone, held in the scene itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tv_audio: Option<String>,
-    /// Volume (0–100) to set on a TV's linked audio; none keeps the current volume.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tv_audio_volume: Option<u8>,
+    pub sound: Option<Sound>,
     pub tv: Option<TvPreparation>,
     #[serde(default)]
     pub fps: Option<crate::fps::Request>,
@@ -34,6 +33,90 @@ pub struct Scene {
     legacy_keep_on_failure: Option<bool>,
     #[serde(default, rename = "wait_seconds", skip_serializing)]
     legacy_wait_seconds: Option<u16>,
+    /// Version 1–2 audio preset reference and linked TV audio. Read so old files load and
+    /// migrate into sound, never written.
+    #[serde(default, rename = "audio", skip_serializing)]
+    legacy_audio: Option<String>,
+    #[serde(default, rename = "tv_audio", skip_serializing)]
+    legacy_tv_audio: Option<String>,
+    #[serde(default, rename = "tv_audio_volume", skip_serializing)]
+    legacy_tv_audio_volume: Option<u8>,
+}
+/// A scene's Sound step. Anything left as None stays as it is.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sound {
+    /// The default output; None keeps the current one, and volume and mute apply to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<SoundOutput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mute: Option<bool>,
+    /// A separate communications (calls) output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calls: Option<DeviceSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mic: Option<Mic>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SoundOutput {
+    Device {
+        id: String,
+        name: String,
+    },
+    /// The audio output linked to a saved TV.
+    Tv {
+        id: String,
+    },
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Mic {
+    pub device: DeviceSelection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mute: Option<bool>,
+}
+impl Sound {
+    /// Whether applying this step would change anything.
+    pub fn changes_something(&self) -> bool {
+        self.output.is_some()
+            || self.volume.is_some()
+            || self.mute.is_some()
+            || self.calls.is_some()
+            || self.mic.is_some()
+    }
+    fn validate(&self) -> Result<(), String> {
+        let bad_id = |id: &str| id.is_empty() || id.len() > 512;
+        let bad_name = |name: &str| name.len() > 256;
+        if self.volume.is_some_and(|v| v > 100)
+            || self
+                .mic
+                .as_ref()
+                .is_some_and(|m| m.volume.is_some_and(|v| v > 100))
+        {
+            return Err("Sound volumes must be from 0 to 100.".into());
+        }
+        if match &self.output {
+            Some(SoundOutput::Device { id, name }) => bad_id(id) || bad_name(name),
+            Some(SoundOutput::Tv { id }) => bad_id(id),
+            None => false,
+        } || self
+            .calls
+            .as_ref()
+            .is_some_and(|d| bad_id(&d.id) || bad_name(&d.name))
+            || self
+                .mic
+                .as_ref()
+                .is_some_and(|m| bad_id(&m.device.id) || bad_name(&m.device.name))
+        {
+            return Err("Choose valid sound devices.".into());
+        }
+        Ok(())
+    }
 }
 /// How scenes behave when a step fails or waits for devices. Global, from Preferences.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,9 +283,10 @@ impl Scene {
             || [&self.before, &self.actions, &self.leave]
                 .iter()
                 .any(|l| l.len() > 32)
-            || [&self.display, &self.audio]
-                .iter()
-                .any(|v| v.as_ref().is_some_and(|s| s.is_empty() || s.len() > 200))
+            || self
+                .display
+                .as_ref()
+                .is_some_and(|s| s.is_empty() || s.len() > 200)
         {
             return Err("Give the scene a name and valid selections.".into());
         }
@@ -215,26 +299,12 @@ impl Scene {
         }) {
             return Err("Select a saved TV and input, or leave TV preparation off.".into());
         }
-        if self
-            .tv_audio_volume
-            .is_some_and(|v| v > 100 || self.tv_audio.is_none())
-        {
-            return Err("Set a TV audio volume from 0 to 100, with TV audio selected.".into());
-        }
-        if self.audio.is_some() && self.tv_audio.is_some() {
-            return Err("Choose an audio preset or linked TV audio, not both.".into());
-        }
-        if self
-            .tv_audio
-            .as_ref()
-            .is_some_and(|id| id.is_empty() || id.len() > 200)
-        {
-            return Err("Choose a saved TV audio link.".into());
+        if let Some(sound) = &self.sound {
+            sound.validate()?;
         }
         if self.tv.is_none()
             && self.display.is_none()
-            && self.audio.is_none()
-            && self.tv_audio.is_none()
+            && self.sound.is_none()
             && self.fps.is_none()
             && self.before.is_empty()
             && self.actions.is_empty()
@@ -249,24 +319,50 @@ impl Scene {
         }
         Ok(())
     }
-    /// Drop version 1 per-scene policy fields once they have been read.
-    fn normalize(&mut self) {
+    /// Drop version 1 per-scene policy fields once they have been read, and move version 1–2
+    /// audio into the Sound step. A preset that can't be found leaves an empty Sound step, so
+    /// the scene asks to be edited instead of silently losing its sound.
+    fn normalize(&mut self, presets: &[LegacyPreset]) {
         self.legacy_keep_on_failure = None;
         self.legacy_wait_seconds = None;
+        let tv = self.legacy_tv_audio.take();
+        let volume = self.legacy_tv_audio_volume.take();
+        let preset = self.legacy_audio.take();
+        if self.sound.is_some() {
+            return;
+        }
+        if let Some(id) = tv {
+            self.sound = Some(Sound {
+                output: Some(SoundOutput::Tv { id }),
+                volume,
+                ..Default::default()
+            });
+        } else if let Some(id) = preset {
+            self.sound = Some(
+                presets
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map(LegacyPreset::sound)
+                    .unwrap_or_default(),
+            );
+        }
+    }
+    fn has_legacy_audio(&self) -> bool {
+        self.legacy_audio.is_some()
     }
 }
 #[derive(Clone)]
 pub struct Plan {
     pub scene: Scene,
     pub display: Option<crate::displays::Preset>,
-    pub audio: Option<crate::presets::Preset>,
+    /// The resolved Sound step, with a TV's sound turned into its linked device.
+    pub sound: Option<crate::audio::Request>,
     pub tv: Option<crate::tvs::Tv>,
     pub policy: ScenePolicy,
 }
 pub fn resolve(
     scene: &Scene,
     displays: &[crate::displays::Preset],
-    audio: &[crate::presets::Preset],
     tvs: &[crate::tvs::Tv],
 ) -> Result<Plan, String> {
     scene.validate()?;
@@ -281,37 +377,11 @@ pub fn resolve(
                 .ok_or("The scene’s display preset is missing. Edit the scene to relink it.")
         })
         .transpose()?;
-    let mut audio = scene
-        .audio
+    let sound = scene
+        .sound
         .as_ref()
-        .map(|id| {
-            audio
-                .iter()
-                .find(|p| &p.id == id)
-                .cloned()
-                .ok_or("The scene’s audio preset is missing. Edit the scene to relink it.")
-        })
+        .map(|s| sound_request(s, tvs))
         .transpose()?;
-    if let Some(id) = &scene.tv_audio {
-        let tv = tvs
-            .iter()
-            .find(|t| &t.id == id)
-            .ok_or("The linked audio TV is missing.")?;
-        let link = tv
-            .audio
-            .as_ref()
-            .ok_or("This TV has no linked audio output. Edit its TV connection first.")?;
-        audio = Some(crate::presets::Preset {
-            id: format!("tv-audio-{}", tv.id),
-            name: format!("{} linked audio", tv.name),
-            output_id: link.id.clone(),
-            output_name: link.name.clone(),
-            volume_percent: scene.tv_audio_volume,
-            keep_changes: false,
-            communications_output: None,
-            input: None,
-        });
-    }
     let tv = scene
         .tv
         .as_ref()
@@ -337,10 +407,105 @@ pub fn resolve(
     Ok(Plan {
         scene: scene.clone(),
         display,
-        audio,
+        sound,
         tv,
         policy: ScenePolicy::default(),
     })
+}
+/// The audio request for a Sound step. A TV's sound becomes the device linked to that TV.
+pub fn sound_request(
+    sound: &Sound,
+    tvs: &[crate::tvs::Tv],
+) -> Result<crate::audio::Request, String> {
+    if !sound.changes_something() {
+        return Err("The scene's Sound step changes nothing. Edit the scene.".into());
+    }
+    let output_id = match &sound.output {
+        Some(SoundOutput::Device { id, .. }) => Some(id.clone()),
+        Some(SoundOutput::Tv { id }) => {
+            let tv = tvs
+                .iter()
+                .find(|t| &t.id == id)
+                .ok_or("The TV used for sound is missing. Edit the scene.")?;
+            let link = tv
+                .audio
+                .as_ref()
+                .ok_or("This TV has no linked audio output. Edit its TV connection first.")?;
+            Some(link.id.clone())
+        }
+        None => None,
+    };
+    Ok(crate::audio::Request {
+        output_id,
+        volume_percent: sound.volume,
+        mute: sound.mute,
+        communications_output_id: sound.calls.as_ref().map(|d| d.id.clone()),
+        input: sound.mic.as_ref().map(|m| crate::audio::InputRequest {
+            device_id: m.device.id.clone(),
+            volume_percent: m.volume,
+            mute: m.mute,
+        }),
+    })
+}
+/// An audio preset from `audio-presets.json`, which version 1–2 scenes referred to. Read
+/// only to migrate those scenes; Director no longer writes this file.
+#[derive(Deserialize)]
+struct LegacyPreset {
+    id: String,
+    output_id: String,
+    output_name: String,
+    volume_percent: Option<u8>,
+    #[serde(default)]
+    communications_output: Option<DeviceSelection>,
+    #[serde(default)]
+    input: Option<LegacyInput>,
+}
+#[derive(Deserialize)]
+struct LegacyInput {
+    id: String,
+    name: String,
+    volume_percent: Option<u8>,
+}
+impl LegacyPreset {
+    fn sound(&self) -> Sound {
+        Sound {
+            output: Some(SoundOutput::Device {
+                id: self.output_id.clone(),
+                name: self.output_name.clone(),
+            }),
+            volume: self.volume_percent,
+            mute: None,
+            calls: self.communications_output.clone(),
+            mic: self.input.as_ref().map(|i| Mic {
+                device: DeviceSelection {
+                    id: i.id.clone(),
+                    name: i.name.clone(),
+                },
+                volume: i.volume_percent,
+                mute: None,
+            }),
+        }
+    }
+}
+/// Migrate version 1–2 scenes read from somewhere other than the scene file (a backup),
+/// using the audio presets stored alongside them.
+pub(crate) fn migrate(scenes: &mut [Scene], legacy_presets: Option<serde_json::Value>) {
+    let presets: Vec<LegacyPreset> = legacy_presets
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    scenes.iter_mut().for_each(|s| s.normalize(&presets));
+}
+/// Saved audio presets next to `scenes`, for migration. Missing or unreadable means none.
+fn legacy_presets(scenes: &Path) -> Vec<LegacyPreset> {
+    #[derive(Deserialize)]
+    struct Document {
+        presets: Vec<LegacyPreset>,
+    }
+    fs::read(scenes.with_file_name("audio-presets.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Document>(&bytes).ok())
+        .map(|d| d.presets)
+        .unwrap_or_default()
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -349,7 +514,7 @@ struct Document {
     scenes: Vec<Scene>,
 }
 pub fn path() -> Result<PathBuf, String> {
-    crate::presets::settings_path("scenes.json")
+    crate::storage::settings_path("scenes.json")
 }
 pub(crate) fn validate(scenes: &[Scene]) -> Result<(), String> {
     if scenes.len() > 256 {
@@ -392,21 +557,27 @@ pub fn load(path: &Path) -> Result<Vec<Scene>, String> {
     }
     let mut doc: Document = serde_json::from_slice(&data)
         .map_err(|_| "Could not read scenes. The file was left unchanged.")?;
-    if doc.version != 1 && doc.version != VERSION {
+    if !(1..=VERSION).contains(&doc.version) {
         return Err(
             "These scenes require a newer Director version. The file was left unchanged.".into(),
         );
     }
-    doc.scenes.iter_mut().for_each(Scene::normalize);
+    let presets = if doc.scenes.iter().any(Scene::has_legacy_audio) {
+        legacy_presets(path)
+    } else {
+        Vec::new()
+    };
+    doc.scenes.iter_mut().for_each(|s| s.normalize(&presets));
     validate(&doc.scenes)?;
     Ok(doc.scenes)
 }
 pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), String> {
     validate(next)?;
+    crate::cli_name::check_new_names(expected, next, |s| (&s.id, &s.name), "scene")?;
     if load(path)? != expected {
         return Err("Scenes changed in another window. Reopen Scenes before saving.".into());
     }
-    crate::presets::write_document(
+    crate::storage::write_document(
         path,
         &Document {
             version: VERSION,
@@ -415,15 +586,18 @@ pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), Strin
     )
 }
 /// Version 2 adds Before/Leave actions, waited apps and Close actions, and drops the
-/// per-scene failure policy. Version 1 files still load.
-const VERSION: u32 = 2;
+/// per-scene failure policy. Version 3 replaces the audio preset reference and linked TV
+/// audio with the inline Sound step. Version 1 and 2 files still load and migrate.
+const VERSION: u32 = 3;
 pub fn references(kind: &str, id: &str) -> Result<Vec<String>, String> {
     Ok(load(&path()?)?
         .into_iter()
         .filter(|s| match kind {
-            "audio" => s.audio.as_deref() == Some(id),
             "display" => s.display.as_deref() == Some(id),
-            "tv" => s.tv.as_ref().is_some_and(|t| t.id == id) || s.tv_audio.as_deref() == Some(id),
+            "tv" => s.tv.as_ref().is_some_and(|t| t.id == id)
+                || s.sound.as_ref().is_some_and(
+                    |sound| matches!(&sound.output, Some(SoundOutput::Tv { id: tv }) if tv == id),
+                ),
             _ => false,
         })
         .map(|s| s.name)
@@ -500,7 +674,7 @@ pub fn apply(
             for (enabled, stage) in [
                 (plan.tv.is_some(), 0),
                 (plan.display.is_some(), 1),
-                (plan.audio.is_some(), 2),
+                (plan.sound.is_some(), 2),
                 (plan.scene.fps.is_some(), 3),
             ] {
                 if cancel.load(Ordering::Acquire) {
@@ -512,7 +686,7 @@ pub fn apply(
                 let label = [
                     "Preparing TV…",
                     "Applying displays…",
-                    "Waiting for audio devices…",
+                    "Waiting for sound devices…",
                     "Applying FPS limit…",
                 ][stage];
                 progress(label);
@@ -536,7 +710,7 @@ pub fn apply(
                 }
                 details.push(format!(
                     "{} completed.",
-                    ["TV preparation", "Displays", "Audio", "FPS limit"][stage]
+                    ["TV preparation", "Displays", "Sound", "FPS limit"][stage]
                 ));
             }
             for action in &plan.scene.actions {
@@ -648,8 +822,6 @@ mod tests {
             id: "s".into(),
             name: "TV gaming".into(),
             display: None,
-            audio: None,
-            tv_audio: None,
             tv: None,
             fps: None,
             actions: vec![Action::Uri {
@@ -734,7 +906,7 @@ mod tests {
             limit: Some(120),
             vrr_safe: false,
         });
-        let p = resolve(&s, &[], &[], &[]).unwrap();
+        let p = resolve(&s, &[], &[]).unwrap();
         let mut b = Fake {
             fail: false,
             ..Default::default()
@@ -778,7 +950,7 @@ mod tests {
     fn missing_references_fail_before_actions() {
         let mut s = scene();
         s.display = Some("gone".into());
-        assert!(resolve(&s, &[], &[], &[]).is_err());
+        assert!(resolve(&s, &[], &[]).is_err());
     }
     #[test]
     fn validation_checks_actions_and_empty_scene() {
@@ -793,7 +965,7 @@ mod tests {
     }
     #[test]
     fn actions_only_and_cancel_restore() {
-        let p = resolve(&scene(), &[], &[], &[]).unwrap();
+        let p = resolve(&scene(), &[], &[]).unwrap();
         let mut b = Fake {
             fail: false,
             ..Default::default()
@@ -806,15 +978,12 @@ mod tests {
     }
     #[test]
     fn stage_order_stops_before_launch_and_recovers() {
-        let mut p = resolve(&scene(), &[], &[], &[]).unwrap();
-        p.audio = Some(crate::presets::Preset {
-            id: "a".into(),
-            name: "a".into(),
-            output_id: "tv".into(),
-            output_name: "TV".into(),
+        let mut p = resolve(&scene(), &[], &[]).unwrap();
+        p.sound = Some(crate::audio::Request {
+            output_id: Some("tv".into()),
             volume_percent: None,
-            keep_changes: false,
-            communications_output: None,
+            mute: None,
+            communications_output_id: None,
             input: None,
         });
         p.display = Some(crate::displays::Preset {
@@ -838,24 +1007,31 @@ mod tests {
     fn linked_tv() -> crate::tvs::Tv {
         serde_json::from_value(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1],"audio":{"id":"hdmi","name":"LG HDMI"}})).unwrap()
     }
+    fn tv_sound(volume: Option<u8>) -> Sound {
+        Sound {
+            output: Some(SoundOutput::Tv { id: "tv".into() }),
+            volume,
+            ..Default::default()
+        }
+    }
     #[test]
     fn tv_link_resolves_without_preparation_or_duplicated_preset() {
         let mut s = scene();
         s.actions.clear();
-        s.tv_audio = Some("tv".into());
+        s.sound = Some(tv_sound(None));
         let t = linked_tv();
-        let p = resolve(&s, &[], &[], std::slice::from_ref(&t)).unwrap();
+        let p = resolve(&s, &[], std::slice::from_ref(&t)).unwrap();
         assert!(p.tv.is_none());
-        let audio = p.audio.unwrap();
-        assert_eq!(audio.output_id, "hdmi");
+        let audio = p.sound.unwrap();
+        assert_eq!(audio.output_id.as_deref(), Some("hdmi"));
         assert!(
             audio.volume_percent.is_none()
                 && audio.input.is_none()
-                && audio.communications_output.is_none()
+                && audio.communications_output_id.is_none()
         );
         let mut missing = t;
         missing.audio = None;
-        assert!(resolve(&s, &[], &[], &[missing]).is_err());
+        assert!(resolve(&s, &[], &[missing]).is_err());
     }
     #[test]
     fn full_stage_order_and_cancel_after_display() {
@@ -866,8 +1042,8 @@ mod tests {
             wake: false,
             input: None,
         });
-        s.tv_audio = Some("tv".into());
-        let mut p = resolve(&s, &[], &[], &[linked_tv()]).unwrap();
+        s.sound = Some(tv_sound(None));
+        let mut p = resolve(&s, &[], &[linked_tv()]).unwrap();
         p.display = Some(crate::displays::Preset {
             id: "d".into(),
             name: "d".into(),
@@ -901,9 +1077,19 @@ mod tests {
         second.id = "second".into();
         assert!(save(&path, &[], &[scene(), second]).is_err());
         let mut s = scene();
-        s.audio = Some("preset".into());
-        s.tv_audio = Some("tv".into());
+        s.sound = Some(Sound {
+            volume: Some(101),
+            ..Default::default()
+        });
         assert!(s.validate().is_err());
+        s.sound = Some(Sound::default());
+        assert!(s.validate().is_ok());
+        assert!(
+            resolve(&s, &[], &[])
+                .err()
+                .unwrap()
+                .contains("changes nothing")
+        );
     }
     fn run(path: &str) -> Action {
         Action::App {
@@ -922,7 +1108,7 @@ mod tests {
             limit: Some(120),
             vrr_safe: false,
         });
-        let p = resolve(&s, &[], &[], &[]).unwrap();
+        let p = resolve(&s, &[], &[]).unwrap();
         let mut b = Fake::default();
         assert!(apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "run", "fps", "launch"]);
@@ -952,7 +1138,7 @@ mod tests {
         assert_eq!(warnings.len(), 1);
     }
     #[test]
-    fn version_one_files_load_and_save_as_version_two_without_policy_fields() {
+    fn version_one_files_load_and_save_as_the_current_version_without_policy_fields() {
         let path =
             std::env::temp_dir().join(format!("director-scenes-v1-{}.json", std::process::id()));
         let v1 = serde_json::json!({"version":1,"scenes":[{"id":"s","name":"Desk","display":null,"audio":null,"tv":null,"actions":[{"kind":"uri","target":"steam://close/bigpicture"}],"keep_on_failure":true,"wait_seconds":45}]});
@@ -961,7 +1147,7 @@ mod tests {
         assert_eq!(loaded[0].legacy_keep_on_failure, None);
         save(&path, &loaded, &loaded).unwrap();
         let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(written["version"], 2);
+        assert_eq!(written["version"], 3);
         let scene = &written["scenes"][0];
         assert!(scene.get("keep_on_failure").is_none() && scene.get("wait_seconds").is_none());
         assert_eq!(load(&path).unwrap(), loaded);
@@ -978,13 +1164,51 @@ mod tests {
     #[test]
     fn linked_tv_audio_volume_reaches_the_audio_request() {
         let mut s = scene();
-        s.tv_audio = Some("tv".into());
-        s.tv_audio_volume = Some(35);
-        let tv = serde_json::from_value::<crate::tvs::Tv>(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1],"audio":{"id":"hdmi","name":"LG HDMI"}})).unwrap();
-        let plan = resolve(&s, &[], &[], &[tv]).unwrap();
-        assert_eq!(plan.audio.unwrap().volume_percent, Some(35));
-        s.tv_audio = None;
-        assert!(s.validate().is_err());
+        s.sound = Some(Sound {
+            mute: Some(false),
+            ..tv_sound(Some(35))
+        });
+        let plan = resolve(&s, &[], &[linked_tv()]).unwrap();
+        let request = plan.sound.unwrap();
+        assert_eq!(request.volume_percent, Some(35));
+        assert_eq!(request.mute, Some(false));
+    }
+    #[test]
+    fn version_two_audio_presets_and_tv_audio_migrate_into_sound() {
+        let dir =
+            std::env::temp_dir().join(format!("director-scene-migrate-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("scenes.json");
+        fs::write(
+            dir.join("audio-presets.json"),
+            serde_json::to_vec(&serde_json::json!({"version":1,"presets":[{"id":"p","name":"Desk sound","output_id":"soundbar","output_name":"SOUNDBAR","volume_percent":10,"keep_changes":false,"input":{"id":"mic","name":"Mic","volume_percent":80}}]})).unwrap(),
+        )
+        .unwrap();
+        let v2 = serde_json::json!({"version":2,"scenes":[
+            {"id":"a","name":"Desk","display":null,"audio":"p","tv":null,"actions":[]},
+            {"id":"b","name":"Couch","display":null,"audio":null,"tv_audio":"tv","tv_audio_volume":30,"tv":null,"actions":[]},
+            {"id":"c","name":"Lost","display":null,"audio":"gone","tv":null,"actions":[]}
+        ]});
+        fs::write(&path, serde_json::to_vec(&v2).unwrap()).unwrap();
+        let loaded = load(&path).unwrap();
+        let desk = loaded[0].sound.as_ref().unwrap();
+        assert_eq!(
+            desk.output,
+            Some(SoundOutput::Device {
+                id: "soundbar".into(),
+                name: "SOUNDBAR".into()
+            })
+        );
+        assert_eq!(desk.volume, Some(10));
+        assert_eq!(desk.mic.as_ref().unwrap().volume, Some(80));
+        assert_eq!(loaded[1].sound, Some(tv_sound(Some(30))));
+        assert_eq!(loaded[2].sound, Some(Sound::default()));
+        save(&path, &loaded, &loaded).unwrap();
+        let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(written["version"], 3);
+        assert!(written["scenes"][0].get("audio").is_none());
+        assert_eq!(load(&path).unwrap(), loaded);
+        let _ = fs::remove_dir_all(dir);
     }
     #[test]
     fn leaving_turns_the_tv_off_after_the_leave_actions() {

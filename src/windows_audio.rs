@@ -126,6 +126,7 @@ impl WindowsAudio {
                 } else {
                     None
                 };
+                let muted = if active { self.mute(&id).ok() } else { None };
                 output.push(Output {
                     communications: communications.as_deref() == Some(&id),
                     console: console.as_deref() == Some(&id),
@@ -134,6 +135,7 @@ impl WindowsAudio {
                     name,
                     active,
                     volume_percent,
+                    muted,
                     state: match state.0 {
                         1 => "Available",
                         2 => "Disabled",
@@ -290,6 +292,14 @@ impl AudioBackend for WindowsAudio {
                 .SetMasterVolumeLevelScalar(scalar, &GUID::zeroed())
         }
         .map_err(context)
+    }
+    fn mute(&mut self, id: &str) -> Result<bool> {
+        unsafe { self.endpoint_volume(id)?.GetMute() }
+            .map(|muted| muted.as_bool())
+            .map_err(context)
+    }
+    fn set_mute(&mut self, id: &str, muted: bool) -> Result<()> {
+        unsafe { self.endpoint_volume(id)?.SetMute(muted, &GUID::zeroed()) }.map_err(context)
     }
 }
 

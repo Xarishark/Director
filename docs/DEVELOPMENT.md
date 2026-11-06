@@ -23,33 +23,30 @@ Open target/release/director.exe after a release build. Keep the generated direc
 
 ```text
 director --help
-director audio presets
-director audio apply "Desk"
-director audio list
+director list
+director audio status
 director audio list --json
 director audio check
-director audio apply "<endpoint-id>"
-director audio apply "<endpoint-id>" --volume 40
-director audio apply "<endpoint-id>" --keep-on-failure
+director audio use soundbar-stage-v2
+director audio volume +5
+director audio volume --mic 80
+director audio mute toggle
 ```
 
-- list reads endpoint availability and current normal-audio assignments; check additionally checks policy-interface availability. Neither changes audio.
-- presets lists saved presets. apply resolves a name ignoring case, or an exact Windows endpoint ID beginning with {. It rejects unavailable targets and changes Console and Multimedia together.
-- Named presets use their saved optional volume and failure policy. --volume overrides volume for one invocation and accepts integers 0 through 100. Omitted volume leaves the target volume unchanged.
-- --keep-on-failure selects keep-changes behavior. Otherwise a named preset uses its saved policy; raw endpoint requests default to reverting.
-- Exit 0 means success, including an already-matching configuration; 1 means application failed; 2 means argument, access, or initialization error.
+- list, outputs, inputs, status and check read Windows audio and change nothing; check also checks the default-device policy interface.
+- use, volume and mute change one thing at once: the device named by CLI name or endpoint ID, or the current default when the device is left out. `--mic` targets the microphone. Each change is verified and put back when Windows does not confirm it.
+- Exit 0 means success, including a change that was already in place; 2 means an argument, access or device error.
 
-Readback verifies Windows settings, not audible playback. Applications explicitly bound to a device can retain it. Director preserves mute and does not change per-application routing or explicitly modify Communications.
-
+Readback verifies Windows settings, not audible playback. Applications explicitly bound to a device can retain it. Director does not change per-application routing. Saved sound belongs to a scene's Sound step; see [Sound](AUDIO.md).
 ## Backend, worker, and storage
 
 Core Audio enumeration/default reads and endpoint volume use direct Windows APIs. Default switching uses the undocumented PolicyConfig interface isolated in src/windows_audio.rs. Interface failure is reported without invoking a helper executable.
 
-Reactor background jobs perform storage and audio work. COM objects are created and released in their worker context; only plain Rust data crosses into UI messages. The UI does not synchronously wait or poll hardware. GUI requests are serialized; a local-session named mutex also protects Apply and preset-file writes across processes. A native window subclass defers normal closure while work is pending. Native calls cannot safely be forcibly canceled; forced-termination recovery is not implemented.
+Reactor background jobs perform storage and audio work. COM objects are created and released in their worker context; only plain Rust data crosses into UI messages. The UI does not synchronously wait or poll hardware. GUI requests are serialized; a local-session named mutex also protects Apply and preset-file writes across processes. A native window subclass defers normal closure while work is pending. Native calls cannot safely be forcibly canceled; forced-termination recovery is not implemented. Settings files are located and written atomically by `src/storage.rs`.
 
-Presets use schema version 1 at %LOCALAPPDATA%\Director\audio-presets.json. SHGetKnownFolderPath resolves the real Windows Local AppData folder, including redirection; errors do not fall back to arbitrary folders. Each preset stores a stable internal ID, editable unique name, endpoint ID and label, optional volume, and failure policy. Names must be nonblank, unique ignoring case, and at most 160 UTF-8 bytes. The picker remembers devices that Director has seen. See [Audio](AUDIO.md) for identity matching and relinking.
+Settings live in %LOCALAPPDATA%\Director. SHGetKnownFolderPath resolves the real Windows Local AppData folder, including redirection; errors do not fall back to arbitrary folders. Audio presets (`audio-presets.json`) are retired: Director reads that file only to migrate version 1–2 scenes. Director remembers the audio devices it has seen in `audio-devices.json`. See [Audio](AUDIO.md) for identity matching and relinking.
 
-Saving validates the document, checks the current on-disk list matches the window snapshot under the mutex, flushes a temporary file, and replaces the original with MoveFileExW replace-existing/write-through. Stale writers must refresh. Corrupt/unsupported files are preserved and reported. Atomic replacement is not a permanent recovery journal or a power-loss guarantee. Saving, cancellation, and deletion never apply audio.
+Saving validates the document, checks the current on-disk list matches the window snapshot under the mutex, flushes a temporary file, and replaces the original with MoveFileExW replace-existing/write-through. Stale writers must refresh. Corrupt/unsupported files are preserved and reported. Atomic replacement is not a permanent recovery journal or a power-loss guarantee. Saving, cancellation, and deletion never change a device.
 
 ## Artwork and validation
 
@@ -70,7 +67,7 @@ Native UI Automation: query an open ComboBox's own descendants with a name/type 
 
 ## TV setup checks
 
-See [TVs](TVS.md) for the setup flow and `director tv list`, `director tv pair <name>`, and `director tv check <name>`. TV commands are dispatched before Windows audio initialization and do not create the WinUI window. Add/edit/remove definitions in the native TVs view. Pairing is explicit, prompts on the TV, and stores only DPAPI-protected credentials. Connection checking is read-only on the TV. No persistent control process is required.
+See [TVs](TVS.md) for the setup flow and `director tv list`, `director tv pair <tv>`, and `director tv check <tv>`. TV commands are dispatched before Windows audio initialization and do not create the WinUI window. Add/edit/remove definitions in the native TVs view. Pairing is explicit, prompts on the TV, and stores only DPAPI-protected credentials. Connection checking is read-only on the TV. No persistent control process is required.
 
 Offline tests include a loopback WebSocket mock using native WinHTTP, a silent-peer deadline test, and DPAPI tampering checks. They do not contact physical TVs. Firmware/TLS/permissions must still be validated against an on, reachable LG TV with user approval on its screen. There is no discovery or MAC/address migration yet; avoid treating mock success as a hardware compatibility claim.
 
@@ -88,7 +85,7 @@ The ignored tv_controls_ui::native_preview::controls_fixture test opens the moda
 
 The pinned Reactor version rejects the tooltip wrapper on Refresh inside ContentDialog with StructureUnsupported. The refresh button retains its accessible name without that wrapper. No dependency/cache modification was made. Keep this native regression check when changing dialog content.
 
-The same rule applies to everything a dialog hosts: the scene step dialogs once had tooltips on their action rows (Move up, Move down, Remove) and on the chosen app's name, and opening a step with actions closed the window. Give those controls an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the crash dialog and the command dialog; extend it when a new dialog hosts shared controls. Shared helpers can hide a tooltip too: the display preview put one on each screen and crashed the Displays step dialog, so dialogs use `layout_preview_in_dialog`, and the test only lets the step dialogs call helpers on its checked list.
+The same rule applies to everything a dialog hosts: the scene step dialogs once had tooltips on their action rows (Move up, Move down, Remove) and on the chosen app's name, and opening a step with actions closed the window. Give those controls an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the relink button used by the Sound step, the crash dialog and the command dialog; extend it when a new dialog hosts shared controls. Shared helpers can hide a tooltip too: the display preview put one on each screen and crashed the Displays step dialog, so dialogs use `layout_preview_in_dialog`, and the test only lets the step dialogs call helpers on its checked list.
 
 ## Crash reports
 
