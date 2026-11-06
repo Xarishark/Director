@@ -15,6 +15,7 @@ mod preset_cards_ui;
 mod preset_ui;
 mod samsung_ui;
 mod scene_ui;
+mod status_ui;
 mod tv_controls_ui;
 mod tv_power_state;
 mod tv_tip_ui;
@@ -63,6 +64,7 @@ enum Message {
     Fps(fps_ui::FpsMessage),
     Tv(tv_ui::TvMessage),
     Scene(scene_ui::SceneMessage),
+    Status(status_ui::StatusMessage),
     Tip(tv_tip_ui::TipMessage),
     AudioRelink(audio_relink_ui::RelinkMessage),
     OpenLogs,
@@ -105,6 +107,7 @@ struct DirectorApp {
     tv: tv_ui::TvState,
     scene: scene_ui::SceneState,
     flow: library_flow::LibraryFlow,
+    notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
     presets: Vec<Preset>,
     outputs: Vec<Output>,
@@ -144,6 +147,7 @@ impl DirectorApp {
         self.busy = true;
         close_guard::set_busy(true);
         self.error = false;
+        self.notices.clear();
         self.status = status.into();
         director::diagnostics::event("app.operation", "started", &self.status);
         self.details.clear();
@@ -372,6 +376,7 @@ impl Component for DirectorApp {
             tv: tv_ui::TvState::default(),
             scene: scene_ui::SceneState::default(),
             flow: library_flow::LibraryFlow::default(),
+            notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
             presets: vec![],
             outputs: vec![],
@@ -425,9 +430,10 @@ impl Component for DirectorApp {
                 director::diagnostics::result("app.logs.open", &result);
                 match result {
                     Ok(location) => {
-                        self.status = "Log folder request completed.".into();
+                        self.status = "Log folder opened.".into();
                         self.details = location;
                         self.error = false;
+                        self.announce(context);
                     }
                     Err(e) => {
                         self.error = true;
@@ -440,6 +446,7 @@ impl Component for DirectorApp {
             Message::Fps(message) => self.update_fps(message, context),
             Message::Current(message) => self.update_current(message, context),
             Message::Scene(message) => self.update_scene(message, context),
+            Message::Status(message) => self.update_status(message),
             Message::Tv(message) => self.update_tv(message, context),
             Message::Tip(message) => self.update_tip(message, context),
             Message::Navigate(tag) if !self.busy => {
@@ -819,6 +826,7 @@ impl Component for DirectorApp {
                     self.draft = None;
                     self.pending_delete = None;
                     self.status = "Presets saved. Your audio is unchanged.".into();
+                    self.announce(context);
                     self.library_saved(library_flow::Slot::Audio, added, context);
                 }
                 Err(e) => self.failure(e),
@@ -874,6 +882,7 @@ impl Component for DirectorApp {
                 self.error = !report.succeeded();
                 self.status = report.message;
                 self.details = report.details.join("\n");
+                self.announce(context);
                 match outputs {
                     Ok(o) => self.outputs = o,
                     Err(e) => {
@@ -964,26 +973,15 @@ impl Component for DirectorApp {
             },
             content,
         )]);
-        let status = InfoBar::new()
-            .is_open(true)
-            .is_closable(false)
-            .severity(if self.error {
-                InfoBarSeverity::Error
-            } else {
-                InfoBarSeverity::Informational
-            })
-            .title(self.status.clone())
-            .message(self.details.clone());
+        let status = self.status_view(cx);
         let body = Border::new()
             .padding(Thickness::new(28.0, 20.0, 28.0, 20.0))
             .content(
                 Grid::new()
                     .rows([GridLength::Star(1.0), GridLength::Auto])
+                    .row_spacing(if self.status_visible() { 16.0 } else { 0.0 })
                     .children((
-                        Border::new()
-                            .grid_row(0)
-                            .margin(Thickness::new(0.0, 0.0, 0.0, 16.0))
-                            .content(content),
+                        Border::new().grid_row(0).content(content),
                         Border::new()
                             .grid_row(1)
                             .content(ScrollViewer::new().max_height(160.0).content(status)),

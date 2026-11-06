@@ -69,8 +69,10 @@ impl DirectorApp {
             LibraryMessage::NewDisplay(seed) => {
                 if self.display.draft.is_some() {
                     self.library_go("displays", cx);
-                    self.status =
-                        "Finish or cancel the display preset you’re editing first.".into();
+                    self.warn(
+                        "Finish or cancel the display preset you’re editing first.",
+                        "",
+                    );
                     return;
                 }
                 self.flow.display_seed = Some(seed);
@@ -79,7 +81,10 @@ impl DirectorApp {
             LibraryMessage::NewAudio(seed) => {
                 if self.draft.is_some() {
                     self.library_go("audio", cx);
-                    self.status = "Finish or cancel the audio preset you’re editing first.".into();
+                    self.warn(
+                        "Finish or cancel the audio preset you’re editing first.",
+                        "",
+                    );
                     return;
                 }
                 self.flow.audio_seed = Some(seed);
@@ -88,7 +93,7 @@ impl DirectorApp {
             LibraryMessage::NewTv => {
                 if self.tv.draft.is_some() {
                     self.library_go("tvs", cx);
-                    self.status = "Finish or cancel the TV you’re setting up first.".into();
+                    self.warn("Finish or cancel the TV you’re setting up first.", "");
                     return;
                 }
                 self.tv.add_after_load = true;

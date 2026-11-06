@@ -220,6 +220,7 @@ impl DirectorApp {
                 self.error = matches!(report.outcome, Outcome::Failed | Outcome::RecoveryFailed);
                 self.status = report.message;
                 self.details = report.details.join("\n");
+                self.announce(cx);
                 match current {
                     Ok(layout) => self.display.current = Some(layout),
                     Err(e) => {
@@ -510,6 +511,7 @@ impl DirectorApp {
                     self.display.drag = None;
                     self.display.pending_delete = None;
                     self.status = "Display presets saved. Your screens are unchanged.".into();
+                    self.announce(cx);
                     self.library_saved(crate::library_flow::Slot::Display, added, cx);
                 }
                 Err(e) => self.failure(e),

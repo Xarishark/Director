@@ -113,6 +113,7 @@ impl DirectorApp {
             self.scene.draft = None;
             self.scene.delete = None;
             self.status = "Scenes saved. Preview only; no settings changed.".into();
+            self.announce(cx);
             return;
         }
         let expected = self.scene.scenes.clone();
@@ -409,6 +410,7 @@ impl DirectorApp {
                         self.error = false;
                         self.status = "Scenes saved. Your setup is unchanged.".into();
                         self.details.clear();
+                        self.announce(cx);
                     }
                     Err(e) => self.failure(e),
                 }
@@ -521,6 +523,7 @@ impl DirectorApp {
                         self.error = !r.success;
                         self.status = r.message;
                         self.details = r.details.join("\n");
+                        self.announce(cx);
                         director::diagnostics::event(
                             "scene.result",
                             if r.success { "ok" } else { "error" },

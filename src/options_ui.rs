@@ -144,7 +144,11 @@ impl DirectorApp {
             OptionsMessage::Done(result) => {
                 self.end();
                 match result {
-                    Ok(status) => self.status = status.unwrap_or_else(|| "Ready.".into()),
+                    Ok(Some(status)) => {
+                        self.status = status;
+                        self.announce(cx);
+                    }
+                    Ok(None) => self.status = "Ready.".into(),
                     Err(error) => self.failure(error),
                 }
             }

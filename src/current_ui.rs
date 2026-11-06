@@ -213,6 +213,7 @@ impl DirectorApp {
                 self.error = !report.succeeded();
                 self.status = report.message;
                 self.details = report.details.join("\n");
+                self.announce(cx);
                 match actual {
                     Ok((layout, options)) => self.current.set_displays(layout, options),
                     Err(e) => {
@@ -305,6 +306,7 @@ Could not read audio outputs: {e}"
                 self.error = !report.succeeded();
                 self.status = report.message;
                 self.details = report.details.join("\n");
+                self.announce(cx);
                 match audio {
                     Ok(list) => self.current.set_outputs(list, true),
                     Err(e) => {

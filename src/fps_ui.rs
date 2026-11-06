@@ -230,6 +230,7 @@ impl DirectorApp {
                         }
                         self.current.fps_dirty = false;
                         self.status = "Fixture FPS applied. No real settings changed.".into();
+                        self.announce(cx);
                         return;
                     }
                     self.fps.revision = self.fps.revision.wrapping_add(1);
@@ -253,6 +254,7 @@ impl DirectorApp {
                         self.status = "FPS configuration applied.".into();
                         self.details = text;
                         self.error = false;
+                        self.announce(cx);
                     }
                     Err(e) => self.failure(e),
                 }

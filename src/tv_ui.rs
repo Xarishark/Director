@@ -256,6 +256,7 @@ impl DirectorApp {
                         self.status =
                             "Command sent. Please confirm what happened on the TV.".into();
                         self.details.clear();
+                        self.announce(cx);
                     }
                 }
             }
@@ -283,6 +284,7 @@ impl DirectorApp {
                     }
                     .into();
                     self.details.clear();
+                    self.announce(cx);
                 }
             }
             TvMessage::ReportModel(v) if !self.busy => {
@@ -339,6 +341,7 @@ impl DirectorApp {
                     Ok(path) => {
                         self.error = false;
                         self.status = "Redacted compatibility report saved.".into();
+                        self.announce(cx);
                         self.details = path;
                     }
                     Err(e) => self.failure(e),
@@ -401,8 +404,9 @@ impl DirectorApp {
                     Ok(d) => self.tv.displays = d,
                     Err(e) => {
                         self.tv.displays.clear();
-                        self.details = format!(
-                            "TV setup is available. Windows display links could not be read: {e}"
+                        self.warn(
+                            "Windows display links could not be read.",
+                            format!("TV setup is still available. {e}"),
                         );
                     }
                 }
@@ -490,6 +494,10 @@ impl DirectorApp {
                 };
                 if paired {
                     // Stay here so the pairing note stays visible.
+                    self.warn(
+                        "Setup cancelled.",
+                        "Any permission already granted on the TV remains until you remove it in the TV’s settings.",
+                    );
                     self.flow.navigated();
                 } else {
                     self.library_cancelled(crate::library_flow::Slot::Tv, cx);
@@ -697,6 +705,11 @@ impl DirectorApp {
                     }
                     .into();
                     self.details = details.network_warning.unwrap_or_default();
+                    if self.details.is_empty() {
+                        self.announce(cx);
+                    } else {
+                        self.warn(self.status.clone(), self.details.clone());
+                    }
                 }
                 Err(e) => {
                     if self.tv.setup.is_some() {
@@ -704,9 +717,11 @@ impl DirectorApp {
                     } else {
                         self.end();
                         self.error = false;
-                        self.status = "Showing saved TV details.".into();
-                        self.details = format!(
-                            "Live TV information is unavailable. Saved choices remain editable. {e}"
+                        self.warn(
+                            "Showing saved TV details.",
+                            format!(
+                                "Live TV information is unavailable. Saved choices remain editable. {e}"
+                            ),
                         );
                     }
                 }
@@ -837,6 +852,7 @@ impl DirectorApp {
                     self.tv.setup = None;
                     self.tv.pending_delete = None;
                     self.status = "TVs saved.".into();
+                    self.announce(cx);
                     self.library_saved(crate::library_flow::Slot::Tv, added, cx);
                 }
                 Err(e) => self.failure(e),

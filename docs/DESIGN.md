@@ -6,6 +6,10 @@ The navigation pane has three areas. Scenes is the start page (except when opene
 
 Pages connect forward instead of being islands. Now offers Save as display preset… and Save as audio preset…, which open the normal Library editor seeded from the staged state. The last entry of each scene-editor dropdown (New display preset…, New audio preset…, Add TV…) opens the Library editor and, after Save, returns to the scene with the new item selected; Cancel also returns. A sidebar navigation abandons the return. An existing open Library draft is never overwritten: the user is sent to finish or cancel it. The empty Scenes page is a checklist of the building blocks, linking to Now and the Library. This supersedes "Audio presets is the main NavigationView page" below; the page names in older sections refer to Library › Audio, Library › Displays and Now.
 
+## Status area — current
+
+The bottom status area is hidden when nothing needs attention. Work in progress shows one muted line with an indeterminate progress bar. A finished action shows a closable Success InfoBar that hides itself after 5 seconds. Something the user must read (an open draft blocking a flow, a cancelled pairing that left permission on the TV, unavailable live TV data) shows a Warning InfoBar that stays until closed. Errors stay red until closed. Routine hints such as Ready., Draft updated or Edit TV. are recorded for diagnostics but not shown; editor footers already explain save-versus-apply. This supersedes the earlier always-open InfoBar.
+
 ## Native Windows workspace
 
 Use genuine WinUI 3 controls through Microsoft Windows Reactor. Follow the system theme, accent, fonts, hover, focus, scrolling, and control behavior. Keep custom painting and custom interaction machinery out of core controls.
