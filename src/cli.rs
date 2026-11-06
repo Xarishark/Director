@@ -32,7 +32,7 @@ Sound (changes apply right away; add --mic for the microphone)
   director audio check
 
 TVs
-  director tv pair | check | learn | wake | status | off | report <tv>
+  director tv pair | check | learn | wake | status | off | toggle | report <tv>
   director tv input <tv> <input-id>
 
 FPS
