@@ -48,9 +48,9 @@ pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, he
         .width(CARD_WIDTH)
         .height(height)
         .padding(14.0)
-        .corner_radius(8.0)
-        .background(Color::argb(12, 128, 128, 128))
-        .border_brush(Color::rgb(70, 70, 70))
+        .corner_radius(crate::ui::RADIUS_L)
+        .background(crate::ui::card_fill())
+        .border_brush(crate::ui::card_stroke())
         .border_thickness(1.0)
         .content(
             StackPanel::new().spacing(12.0).children((
@@ -205,15 +205,15 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         .fold(f64::NEG_INFINITY, f64::max);
     if active.is_empty() {
         return Border::new()
-            .background(Color::argb(18, 128, 128, 128))
-            .corner_radius(6.0)
+            .background(crate::ui::SUBTLE_FILL)
+            .corner_radius(crate::ui::RADIUS_S)
             .content(
                 Grid::new()
                     .width(WIDTH)
                     .height(height)
                     .children((TextBlock::new()
                         .text("All displays off")
-                        .font_size(12.0)
+                        .font_size(crate::ui::CAPTION)
                         .opacity(0.72)
                         .horizontal_alignment(HorizontalAlignment::Center)
                         .vertical_alignment(VerticalAlignment::Center),)),
@@ -280,7 +280,7 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
                     Color::rgb(145, 167, 187)
                 })
                 .border_thickness(1.0)
-                .corner_radius(4.0)
+                .corner_radius(crate::ui::RADIUS_S)
                 .content(
                     StackPanel::new()
                         .vertical_alignment(VerticalAlignment::Center)
@@ -297,8 +297,8 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         })
         .collect::<Vec<_>>();
     Border::new()
-        .background(Color::argb(18, 128, 128, 128))
-        .corner_radius(6.0)
+        .background(crate::ui::SUBTLE_FILL)
+        .corner_radius(crate::ui::RADIUS_S)
         .content(
             Grid::new()
                 .width(WIDTH)
@@ -319,7 +319,7 @@ impl DirectorApp {
                     layout_preview(&p.layout, 200.0),
                     TextBlock::new()
                         .text(off_summary(&p.layout).unwrap_or_default())
-                        .font_size(12.0)
+                        .font_size(crate::ui::CAPTION)
                         .opacity(0.72)
                         .text_wrapping(TextWrapping::NoWrap)
                         .text_trimming(TextTrimming::CharacterEllipsis)

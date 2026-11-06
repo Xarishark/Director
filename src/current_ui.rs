@@ -576,7 +576,7 @@ Could not read audio outputs: {e}"
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
-                crate::preset_ui::header(
+                crate::ui::header(
                     "Now",
                     "Change what’s active right now. Nothing is saved unless you save it.",
                     vec![

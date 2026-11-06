@@ -16,7 +16,6 @@ mod options_ui;
 #[cfg(test)]
 mod preset_cards_preview;
 mod preset_cards_ui;
-mod preset_ui;
 mod samsung_ui;
 mod scene_editor_ui;
 mod scene_ui;
@@ -26,6 +25,7 @@ mod tv_controls_ui;
 mod tv_power_state;
 mod tv_tip_ui;
 mod tv_ui;
+mod ui;
 use display_ui::{DisplayMessage, DisplayState};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
@@ -379,7 +379,12 @@ impl Component for DirectorApp {
         )]);
         let status = self.status_view(cx);
         let body = Border::new()
-            .padding(Thickness::new(28.0, 20.0, 28.0, 20.0))
+            .padding(Thickness::new(
+                crate::ui::PAGE_PADDING_X,
+                crate::ui::PAGE_PADDING_Y,
+                crate::ui::PAGE_PADDING_X,
+                crate::ui::PAGE_PADDING_Y,
+            ))
             .content(
                 Grid::new()
                     .rows([GridLength::Star(1.0), GridLength::Auto])
@@ -401,7 +406,7 @@ impl Component for DirectorApp {
         let nav = NavigationView::new()
             .grid_row(1)
             .is_pane_toggle_button_visible(false)
-            .open_pane_length(200.0)
+            .open_pane_length(crate::ui::PANE_OPEN)
             .pane_display_mode(NavigationViewPaneDisplayMode::Left)
             .is_pane_open(self.pane_open)
             .on_is_pane_open_changed(cx.callback(Message::Pane))

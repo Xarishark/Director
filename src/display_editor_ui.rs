@@ -10,6 +10,11 @@ pub(crate) enum EditorTarget {
     Preset,
     Current,
 }
+/// How many monitor cards fit side by side in a column `width` wide (at least 1, at most 3).
+pub(crate) fn monitor_columns(width: f64) -> usize {
+    // Each card needs about 430 DIP; the rest is the scroll gutter and card gaps.
+    (((width - 124.0) / 430.0).floor() as usize).clamp(1, 3)
+}
 fn route(target: EditorTarget, value: DisplayMessage) -> Message {
     match target {
         EditorTarget::Preset => Message::Display(value),
@@ -105,7 +110,7 @@ fn preview(
                         Color::rgb(155, 180, 207)
                     }))
                     .border_thickness(Thickness::uniform(2.0))
-                    .corner_radius(CornerRadius::uniform(5.0))
+                    .corner_radius(crate::ui::RADIUS_S)
                     .capture_pointer_on_press(!app.busy)
                     .on_pointer_pressed(cx.callback(move |point| {
                         route(target, DisplayMessage::PointerDown(i, point))
@@ -154,7 +159,7 @@ Drag to move this screen.",
         .horizontal_alignment(HorizontalAlignment::Left)
         .border_thickness(Thickness::uniform(1.0))
         .border_brush(Brush::Solid(Color::rgb(100, 110, 125)))
-        .corner_radius(CornerRadius::uniform(8.0))
+        .corner_radius(crate::ui::RADIUS_L)
         .padding(Thickness::uniform(10.0))
         .content(
             Grid::new()
@@ -187,7 +192,7 @@ impl DirectorApp {
         let columns = if matches!(target, EditorTarget::Current) {
             1
         } else {
-            (((self.window_width - 380.0) / 430.0).floor() as usize).clamp(1, 3)
+            monitor_columns(crate::ui::page_width(self.window_width, self.pane_open))
         };
         let cards = layout
             .monitors
@@ -333,8 +338,9 @@ impl DirectorApp {
                         .vertical_alignment(VerticalAlignment::Top)
                         .padding(Thickness::uniform(16.0))
                         .border_thickness(Thickness::uniform(1.0))
-                        .border_brush(Brush::Solid(Color::rgb(90, 90, 90)))
-                        .corner_radius(CornerRadius::uniform(8.0))
+                        .background(crate::ui::card_fill())
+                        .border_brush(crate::ui::card_stroke())
+                        .corner_radius(crate::ui::RADIUS_L)
                         .content(
                             StackPanel::new().spacing(12.0).children((
                                 Grid::new().columns([GridLength::Star(1.0), GridLength::Auto, GridLength::Auto])
@@ -346,7 +352,7 @@ impl DirectorApp {
                                         if primary {
                                             TextBlock::new().grid_column(1).text(if group.len()>1 {"★ Primary group"}else{"★ Primary"})
                                                 .automation_name(format!("{} is the primary display",m.name))
-                                                .font_size(12.0).opacity(0.72)
+                                                .font_size(crate::ui::CAPTION).opacity(0.72)
                                                 .vertical_alignment(VerticalAlignment::Center).into()
                                         } else if m.enabled && !detecting {
                                             Button::new().grid_column(1).style(ButtonStyle::Subtle)
@@ -372,10 +378,10 @@ impl DirectorApp {
                                             }else{View::empty()},
                                         )),
                                     )),
-                                TextBlock::new().text(if detecting {"Temporary detection · preset unchanged"} else if m.enabled && group.len()>1 { "Mirrored desktop · shared arrangement and resolution" } else if m.enabled { "Active in this preset" } else if m.connected { "Disabled in this preset · connected" } else { "Not detected · turn the display on" }).font_size(12.0).opacity(0.65),
+                                TextBlock::new().text(if detecting {"Temporary detection · preset unchanged"} else if m.enabled && group.len()>1 { "Mirrored desktop · shared arrangement and resolution" } else if m.enabled { "Active in this preset" } else if m.connected { "Disabled in this preset · connected" } else { "Not detected · turn the display on" }).font_size(crate::ui::CAPTION).opacity(crate::ui::SECONDARY),
                                 self.tip.tvs.iter().find(|tv| tv.display.as_ref().is_some_and(|link| m.device_path.as_ref().is_some_and(|path| link.device_path.eq_ignore_ascii_case(path)))).map(|tv| {
                                     Grid::new().columns([GridLength::Star(1.0), GridLength::Auto]).column_spacing(8.0).children((
-                                        TextBlock::new().text(format!("Linked TV: {}", tv.name)).font_size(12.0).opacity(0.72).vertical_alignment(VerticalAlignment::Center).text_wrapping(TextWrapping::Wrap),
+                                        TextBlock::new().text(format!("Linked TV: {}", tv.name)).font_size(crate::ui::CAPTION).opacity(0.72).vertical_alignment(VerticalAlignment::Center).text_wrapping(TextWrapping::Wrap),
                                         Button::new().grid_column(1).style(ButtonStyle::Subtle).automation_name(format!("View linked TV {}", tv.name)).is_enabled(!self.busy)
                                             .on_click(cx.message(Message::Go("tvs".into()))).content("View TV"),
                                     ))
@@ -402,7 +408,7 @@ impl DirectorApp {
         StackPanel::new().spacing(16.0).children((
             TextBlock::new()
                 .text("Arrange your displays")
-                .font_size(20.0)
+                .font_size(crate::ui::SUBTITLE)
                 .font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new()
                 .text("Drag screens to arrange them. Hover for details.")

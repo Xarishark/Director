@@ -283,7 +283,7 @@ impl DirectorApp {
     }
     pub(crate) fn options_view(&self, cx: &ViewContext<Self>) -> View {
         ScrollViewer::new().horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(20.0).children((
-            TextBlock::new().text("Options").font_size(28.0).font_weight(FontWeight::SEMI_BOLD),
+            TextBlock::new().text("Options").font_size(crate::ui::TITLE).font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new().text("Setup tips").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             ToggleSwitch::new().automation_name("Show TV setup tips").is_on(self.tip.show_tips())
                 .is_enabled(!self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none())
@@ -333,7 +333,7 @@ impl DirectorApp {
                 .on_click(cx.message(Message::Crash(crate::crash_ui::CrashMessage::ReportProblem))).content("Report a problem"),
             )),
             TextBlock::new().text("Report a problem opens a new GitHub issue in your browser. If Director closes unexpectedly, it saves a crash report in the logs folder and offers to report it the next time it starts. Nothing is sent unless you submit the issue.")
-                .text_wrapping(TextWrapping::Wrap).opacity(0.72).font_size(12.0),
+                .text_wrapping(TextWrapping::Wrap).opacity(0.72).font_size(crate::ui::CAPTION),
             TextBlock::new().text("Backup").font_size(18.0).font_weight(FontWeight::SEMI_BOLD),
             TextBlock::new().text("Save your scenes and presets to one local file. TV pairing stays on this PC.")
                 .text_wrapping(TextWrapping::Wrap).opacity(0.72),

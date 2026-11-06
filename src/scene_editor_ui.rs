@@ -68,14 +68,7 @@ impl Step {
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
-fn note(s: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(s)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
-const BORDER: Color = Color::rgb(70, 70, 70);
+use crate::ui::note;
 /// The widest the flow column gets.
 const FLOW_WIDTH: f64 = 720.0;
 /// Every step card, filled or empty, has this height.
@@ -90,12 +83,13 @@ const ACTIONS_RESERVE: f64 = 100.0;
 const ARROW: f64 = 14.0;
 const DASH: f64 = 6.0;
 const GAP: f64 = 4.0;
-const DASH_COLOR: Color = Color::rgb(95, 95, 95);
+/// Translucent, so the dashes read on light and dark backgrounds.
+const DASH_COLOR: Color = Color::argb(110, 128, 128, 128);
 
 /// A small down arrow between steps ("then"), centred on the cards' icon column.
 fn connector() -> View {
     StackPanel::new()
-        .opacity(0.55)
+        .opacity(crate::ui::SECONDARY)
         .margin(Thickness::new(
             CONTENT_INSET + (ICON_COLUMN - ARROW) / 2.0,
             4.0,
@@ -254,8 +248,8 @@ impl DirectorApp {
     /// The width the flow column fills: the page minus the pane, page padding and scroll
     /// bar, up to FLOW_WIDTH.
     fn flow_width(&self) -> f64 {
-        let pane = if self.pane_open { 200.0 } else { 48.0 };
-        (self.window_width - pane - 56.0 - 28.0).clamp(320.0, FLOW_WIDTH)
+        // Room for the scroll bar's gutter beside the column.
+        (crate::ui::page_width(self.window_width, self.pane_open) - 28.0).clamp(320.0, FLOW_WIDTH)
     }
 
     /// One step as a fixed-size card. A filled step shows its summary with edit and remove;
@@ -361,10 +355,10 @@ impl DirectorApp {
         if used {
             Border::new()
                 .height(CARD_HEIGHT)
-                .corner_radius(8.0)
+                .corner_radius(crate::ui::RADIUS_L)
                 .border_thickness(1.0)
-                .border_brush(BORDER)
-                .background(Color::argb(12, 128, 128, 128))
+                .border_brush(crate::ui::card_stroke())
+                .background(crate::ui::card_fill())
                 .padding(1.0)
                 .content(content)
         } else {
@@ -432,10 +426,10 @@ impl DirectorApp {
             );
         Border::new()
             .height(CARD_HEIGHT)
-            .corner_radius(8.0)
+            .corner_radius(crate::ui::RADIUS_L)
             .border_thickness(1.0)
-            .border_brush(BORDER)
-            .background(Color::argb(12, 128, 128, 128))
+            .border_brush(crate::ui::card_stroke())
+            .background(crate::ui::card_fill())
             .padding(1.0)
             .margin(Thickness::new(0.0, 0.0, 0.0, 8.0))
             .content(
@@ -949,15 +943,15 @@ impl DirectorApp {
                                                     .text_trimming(TextTrimming::CharacterEllipsis),
                                                 TextBlock::new()
                                                     .text(folder)
-                                                    .font_size(12.0)
-                                                    .opacity(0.65)
+                                                    .font_size(crate::ui::CAPTION)
+                                                    .opacity(crate::ui::SECONDARY)
                                                     .text_trimming(TextTrimming::CharacterEllipsis),
                                             ))
                                     } else {
                                         TextBlock::new()
                                             .grid_column(1)
                                             .text("No app chosen yet")
-                                            .opacity(0.65)
+                                            .opacity(crate::ui::SECONDARY)
                                             .vertical_alignment(VerticalAlignment::Center)
                                             .into()
                                     },
@@ -995,7 +989,7 @@ impl DirectorApp {
                                 Border::new()
                                     .padding(Thickness::new(14.0, 2.0, 0.0, 2.0))
                                     .border_thickness(Thickness::new(2.0, 0.0, 0.0, 0.0))
-                                    .border_brush(BORDER)
+                                    .border_brush(crate::ui::card_stroke())
                                     .content(
                                         StackPanel::new().spacing(10.0).children((
                                             TextBox::new()
@@ -1052,9 +1046,9 @@ impl DirectorApp {
                     format!("action-{i}"),
                     Border::new()
                         .padding(14.0)
-                        .corner_radius(8.0)
+                        .corner_radius(crate::ui::RADIUS_L)
                         .border_thickness(1.0)
-                        .border_brush(BORDER)
+                        .border_brush(crate::ui::card_stroke())
                         .content(StackPanel::new().spacing(10.0).children((
                             Grid::new()
                                 .columns([GridLength::Star(1.0), GridLength::Auto])
@@ -1175,69 +1169,44 @@ impl DirectorApp {
         let changed = self.draft_changed(crate::Page::Scenes);
         let can_save =
             self.scene_ready() && problem.is_none() && !d.name.trim().is_empty() && changed;
-        Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-            .children((
-                crate::preset_ui::header(
-                    if d.name.trim().is_empty() {
-                        "New scene"
-                    } else {
-                        d.name.trim()
-                    },
-                    "Steps run from top to bottom. Add only what this scene should change.",
-                    vec![],
-                ),
-                ScrollViewer::new()
-                    .grid_row(1)
-                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                    .content(
-                        Border::new()
-                            .padding(Thickness::new(0.0, 0.0, 16.0, 0.0))
-                            .content(column),
-                    ),
-                Grid::new()
-                    .grid_row(2)
-                    .columns([GridLength::Star(1.0), GridLength::Auto])
-                    .column_spacing(16.0)
-                    .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
+        crate::ui::page(
+            crate::ui::header(
+                if d.name.trim().is_empty() {
+                    "New scene"
+                } else {
+                    d.name.trim()
+                },
+                "Steps run from top to bottom. Add only what this scene should change.",
+                vec![],
+            ),
+            column,
+            Some(crate::ui::footer(
+                StackPanel::new()
+                    .spacing(2.0)
                     .children((
-                        StackPanel::new()
-                            .grid_column(0)
-                            .spacing(2.0)
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .children((
-                                TextBlock::new()
-                                    .text(match &problem {
-                                        Some(e) if !d.name.trim().is_empty() => e.clone(),
-                                        _ if !changed => "No changes to save.".into(),
-                                        _ => "Saving won’t change your setup.".into(),
-                                    })
-                                    .opacity(0.72)
-                                    .text_wrapping(TextWrapping::Wrap),
-                                TextBlock::new()
-                                    .text("If a step fails, Director restores your previous settings. Change this in Options.")
-                                    .font_size(12.0)
-                                    .opacity(0.55)
-                                    .text_wrapping(TextWrapping::Wrap),
-                            )),
-                        StackPanel::new()
-                            .grid_column(1)
-                            .orientation(Orientation::Horizontal)
-                            .spacing(8.0)
-                            .children((
-                                Button::new()
-                                    .is_enabled(available)
-                                    .on_click(cx.message(msg(SceneMessage::Cancel)))
-                                    .content("Cancel"),
-                                Button::new()
-                                    .automation_name("Save scene")
-                                    .style(ButtonStyle::Accent)
-                                    .is_enabled(can_save)
-                                    .on_click(cx.message(msg(SceneMessage::Save)))
-                                    .content("Save scene"),
-                            )),
+                        crate::ui::note(match &problem {
+                            Some(e) if !d.name.trim().is_empty() => e.clone(),
+                            _ if !changed => "No changes to save.".into(),
+                            _ => "Saving won’t change your setup.".into(),
+                        }),
+                        crate::ui::caption(
+                            "If a step fails, Director restores your previous settings. Change this in Options.",
+                        ),
                     )),
-            ))
+                vec![
+                    Button::new()
+                        .is_enabled(available)
+                        .on_click(cx.message(msg(SceneMessage::Cancel)))
+                        .content("Cancel"),
+                    Button::new()
+                        .automation_name("Save scene")
+                        .style(ButtonStyle::Accent)
+                        .is_enabled(can_save)
+                        .on_click(cx.message(msg(SceneMessage::Save)))
+                        .content("Save scene"),
+                ],
+            )),
+        )
     }
 }
 
@@ -1282,6 +1251,7 @@ mod tests {
                 ),
             ),
             ("crash dialog", include_str!("crash_ui.rs")),
+            ("shared page helpers", include_str!("ui.rs")),
             (
                 "command dialog",
                 region(
@@ -1314,7 +1284,11 @@ mod tests {
             let call = &rest[..(path + 1).min(rest.len())];
             // A call to a function in another UI module (not a type or enum path).
             let last = call.trim_end_matches('(').rsplit("::").next().unwrap_or("");
-            if call.ends_with('(') && last.starts_with(|c: char| c.is_lowercase()) {
+            // crate::ui is checked whole above, so its helpers are all tooltip-free.
+            if call.ends_with('(')
+                && last.starts_with(|c: char| c.is_lowercase())
+                && !call.starts_with("crate::ui::")
+            {
                 assert!(
                     safe.contains(&call),
                     "{call} is used inside a step dialog; check it has no tooltip"

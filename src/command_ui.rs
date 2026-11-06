@@ -82,7 +82,7 @@ pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> V
                 .text(">_")
                 .font_size(13.0)
                 .font_weight(FontWeight::SEMI_BOLD)
-                .opacity(0.5),
+                .opacity(crate::ui::SECONDARY),
         )
         .tooltip("Command for shortcuts")
 }
@@ -124,8 +124,8 @@ impl DirectorApp {
                             .children((
                                 Border::new()
                                     .padding(Thickness::xy(10.0, 7.0))
-                                    .corner_radius(4.0)
-                                    .background(Color::argb(40, 128, 128, 128))
+                                    .corner_radius(crate::ui::RADIUS_S)
+                                    .background(crate::ui::CODE_FILL)
                                     .content(
                                         TextBlock::new()
                                             .text(command)
@@ -143,8 +143,8 @@ impl DirectorApp {
                             )),
                         TextBlock::new()
                             .text(subtitle)
-                            .font_size(12.0)
-                            .opacity(0.65)
+                            .font_size(crate::ui::CAPTION)
+                            .opacity(crate::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap),
                     )),
                 )

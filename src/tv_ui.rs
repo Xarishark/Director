@@ -89,17 +89,7 @@ fn input_label(input: &Input) -> String {
         format!("{} ({})", input.label, input.id)
     }
 }
-fn note(text: impl Into<String>) -> View {
-    let text = text.into();
-    if text.is_empty() {
-        return View::empty();
-    }
-    TextBlock::new()
-        .text(text)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
+use crate::ui::note;
 impl TvState {
     #[cfg(test)]
     pub(crate) fn ready_for_controls_preview(&mut self) {
@@ -925,7 +915,7 @@ impl DirectorApp {
                     TextBlock::new()
                         .text("CONNECTION")
                         .font_size(10.0)
-                        .opacity(0.65),
+                        .opacity(crate::ui::SECONDARY),
                     Grid::new()
                         .columns([GridLength::Auto, GridLength::Star(1.0)])
                         .column_spacing(12.0)
@@ -1021,17 +1011,24 @@ impl DirectorApp {
             })
             .collect::<Vec<_>>();
         let list = if self.tv.tvs.is_empty() {
-            Border::new().grid_row(1).padding(Thickness::xy(8.0,28.0)).content(StackPanel::new().spacing(12.0).children((
-   TextBlock::new().text(if self.busy{"Loading your TVs…"}else if !self.tv.ready{"Your TVs could not be loaded"}else{"Add your first TV"}).font_size(20.0),
-   note("Choose + and Director will guide you through pairing, choosing your PC input, and setting up wake."),
-  )))
+            Border::new().grid_row(1).content(crate::ui::empty_state(
+                if self.busy {
+                    "Loading your TVs…"
+                } else if !self.tv.ready {
+                    "Your TVs could not be loaded"
+                } else {
+                    "Add your first TV"
+                },
+                "Choose + and Director will guide you through pairing, choosing your PC input, and setting up wake.",
+                None,
+            ))
         } else {
             crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::TV_CARD_HEIGHT, cards)
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
-                crate::preset_ui::header(
+                crate::ui::header(
                     "TVs",
                     "Paired TVs that scenes can wake and switch.",
                     vec![
@@ -1170,7 +1167,7 @@ impl DirectorApp {
     fn android_pairing_view(&self, cx: &ViewContext<Self>, tv: &Tv) -> View {
         let waiting = self.tv.android_waiting();
         StackPanel::new().spacing(16.0).children((
-            TextBlock::new().text(tv.name.clone()).font_size(20.0),
+            TextBlock::new().text(tv.name.clone()).font_size(crate::ui::SUBTITLE),
             note(if waiting{"Enter the six-character code shown on your TV. The code is used only for this pairing and is never saved or logged."}else{"Turn on the TV, then choose Pair TV. Director will ask Android TV Remote Service to show a pairing code. No Android developer settings are needed."}),
             if waiting{StackPanel::new().spacing(8.0).children((TextBlock::new().text("TV pairing code").font_weight(FontWeight::SEMI_BOLD),TextBox::new().automation_name("Android TV pairing code").text(self.tv.android_code.clone()).placeholder_text("e.g. A1B2C3").is_enabled(!self.busy).on_text_changed(cx.callback(|s|msg(TvMessage::AndroidCode(s)))),note("Codes expire after two minutes. Use Back, then Pair TV to request a new code.")))}else{View::empty()},
             note("Only TCL Android / Google TV is supported here. Roku and Fire TV models use different control systems."),
@@ -1215,7 +1212,7 @@ impl DirectorApp {
    )),
    Step::Pair if tv.brand==tvs::Brand::TclAndroid=>self.android_pairing_view(cx,tv),
    Step::Pair=>StackPanel::new().spacing(16.0).children((
-    TextBlock::new().text(format!("{} · {}",tv.name,tv.address)).font_size(20.0),
+    TextBlock::new().text(format!("{} · {}",tv.name,tv.address)).font_size(crate::ui::SUBTITLE),
     note(if tv.credential.is_some(){"Pairing succeeded. Director will read the TV’s inputs and network addresses. If that read failed, retry below without pairing again."}else{"Choose Pair TV, then accept the connection prompt on the TV. Director will read its inputs and available wake addresses automatically."}),
     note("If the TV cannot be reached, use Back to correct its IP address or connection method."),
     if tv.brand!=tvs::Brand::Lg{self.tv_test_report(cx,tv,false)}else{View::empty()},
@@ -1285,51 +1282,35 @@ impl DirectorApp {
                 || !pair
                 || !self.tv.android_waiting()
                 || director::android_tv::code(&self.tv.android_code).is_ok());
-        Grid::new()
-            .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-            .children((
-                crate::preset_ui::header(
-                    s.step.title(),
-                    &format!("TV setup · Step {} of 8", s.step.number()),
-                    vec![],
-                ),
-                ScrollViewer::new()
-                    .grid_row(1)
-                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                    .content(
-                        Border::new()
-                            .max_width(650.0)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .content(content),
-                    ),
-                Grid::new()
-                    .grid_row(2)
-                    .columns([GridLength::Star(1.0), GridLength::Auto])
-                    .margin(Thickness::new(0.0, 20.0, 0.0, 0.0))
-                    .children((
-                        Button::new()
-                            .grid_column(0)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .is_enabled(!self.busy && s.step != Step::Brand)
-                            .on_click(cx.message(msg(TvMessage::Back)))
-                            .content("Back"),
-                        StackPanel::new()
-                            .grid_column(1)
-                            .orientation(Orientation::Horizontal)
-                            .spacing(8.0)
-                            .children((
-                                Button::new()
-                                    .is_enabled(!self.busy)
-                                    .on_click(cx.message(msg(TvMessage::Cancel)))
-                                    .content("Cancel"),
-                                Button::new()
-                                    .style(ButtonStyle::Accent)
-                                    .is_enabled(enabled)
-                                    .on_click(cx.message(msg(action)))
-                                    .content(label),
-                            )),
-                    )),
-            ))
+        crate::ui::page(
+            crate::ui::header(
+                s.step.title(),
+                &format!("TV setup · Step {} of {}", s.step.number(), Step::COUNT),
+                vec![],
+            ),
+            Border::new()
+                .max_width(crate::ui::FORM_WIDTH)
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .content(content),
+            Some(crate::ui::footer(
+                Button::new()
+                    .horizontal_alignment(HorizontalAlignment::Left)
+                    .is_enabled(!self.busy && s.step != Step::Brand)
+                    .on_click(cx.message(msg(TvMessage::Back)))
+                    .content("Back"),
+                vec![
+                    Button::new()
+                        .is_enabled(!self.busy)
+                        .on_click(cx.message(msg(TvMessage::Cancel)))
+                        .content("Cancel"),
+                    Button::new()
+                        .style(ButtonStyle::Accent)
+                        .is_enabled(enabled)
+                        .on_click(cx.message(msg(action)))
+                        .content(label),
+                ],
+            )),
+        )
     }
     fn tv_editor(&self, cx: &ViewContext<Self>, tv: &Tv) -> View {
         let original = self.tv.tvs.iter().find(|t| t.id == tv.id);
@@ -1339,7 +1320,7 @@ impl DirectorApp {
                 || self.tv.manual_mac.trim().is_empty()
                 || self.tv.manual_mac.parse::<tv_network::MacAddress>().is_ok());
         Grid::new().rows([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).children((
-   crate::preset_ui::header("Edit TV","Device connections · Scene actions are configured separately.",vec![]),
+   crate::ui::header("Edit TV","Device connections · Scene actions are configured separately.",vec![]),
    ScrollViewer::new().grid_row(1).horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(14.0).max_width(650.0).horizontal_alignment(HorizontalAlignment::Left).children((
     TextBlock::new().text("TV name").font_weight(FontWeight::SEMI_BOLD),
     TextBox::new().automation_name("TV name").text(tv.name.clone()).is_enabled(!self.busy).on_text_changed(cx.callback(|v|msg(TvMessage::Name(v)))),

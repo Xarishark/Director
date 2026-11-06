@@ -157,13 +157,7 @@ pub(crate) struct SceneState {
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
-fn note(s: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(s)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
+use crate::ui::note;
 /// What a hero panel's bar shows.
 enum Level {
     None,
@@ -193,7 +187,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                             .corner_radius(2.0)
                             .horizontal_alignment(HorizontalAlignment::Left)
                             .width(BAR * f64::from(v.min(100)) / 100.0)
-                            .background(Color::rgb(76, 194, 255)),
+                            .background(ThemeBrush::Accent),
                     )),
                 TextBlock::new().text(format!("{v}%")).opacity(0.72),
             )),
@@ -206,7 +200,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                 i.to_string(),
                 TextBlock::new()
                     .text(line)
-                    .font_size(12.0)
+                    .font_size(crate::ui::CAPTION)
                     .opacity(0.72)
                     .text_trimming(TextTrimming::CharacterEllipsis),
             )
@@ -215,8 +209,8 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
     Border::new()
         .height(124.0)
         .padding(Thickness::xy(16.0, 12.0))
-        .corner_radius(6.0)
-        .background(Color::argb(18, 128, 128, 128))
+        .corner_radius(crate::ui::RADIUS_S)
+        .background(crate::ui::SUBTLE_FILL)
         .content(
             Grid::new()
                 .columns([GridLength::Auto, GridLength::Star(1.0)])
@@ -225,7 +219,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                     Viewbox::new()
                         .width(36.0)
                         .height(36.0)
-                        .opacity(0.8)
+                        .opacity(crate::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center)
                         .slot(ViewboxSlot::Child, FontIcon::new().glyph(glyph)),
                     StackPanel::new()
@@ -829,11 +823,15 @@ impl DirectorApp {
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
                 let body = StackPanel::new().spacing(8.0).children((
                     if active {
-                        TextBlock::new()
-                            .text("● Active")
-                            .font_weight(FontWeight::SEMI_BOLD)
-                            .foreground(Color::rgb(108, 203, 95))
-                            .into()
+                        StackPanel::new()
+                            .orientation(Orientation::Horizontal)
+                            .spacing(6.0)
+                            .children((
+                                TextBlock::new().text("●").foreground(crate::ui::SUCCESS),
+                                TextBlock::new()
+                                    .text("Active")
+                                    .font_weight(FontWeight::SEMI_BOLD),
+                            ))
                     } else {
                         View::empty()
                     },
@@ -842,7 +840,7 @@ impl DirectorApp {
                     if let Err(e) = resolved {
                         TextBlock::new()
                             .text(e)
-                            .foreground(Color::rgb(240, 130, 115))
+                            .foreground(crate::ui::critical())
                             .text_wrapping(TextWrapping::Wrap)
                             .into()
                     } else {
@@ -913,7 +911,7 @@ impl DirectorApp {
                 GridLength::Auto,
             ])
             .children((
-                crate::preset_ui::header(
+                crate::ui::header(
                     "Scenes",
                     "Switch your whole setup in one click.",
                     vec![

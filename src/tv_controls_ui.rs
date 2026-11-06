@@ -763,7 +763,7 @@ impl DirectorApp {
                         .columns([GridLength::Star(1.0), GridLength::Auto])
                         .children((
                             StackPanel::new().spacing(4.0).children((
-                                TextBlock::new().text("Power").opacity(0.65),
+                                TextBlock::new().text("Power").opacity(crate::ui::SECONDARY),
                                 TextBlock::new()
                                     .automation_name(format!("Power status: {status}"))
                                     .text(status)
@@ -818,8 +818,8 @@ impl DirectorApp {
                     if action == PowerAction::Wake && !tv.can_wake() {
                         TextBlock::new()
                             .text("No wake address saved. Complete TV setup to enable Wake.")
-                            .font_size(12.0)
-                            .opacity(0.7)
+                            .font_size(crate::ui::CAPTION)
+                            .opacity(crate::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap)
                             .into()
                     } else {
@@ -845,7 +845,7 @@ impl DirectorApp {
                                             "Inputs appear when the TV is connected."
                                         })
                                         .text_wrapping(TextWrapping::Wrap)
-                                        .opacity(0.65)
+                                        .opacity(crate::ui::SECONDARY)
                                         .into()
                                 } else {
                                     StackPanel::new().spacing(8.0).children((
@@ -855,7 +855,7 @@ impl DirectorApp {
                                                     "Current TV input: {current}"
                                                 ))
                                                 .text(format!("Current: {current}"))
-                                                .opacity(0.65)
+                                                .opacity(crate::ui::SECONDARY)
                                                 .text_wrapping(TextWrapping::Wrap)
                                                 .into()
                                         } else {
@@ -901,8 +901,8 @@ impl DirectorApp {
                         TextBlock::new()
                             .text(state.notice.clone())
                             .text_wrapping(TextWrapping::Wrap)
-                            .font_size(12.0)
-                            .opacity(0.8)
+                            .font_size(crate::ui::CAPTION)
+                            .opacity(crate::ui::SECONDARY)
                             .into()
                     } else {
                         View::empty()
@@ -939,7 +939,7 @@ impl DirectorApp {
                                                     .collect::<Vec<_>>()
                                                     .join("\n\n"),
                                                 )
-                                                .font_size(12.0)
+                                                .font_size(crate::ui::CAPTION)
                                                 .text_wrapping(TextWrapping::Wrap),
                                         ),
                                 ),

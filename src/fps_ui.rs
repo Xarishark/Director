@@ -67,13 +67,7 @@ impl FpsState {
 fn msg(m: FpsMessage) -> Message {
     Message::Fps(m)
 }
-fn note(text: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(text)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
+use crate::ui::note;
 impl DirectorApp {
     fn fps_request(&self, target: Target) -> Option<&Request> {
         match target {

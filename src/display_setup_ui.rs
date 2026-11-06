@@ -322,7 +322,7 @@ impl DirectorApp {
                     .text_wrapping(TextWrapping::Wrap),
                 TextBlock::new()
                     .text(&state.details)
-                    .font_size(12.0)
+                    .font_size(crate::ui::CAPTION)
                     .opacity(0.72)
                     .text_wrapping(TextWrapping::Wrap),
                 Button::new()
@@ -334,11 +334,11 @@ impl DirectorApp {
             ));
         }
         if review {
-            return Border::new().padding(Thickness::uniform(12.0)).background(Color::argb(12,128,128,128)).corner_radius(CornerRadius::uniform(6.0)).content(
+            return Border::new().padding(Thickness::uniform(12.0)).background(crate::ui::card_fill()).corner_radius(crate::ui::RADIUS_S).content(
                 StackPanel::new().spacing(10.0).children((
                     TextBlock::new().text("Detect this display’s options").font_weight(FontWeight::SEMI_BOLD),
                     TextBlock::new().text("Director will temporarily enable this display alongside your current screens, read its options, then restore your layout. Screens may briefly flicker. Turn the display on and select its PC input first.").text_wrapping(TextWrapping::Wrap).opacity(0.72),
-                    if wake{TextBlock::new().text("Wake and detect also wakes the linked TV and selects its saved PC input. The TV stays on afterward.").text_wrapping(TextWrapping::Wrap).font_size(12.0).opacity(0.72).into()}else{View::empty()},
+                    if wake{TextBlock::new().text("Wake and detect also wakes the linked TV and selects its saved PC input. The TV stays on afterward.").text_wrapping(TextWrapping::Wrap).font_size(crate::ui::CAPTION).opacity(0.72).into()}else{View::empty()},
                     StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
                         Button::new().element_ref(&focus).automation_name(format!("Detect display options for {}",m.name)).is_enabled(!self.busy).on_click(cx.message(setup(SetupMessage::Start(index,false)))).content("Detect options"),
                         if wake{Button::new().automation_name(format!("Wake and detect {}",m.name)).is_enabled(!self.busy).on_click(cx.message(setup(SetupMessage::Start(index,true)))).content("Wake and detect")}else{View::empty()},
@@ -360,7 +360,7 @@ impl DirectorApp {
                 TextBlock::new()
                     .text(&state.details)
                     .text_wrapping(TextWrapping::Wrap)
-                    .font_size(12.0)
+                    .font_size(crate::ui::CAPTION)
                     .opacity(0.72)
                     .into()
             } else {

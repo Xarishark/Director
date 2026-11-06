@@ -12,7 +12,9 @@ pub enum Step {
     Review,
 }
 impl Step {
-    pub fn number(self) -> usize {
+    /// How many steps the guide has; the last is Review.
+    pub const COUNT: usize = Self::Review.number();
+    pub const fn number(self) -> usize {
         match self {
             Self::Brand => 1,
             Self::Name => 2,
