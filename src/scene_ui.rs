@@ -92,6 +92,8 @@ pub(crate) enum SceneMessage {
     Sound(SoundEdit),
     Tv(Option<usize>),
     Wake(bool),
+    ReturnEnabled(bool),
+    ReturnDestination(Option<usize>),
     /// Turn the scene's TV off when the scene is left.
     TvOffWhenLeaving(bool),
     Input(Option<usize>),
@@ -149,6 +151,7 @@ pub(crate) struct SceneState {
     pub(crate) snapshot: Option<Scene>,
     /// The scene applied last during this Windows session.
     pub(crate) active: Option<String>,
+    previous: Option<String>,
     /// App actions whose Advanced options section is open.
     pub(crate) advanced: Vec<(ActionList, usize)>,
     /// The first-run card: what it read and what's ticked.
@@ -369,6 +372,7 @@ impl DirectorApp {
                         self.inputs = inputs;
                         self.scene.ready = true;
                         self.scene.active = director::scene_session::active();
+                        self.scene.previous = director::scene_session::previous();
                         self.status = "Ready.".into();
                         self.library_select_in_scene(cx);
                         self.library_resume(cx);
@@ -411,6 +415,38 @@ impl DirectorApp {
                     .map(|p| p.id.clone());
                 if let Some(d) = &mut self.scene.draft {
                     d.display = selected;
+                }
+            }
+            SceneMessage::ReturnEnabled(enabled) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft {
+                    d.return_to = if enabled {
+                        Some(
+                            d.return_to
+                                .clone()
+                                .unwrap_or(scenes::ReturnTarget::Previous),
+                        )
+                    } else {
+                        None
+                    };
+                }
+            }
+            SceneMessage::ReturnDestination(Some(index)) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft
+                    && d.return_to.is_some()
+                {
+                    let target = if index == 0 {
+                        Some(scenes::ReturnTarget::Previous)
+                    } else {
+                        self.scene
+                            .scenes
+                            .iter()
+                            .filter(|s| s.id != d.id)
+                            .nth(index - 1)
+                            .map(|s| scenes::ReturnTarget::Scene { id: s.id.clone() })
+                    };
+                    if let Some(target) = target {
+                        d.return_to = Some(target);
+                    }
                 }
             }
             SceneMessage::Sound(edit) if !self.busy => self.edit_sound(edit),
@@ -607,29 +643,13 @@ impl DirectorApp {
                         Step::Fps => d.fps = None,
                         Step::After => d.actions.clear(),
                         Step::Leave => d.leave.clear(),
+                        Step::Return => d.return_to = None,
                     }
                 }
                 if self.scene.open == Some(step) {
                     self.scene.open = None;
                     self.scene.snapshot = None;
                 }
-            }
-            SceneMessage::End if ready => {
-                self.scene.token = self.scene.token.wrapping_add(1);
-                let token = self.scene.token;
-                self.begin("Ending scene…");
-                work(cx, move || {
-                    msg(SceneMessage::Finished(
-                        token,
-                        (|| {
-                            let _lock = OperationLock::acquire()?;
-                            let mut backend = director::windows_scenes::WindowsScene::new(
-                                |_: &director::displays::Preset| false,
-                            );
-                            Ok(director::windows_scenes::end(&mut backend, |_| {}))
-                        })(),
-                    ))
-                });
             }
             SceneMessage::Save if ready => {
                 if let Some(mut d) = self.scene.draft.clone() {
@@ -680,7 +700,15 @@ impl DirectorApp {
                     self.scene_save(next, cx);
                 }
             }
-            SceneMessage::Apply(id) if ready => {
+            SceneMessage::Apply(_) | SceneMessage::End if ready => {
+                let requested = match m {
+                    SceneMessage::Apply(id) => Some(id),
+                    _ => None,
+                };
+                let id = requested
+                    .clone()
+                    .or_else(|| self.scene.active.clone())
+                    .unwrap_or_default();
                 self.scene.token = self.scene.token.wrapping_add(1);
                 let token = self.scene.token;
                 let name = self
@@ -700,7 +728,6 @@ impl DirectorApp {
                 work(cx, move || {
                     let result = (|| {
                         let _lock = OperationLock::acquire()?;
-                        let plan = director::windows_scenes::load_run_plan(&id, &name, false)?;
                         let confirmation_tx = tx.clone();
                         let confirm_cancel = cancel.clone();
                         let mut backend = director::windows_scenes::WindowsScene::new(
@@ -715,15 +742,28 @@ impl DirectorApp {
                                 )
                             },
                         );
-                        Ok(director::windows_scenes::run(
-                            &mut backend,
-                            &plan,
-                            &cancel,
-                            false,
-                            |step| {
-                                let _ = tx.send(Event::Step(step.into()));
-                            },
-                        ))
+                        let progress = |step: &str| {
+                            let _ = tx.send(Event::Step(step.into()));
+                        };
+                        match requested {
+                            Some(id) => {
+                                let plan =
+                                    director::windows_scenes::load_run_plan(&id, &name, false)?;
+                                Ok(director::windows_scenes::run(
+                                    &mut backend,
+                                    &plan,
+                                    &cancel,
+                                    false,
+                                    progress,
+                                ))
+                            }
+                            None => Ok(director::windows_scenes::end(
+                                &mut backend,
+                                &cancel,
+                                false,
+                                progress,
+                            )),
+                        }
                     })();
                     msg(SceneMessage::Finished(token, result))
                 });
@@ -769,6 +809,7 @@ impl DirectorApp {
                 self.scene.confirm = None;
                 self.scene.remaining = None;
                 self.scene.active = director::scene_session::active();
+                self.scene.previous = director::scene_session::previous();
                 match result {
                     Ok(r) => {
                         self.error = !r.success;
@@ -808,6 +849,9 @@ impl DirectorApp {
                 .map_or("the TV".to_string(), |t| t.name.clone());
             work.push(format!("Turn off {tv}"));
         }
+        if scene.return_to.is_some() {
+            work.push(format!("Return to {}", self.return_label(scene)));
+        }
         Button::new()
             .automation_name(format!("End {}", scene.name))
             .is_enabled(self.scene_ready())
@@ -823,10 +867,24 @@ impl DirectorApp {
                         TextBlock::new().text(format!("End {}", scene.name)),
                     )),
             )
-            .tooltip(format!(
-                "Runs: {}. Your other settings stay as they are.",
-                work.join(", ")
-            ))
+            .tooltip(format!("Runs: {}.", work.join(", ")))
+    }
+    fn return_label(&self, scene: &Scene) -> String {
+        match &scene.return_to {
+            Some(scenes::ReturnTarget::Previous) => self
+                .scene
+                .previous
+                .as_ref()
+                .and_then(|id| self.scene.scenes.iter().find(|s| &s.id == id))
+                .map_or("previous scene".into(), |s| s.name.clone()),
+            Some(scenes::ReturnTarget::Scene { id }) => self
+                .scene
+                .scenes
+                .iter()
+                .find(|s| &s.id == id)
+                .map_or("missing scene".into(), |s| s.name.clone()),
+            None => String::new(),
+        }
     }
     pub(crate) fn scene_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.scene.draft {
@@ -857,6 +915,12 @@ impl DirectorApp {
                 let resolved = scenes::resolve(s, &self.scene.displays, &self.scene.tvs);
                 let name = s.name.clone();
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
+                let returns = active && s.return_to.is_some();
+                let action_label = if returns {
+                    format!("Return to {}", self.return_label(s))
+                } else {
+                    "Apply".into()
+                };
                 let body = StackPanel::new().spacing(8.0).children((
                     if active {
                         StackPanel::new()
@@ -865,7 +929,12 @@ impl DirectorApp {
                             .children((
                                 TextBlock::new().text("●").foreground(crate::ui::SUCCESS),
                                 TextBlock::new()
-                                    .text("Active")
+                                    .text(if returns {
+                                        format!("Active · {action_label}")
+                                    } else {
+                                        "Active".into()
+                                    })
+                                    .text_trimming(TextTrimming::CharacterEllipsis)
                                     .font_weight(FontWeight::SEMI_BOLD),
                             ))
                     } else {
@@ -898,22 +967,32 @@ impl DirectorApp {
                         ),
                         body,
                         vec![
-                            crate::preset_cards_ui::apply_button(
+                            crate::preset_cards_ui::action_button(
                                 Button::new()
-                                    .automation_name(format!("Apply {}", name))
+                                    .automation_name(if returns {
+                                        action_label.clone()
+                                    } else {
+                                        format!("Apply {name}")
+                                    })
                                     .is_enabled(
                                         self.scene_ready()
-                                            && scenes::resolve(
-                                                s,
-                                                &self.scene.displays,
-                                                &self.scene.tvs,
-                                            )
-                                            .is_ok(),
+                                            && (returns
+                                                || scenes::resolve(
+                                                    s,
+                                                    &self.scene.displays,
+                                                    &self.scene.tvs,
+                                                )
+                                                .is_ok()),
                                     )
                                     .on_click(cx.callback(move |()| {
                                         msg(SceneMessage::Apply(apply.clone()))
                                     })),
-                                "Apply scene",
+                                if returns { "Return" } else { "Apply" },
+                                if returns {
+                                    &action_label
+                                } else {
+                                    "Apply scene"
+                                },
                             ),
                             crate::preset_cards_ui::card_icon_button(Button::new())
                                 .automation_name(format!("Edit {}", name))

@@ -16,6 +16,7 @@ pub(crate) enum Step {
     Fps,
     After,
     Leave,
+    Return,
 }
 impl Step {
     fn title(self) -> &'static str {
@@ -27,6 +28,7 @@ impl Step {
             Self::Fps => "FPS limit",
             Self::After => "After",
             Self::Leave => "When leaving",
+            Self::Return => "Return",
         }
     }
     fn glyph(self) -> &'static str {
@@ -38,6 +40,7 @@ impl Step {
             Self::Fps => "\u{e916}",
             Self::After => "\u{e768}",
             Self::Leave => "\u{e7e8}",
+            Self::Return => "\u{e72b}",
         }
     }
     /// What an empty step would do, shown under its title.
@@ -50,6 +53,7 @@ impl Step {
             Self::Fps => "Cap the frame rate",
             Self::After => "Open apps or links when it’s done",
             Self::Leave => "Close apps when you switch away",
+            Self::Return => "Choose where to go on End or when you run this scene again",
         }
     }
     fn key(self) -> &'static str {
@@ -61,6 +65,7 @@ impl Step {
             Self::Fps => "fps",
             Self::After => "after",
             Self::Leave => "leave",
+            Self::Return => "return",
         }
     }
 }
@@ -203,6 +208,7 @@ impl DirectorApp {
             Step::Fps => d.fps.is_some(),
             Step::After => !d.actions.is_empty(),
             Step::Leave => !d.leave.is_empty(),
+            Step::Return => d.return_to.is_some(),
         }
     }
     fn step_summary(&self, d: &Scene, step: Step) -> String {
@@ -211,6 +217,15 @@ impl DirectorApp {
             Step::Before => actions_summary(&d.before),
             Step::After => actions_summary(&d.actions),
             Step::Leave => actions_summary(&d.leave),
+            Step::Return => match &d.return_to {
+                None => String::new(),
+                Some(scenes::ReturnTarget::Previous) => "Previous scene".into(),
+                Some(scenes::ReturnTarget::Scene { id }) => s
+                    .scenes
+                    .iter()
+                    .find(|scene| &scene.id == id)
+                    .map_or("Missing scene".into(), |scene| scene.name.clone()),
+            },
             Step::Tv => d.tv.as_ref().map_or(String::new(), |prep| {
                 match s.tvs.iter().find(|t| t.id == prep.id) {
                     None => "Missing TV".into(),
@@ -289,7 +304,11 @@ impl DirectorApp {
                                     .vertical_alignment(VerticalAlignment::Center)
                                     .children((
                                         TextBlock::new()
-                                            .text(step.title())
+                                            .text(if step == Step::Return {
+                                                "Return destination"
+                                            } else {
+                                                step.title()
+                                            })
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .opacity(if used { 1.0 } else { 0.75 }),
                                         TextBlock::new()
@@ -625,6 +644,41 @@ impl DirectorApp {
                             .on_click(cx.message(Message::Go("displays".into())))
                             .content("Manage display presets"),
                     ))
+            }
+            Step::Return => {
+                let choices = self.scene.scenes.iter().filter(|s| s.id != d.id).collect::<Vec<_>>();
+                let mut labels = vec!["Previous scene".to_string()];
+                labels.extend(choices.iter().map(|s| s.name.clone()));
+                let selected = match &d.return_to {
+                    Some(scenes::ReturnTarget::Scene { id }) => {
+                        choices.iter().position(|s| &s.id == id).map(|i| i + 1)
+                            .unwrap_or_else(|| {
+                                labels.push("Missing scene — choose another".into());
+                                labels.len() - 1
+                            })
+                    }
+                    _ => 0,
+                };
+                StackPanel::new().spacing(12.0).children((
+                    note("Runs after the leave steps when you choose End or run this scene again while it is active."),
+                    Grid::new().columns([GridLength::Auto, GridLength::Star(1.0)])
+                        .column_spacing(12.0).children((
+                            ToggleSwitch::new()
+                                .automation_name("Enable Return")
+                                .is_on(d.return_to.is_some())
+                                .is_enabled(available)
+                                .vertical_alignment(VerticalAlignment::Center)
+                                .on_toggled(cx.callback(|v| msg(SceneMessage::ReturnEnabled(v)))),
+                            ComboBox::new().grid_column(1)
+                                .automation_name("Return destination")
+                                .items_source(labels)
+                                .selected_index(Some(selected))
+                                .is_enabled(available && d.return_to.is_some())
+                                .horizontal_alignment(HorizontalAlignment::Stretch)
+                                .on_selection_changed(cx.callback(|i| msg(SceneMessage::ReturnDestination(i)))),
+                        )),
+                    note("Selecting another scene runs the leave steps and goes directly to that scene, skipping Return."),
+                ))
             }
             Step::Sound => self.sound_editor(cx, d),
             Step::Fps => self.fps_controls(cx, crate::fps_ui::Target::Scene),
@@ -1164,6 +1218,13 @@ impl DirectorApp {
                         .opacity(0.85),
                     self.tv_off_card(cx, d),
                     self.step_block(cx, d, Step::Leave),
+                )),
+                StackPanel::new().spacing(8.0).children((
+                    TextBlock::new()
+                        .text("Return")
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .opacity(0.85),
+                    self.step_block(cx, d, Step::Return),
                 )),
             ));
         let changed = self.draft_changed(crate::Page::Scenes);

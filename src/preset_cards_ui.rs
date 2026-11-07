@@ -98,9 +98,12 @@ pub(crate) fn card(
 /// Leave its style unset: windows-reactor's ButtonStyle::Default clears the style to null, which
 /// bypasses the rounded Fluent style that unstyled buttons get.
 pub(crate) fn apply_button(button: Button, tooltip: &str) -> View {
+    action_button(button, "Apply", tooltip)
+}
+pub(crate) fn action_button(button: Button, label: &str, tooltip: &str) -> View {
     button
         .height(ACTION_HEIGHT)
-        .content(TextBlock::new().text("Apply"))
+        .content(TextBlock::new().text(label))
         .tooltip(tooltip)
 }
 /// Edit and delete buttons on cards: Apply's height with a natural width, so 16 px icons are never clipped.

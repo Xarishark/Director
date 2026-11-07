@@ -65,6 +65,12 @@ The Prepare TV step has **Turn off the TV when you leave this scene** (`off_when
 
 **End** appears next to the Scenes page's **+** only while the active scene has leave actions or turns its TV off; its tooltip lists what will run. The active card keeps an "Active" label.
 
+## Return
+
+Return is an optional final step. In its dialog, turn the switch on and choose **Previous scene** or another saved scene. End and running the active scene again check the destination before running any leave steps, then apply it once. Selecting a different scene always goes there after the usual leave steps. End is also available when Return is the only exit action.
+
+The previous scene is the last distinct scene that was active before this one. It is shared by the GUI and CLI and forgotten on a Windows restart. If there is no previous scene, the saved destination was removed, or its settings fail validation, Director keeps the current scene active. Scene file version 4 stores the optional destination by ID, so renaming it works. Older scenes load with Return off.
+
 ## Commands for shortcuts
 
 The **>\_** button next to a scene's or preset's name opens "Run … from a shortcut" with two commands, each with a Copy button: by CLI name (`director scene apply console`, readable, but copy it again after a rename) and by ID (keeps working after a rename). A scene with leave work also shows `director scene end`. Display presets accept their ID in `director display apply`, as scenes do. The by-name command uses the CLI name, unquoted (`director scene apply console`). Setup puts `director` on PATH, so the commands don't include a full path.
