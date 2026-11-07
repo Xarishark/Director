@@ -67,9 +67,9 @@ The Prepare TV step has **Turn off the TV when you leave this scene** (`off_when
 
 ## Return
 
-Return is an optional final step. In its dialog, turn the switch on and choose **Previous scene** or another saved scene. End and running the active scene again check the destination before running any leave steps, then apply it once. Selecting a different scene always goes there after the usual leave steps. End is also available when Return is the only exit action.
+Return is an optional final step. In its dialog, turn the switch on and choose another saved scene. End and running the active scene again check the destination before running any leave steps, then apply it once. Selecting a different scene always goes there after the usual leave steps. End is also available when Return is the only exit action.
 
-The previous scene is the last distinct scene that was active before this one. It is shared by the GUI and CLI and forgotten on a Windows restart. If there is no previous scene, the saved destination was removed, or its settings fail validation, Director keeps the current scene active. Scene file version 4 stores the optional destination by ID, so renaming it works. Older scenes load with Return off.
+If the destination was removed or its settings fail validation, Director keeps the current scene active and runs nothing. Scene file version 4 stores the optional destination by ID, so renaming it works. Older scenes load with Return off.
 
 ## Commands for shortcuts
 
