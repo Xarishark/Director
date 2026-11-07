@@ -28,7 +28,15 @@ pub fn load_plan(id: &str) -> Result<Plan, String> {
         .iter()
         .find(|s| s.id == id)
         .ok_or("The scene was removed. Reopen Scenes.")?;
-    let mut plan = scenes::resolve(scene, &d, &t)?;
+    checked_plan(scene, &d, &t)
+}
+
+fn checked_plan(
+    scene: &scenes::Scene,
+    displays: &[crate::displays::Preset],
+    tvs: &[crate::tvs::Tv],
+) -> Result<Plan, String> {
+    let mut plan = scenes::resolve(scene, displays, tvs)?;
     plan.policy = crate::preferences::current().scene_policy();
     for action in scene.before.iter().chain(&scene.actions) {
         if let Action::App {
@@ -51,7 +59,17 @@ pub fn load_plan(id: &str) -> Result<Plan, String> {
     Ok(plan)
 }
 pub fn load_run_plan(id: &str, name: &str, notify: bool) -> Result<Plan, String> {
-    load_plan(id).inspect_err(|error| {
+    (|| {
+        let (all, displays, tvs) = catalog()?;
+        let requested = all
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or("The scene was removed. Reopen Scenes.")?;
+        let target =
+            scenes::apply_destination(requested, crate::scene_session::active().as_deref(), &all)?;
+        checked_plan(target, &displays, &tvs)
+    })()
+    .inspect_err(|error| {
         let report = scenes::Report {
             success: false,
             message: "Scene could not start.".into(),
@@ -59,6 +77,19 @@ pub fn load_run_plan(id: &str, name: &str, notify: bool) -> Result<Plan, String>
         };
         save_result(name, "Checking scene", &report, notify);
     })
+}
+
+fn load_return_plan() -> Result<Option<Plan>, String> {
+    let Some(active) = crate::scene_session::active() else {
+        return Ok(None);
+    };
+    let all = scenes::load(&scenes::path()?)?;
+    let Some(scene) = all.iter().find(|s| s.id == active) else {
+        return Ok(None);
+    };
+    scenes::return_destination(scene, &all)?
+        .map(|target| load_plan(&target.id))
+        .transpose()
 }
 
 fn save_result(name: &str, stage: &str, report: &scenes::Report, notify: bool) {
@@ -120,9 +151,24 @@ pub fn run(
     report
 }
 
-/// End the active scene: run its When leaving actions and forget it. Settings it changed
-/// stay as they are.
-pub fn end(backend: &mut impl scenes::Backend, mut progress: impl FnMut(&str)) -> scenes::Report {
+/// Resolve Return before leaving, then use the normal scene runner exactly once.
+pub fn end(
+    backend: &mut impl scenes::Backend,
+    cancel: &AtomicBool,
+    notify: bool,
+    mut progress: impl FnMut(&str),
+) -> scenes::Report {
+    match load_return_plan() {
+        Ok(Some(plan)) => return run(backend, &plan, cancel, notify, progress),
+        Err(error) => {
+            return scenes::Report {
+                success: false,
+                message: error,
+                details: vec![],
+            };
+        }
+        Ok(None) => {}
+    }
     let Some(id) = crate::scene_session::active() else {
         return scenes::Report {
             success: true,
@@ -634,17 +680,43 @@ impl<F: FnMut(&crate::displays::Preset) -> bool> scenes::Backend for WindowsScen
         }
     }
 }
+fn finish_cli_run(report: scenes::Report) -> i32 {
+    println!("{}", report.message);
+    for detail in report.details {
+        println!("{detail}");
+    }
+    if crate::tv_input_guard::active() {
+        eprintln!("Keeping the TV on the scene’s input for a few seconds (TV input protection)…");
+    }
+    crate::tv_input_guard::wait();
+    if report.success { 0 } else { 1 }
+}
+
+fn cli_confirm(_: &crate::displays::Preset) -> bool {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let keep = std::io::stdin().read_line(&mut line).is_ok()
+            && matches!(line.trim().to_lowercase().as_str(), "yes" | "y");
+        let _ = tx.send(if keep {
+            display_apply::Decision::Keep
+        } else {
+            display_apply::Decision::Revert
+        });
+    });
+    eprintln!("Keep display changes? Type yes within 15 seconds.");
+    display_apply::wait_for_confirmation(&rx, Duration::from_secs(15), |_| true)
+}
+
 pub fn cli(args: &[String]) -> Result<i32, String> {
     match args {
         [command] if command == "end" => {
             let _lock = crate::windows_audio::OperationLock::acquire()?;
-            let mut backend = WindowsScene::new(|_: &crate::displays::Preset| false);
-            let report = end(&mut backend, |s| eprintln!("{s}"));
-            println!("{}", report.message);
-            for detail in report.details {
-                println!("{detail}")
-            }
-            Ok(if report.success { 0 } else { 1 })
+            let mut backend = WindowsScene::new(cli_confirm);
+            let report = end(&mut backend, &AtomicBool::new(false), true, |s| {
+                eprintln!("{s}")
+            });
+            Ok(finish_cli_run(report))
         }
         [command, name, rest @ ..]
             if (command == "apply" || command == "check")
@@ -671,36 +743,11 @@ pub fn cli(args: &[String]) -> Result<i32, String> {
                 );
                 return Ok(0);
             }
-            let mut backend = WindowsScene::new(|_: &crate::displays::Preset| {
-                let (tx, rx) = std::sync::mpsc::channel();
-                std::thread::spawn(move || {
-                    let mut line = String::new();
-                    let keep = std::io::stdin().read_line(&mut line).is_ok()
-                        && matches!(line.trim().to_lowercase().as_str(), "yes" | "y");
-                    let _ = tx.send(if keep {
-                        display_apply::Decision::Keep
-                    } else {
-                        display_apply::Decision::Revert
-                    });
-                });
-                eprintln!("Keep display changes? Type yes within 15 seconds.");
-                display_apply::wait_for_confirmation(&rx, Duration::from_secs(15), |_| true)
-            });
+            let mut backend = WindowsScene::new(cli_confirm);
             let report = run(&mut backend, &plan, &AtomicBool::new(false), true, |s| {
                 eprintln!("{s}")
             });
-            println!("{}", report.message);
-            for detail in report.details {
-                println!("{detail}")
-            }
-            // The guard runs on its own thread; exiting would end it early.
-            if crate::tv_input_guard::active() {
-                eprintln!(
-                    "Keeping the TV on the scene’s input for a few seconds (TV input protection)…"
-                );
-            }
-            crate::tv_input_guard::wait();
-            Ok(if report.success { 0 } else { 1 })
+            Ok(finish_cli_run(report))
         }
         _ => Err(
             "Use director scene list | end | check <scene> | apply <scene> [--yes | --confirm]."

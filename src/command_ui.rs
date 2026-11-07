@@ -82,7 +82,10 @@ pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> V
                 .text(">_")
                 .font_size(13.0)
                 .font_weight(FontWeight::SEMI_BOLD)
-                .opacity(crate::ui::SECONDARY),
+                .opacity(crate::ui::SECONDARY)
+                // Eat into the button's fixed side padding, so the card's name keeps as
+                // much room as it can.
+                .margin(Thickness::new(-6.0, 0.0, -6.0, 0.0)),
         )
         .tooltip("Command for shortcuts")
 }

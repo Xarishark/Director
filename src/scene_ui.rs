@@ -92,6 +92,8 @@ pub(crate) enum SceneMessage {
     Sound(SoundEdit),
     Tv(Option<usize>),
     Wake(bool),
+    ReturnEnabled(bool),
+    ReturnDestination(Option<usize>),
     /// Turn the scene's TV off when the scene is left.
     TvOffWhenLeaving(bool),
     Input(Option<usize>),
@@ -160,8 +162,10 @@ fn msg(m: SceneMessage) -> Message {
 use crate::ui::note;
 /// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
 /// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
-fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 {
-    const LINE: f64 = 20.0;
+/// The height of one summary line, as measured on a card.
+const SUMMARY_LINE: f64 = 18.7;
+fn scene_card_height(summary: &str, error: Option<String>) -> f64 {
+    const LINE: f64 = SUMMARY_LINE;
     // About this many characters fit on a line of a card.
     const CHARS: usize = 42;
     let lines = |text: &str| -> f64 {
@@ -171,14 +175,11 @@ fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 
     };
     // Padding, header row and spacing, then the hero panel and the gap under it.
     let mut height = 28.0 + 32.0 + 12.0 + 124.0 + 8.0 + lines(summary) * LINE;
-    if active {
-        height += LINE + 8.0;
-    }
     if let Some(e) = error {
         height += lines(&e) * LINE + 8.0;
     }
-    // A little room so a misjudged wrap doesn't clip the last line.
-    height + 12.0
+    // A little room for rounding, so the last line is never clipped.
+    height + 4.0
 }
 /// What a hero panel's bar shows.
 enum Level {
@@ -413,6 +414,31 @@ impl DirectorApp {
                     d.display = selected;
                 }
             }
+            SceneMessage::ReturnEnabled(enabled) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft {
+                    // Turning Return on picks the first other scene; with none it stays off.
+                    d.return_to = enabled
+                        .then(|| {
+                            d.return_to.clone().or_else(|| {
+                                self.scene
+                                    .scenes
+                                    .iter()
+                                    .find(|s| s.id != d.id)
+                                    .map(|s| s.id.clone())
+                            })
+                        })
+                        .flatten();
+                }
+            }
+            SceneMessage::ReturnDestination(Some(index)) if !self.busy => {
+                if let Some(d) = &mut self.scene.draft
+                    && d.return_to.is_some()
+                    && let Some(target) =
+                        self.scene.scenes.iter().filter(|s| s.id != d.id).nth(index)
+                {
+                    d.return_to = Some(target.id.clone());
+                }
+            }
             SceneMessage::Sound(edit) if !self.busy => self.edit_sound(edit),
             SceneMessage::Tv(index) if !self.busy && index.is_some() => {
                 let selected = index
@@ -607,29 +633,13 @@ impl DirectorApp {
                         Step::Fps => d.fps = None,
                         Step::After => d.actions.clear(),
                         Step::Leave => d.leave.clear(),
+                        Step::Return => d.return_to = None,
                     }
                 }
                 if self.scene.open == Some(step) {
                     self.scene.open = None;
                     self.scene.snapshot = None;
                 }
-            }
-            SceneMessage::End if ready => {
-                self.scene.token = self.scene.token.wrapping_add(1);
-                let token = self.scene.token;
-                self.begin("Ending scene…");
-                work(cx, move || {
-                    msg(SceneMessage::Finished(
-                        token,
-                        (|| {
-                            let _lock = OperationLock::acquire()?;
-                            let mut backend = director::windows_scenes::WindowsScene::new(
-                                |_: &director::displays::Preset| false,
-                            );
-                            Ok(director::windows_scenes::end(&mut backend, |_| {}))
-                        })(),
-                    ))
-                });
             }
             SceneMessage::Save if ready => {
                 if let Some(mut d) = self.scene.draft.clone() {
@@ -680,7 +690,15 @@ impl DirectorApp {
                     self.scene_save(next, cx);
                 }
             }
-            SceneMessage::Apply(id) if ready => {
+            SceneMessage::Apply(_) | SceneMessage::End if ready => {
+                let requested = match m {
+                    SceneMessage::Apply(id) => Some(id),
+                    _ => None,
+                };
+                let id = requested
+                    .clone()
+                    .or_else(|| self.scene.active.clone())
+                    .unwrap_or_default();
                 self.scene.token = self.scene.token.wrapping_add(1);
                 let token = self.scene.token;
                 let name = self
@@ -700,7 +718,6 @@ impl DirectorApp {
                 work(cx, move || {
                     let result = (|| {
                         let _lock = OperationLock::acquire()?;
-                        let plan = director::windows_scenes::load_run_plan(&id, &name, false)?;
                         let confirmation_tx = tx.clone();
                         let confirm_cancel = cancel.clone();
                         let mut backend = director::windows_scenes::WindowsScene::new(
@@ -715,15 +732,28 @@ impl DirectorApp {
                                 )
                             },
                         );
-                        Ok(director::windows_scenes::run(
-                            &mut backend,
-                            &plan,
-                            &cancel,
-                            false,
-                            |step| {
-                                let _ = tx.send(Event::Step(step.into()));
-                            },
-                        ))
+                        let progress = |step: &str| {
+                            let _ = tx.send(Event::Step(step.into()));
+                        };
+                        match requested {
+                            Some(id) => {
+                                let plan =
+                                    director::windows_scenes::load_run_plan(&id, &name, false)?;
+                                Ok(director::windows_scenes::run(
+                                    &mut backend,
+                                    &plan,
+                                    &cancel,
+                                    false,
+                                    progress,
+                                ))
+                            }
+                            None => Ok(director::windows_scenes::end(
+                                &mut backend,
+                                &cancel,
+                                false,
+                                progress,
+                            )),
+                        }
                     })();
                     msg(SceneMessage::Finished(token, result))
                 });
@@ -808,6 +838,9 @@ impl DirectorApp {
                 .map_or("the TV".to_string(), |t| t.name.clone());
             work.push(format!("Turn off {tv}"));
         }
+        if scene.return_to.is_some() {
+            work.push(format!("Return to {}", self.return_label(scene)));
+        }
         Button::new()
             .automation_name(format!("End {}", scene.name))
             .is_enabled(self.scene_ready())
@@ -823,10 +856,16 @@ impl DirectorApp {
                         TextBlock::new().text(format!("End {}", scene.name)),
                     )),
             )
-            .tooltip(format!(
-                "Runs: {}. Your other settings stay as they are.",
-                work.join(", ")
-            ))
+            .tooltip(format!("Runs: {}.", work.join(", ")))
+    }
+    fn return_label(&self, scene: &Scene) -> String {
+        scene.return_to.as_ref().map_or(String::new(), |id| {
+            self.scene
+                .scenes
+                .iter()
+                .find(|s| &s.id == id)
+                .map_or("missing scene".into(), |s| s.name.clone())
+        })
     }
     pub(crate) fn scene_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.scene.draft {
@@ -841,7 +880,6 @@ impl DirectorApp {
             .map(|s| {
                 scene_card_height(
                     &self.scene_summary(s),
-                    self.scene.active.as_deref() == Some(s.id.as_str()),
                     scenes::resolve(s, &self.scene.displays, &self.scene.tvs).err(),
                 )
             })
@@ -857,20 +895,30 @@ impl DirectorApp {
                 let resolved = scenes::resolve(s, &self.scene.displays, &self.scene.tvs);
                 let name = s.name.clone();
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
-                let body = StackPanel::new().spacing(8.0).children((
-                    if active {
-                        StackPanel::new()
-                            .orientation(Orientation::Horizontal)
-                            .spacing(6.0)
-                            .children((
-                                TextBlock::new().text("●").foreground(crate::ui::SUCCESS),
-                                TextBlock::new()
-                                    .text("Active")
-                                    .font_weight(FontWeight::SEMI_BOLD),
-                            ))
+                let returns = active && s.return_to.is_some();
+                let action_label = if returns {
+                    format!("Return to {}", self.return_label(s))
+                } else {
+                    "Apply".into()
+                };
+                // The Active dot sits before the name in a slot every scene card reserves, so
+                // marking a scene never moves its name or changes the card's height.
+                let lead = if active {
+                    let label = if returns {
+                        format!("Active · {action_label}")
                     } else {
-                        View::empty()
-                    },
+                        "Active".into()
+                    };
+                    TextBlock::new()
+                        .text("●")
+                        .foreground(crate::ui::SUCCESS)
+                        .horizontal_alignment(HorizontalAlignment::Center)
+                        .automation_name(label.as_str())
+                        .tooltip(label.as_str())
+                } else {
+                    View::empty()
+                };
+                let body = StackPanel::new().spacing(8.0).children((
                     self.scene_hero(s),
                     note(self.scene_summary(s)),
                     if let Err(e) = resolved {
@@ -887,6 +935,7 @@ impl DirectorApp {
                     s.id.clone(),
                     crate::preset_cards_ui::card(
                         &name,
+                        Some(lead),
                         crate::command_ui::command_button(
                             cx,
                             crate::command_ui::Target {
@@ -898,22 +947,32 @@ impl DirectorApp {
                         ),
                         body,
                         vec![
-                            crate::preset_cards_ui::apply_button(
+                            crate::preset_cards_ui::action_button(
                                 Button::new()
-                                    .automation_name(format!("Apply {}", name))
+                                    .automation_name(if returns {
+                                        action_label.clone()
+                                    } else {
+                                        format!("Apply {name}")
+                                    })
                                     .is_enabled(
                                         self.scene_ready()
-                                            && scenes::resolve(
-                                                s,
-                                                &self.scene.displays,
-                                                &self.scene.tvs,
-                                            )
-                                            .is_ok(),
+                                            && (returns
+                                                || scenes::resolve(
+                                                    s,
+                                                    &self.scene.displays,
+                                                    &self.scene.tvs,
+                                                )
+                                                .is_ok()),
                                     )
                                     .on_click(cx.callback(move |()| {
                                         msg(SceneMessage::Apply(apply.clone()))
                                     })),
-                                "Apply scene",
+                                if returns { "Return" } else { "Apply" },
+                                if returns {
+                                    &action_label
+                                } else {
+                                    "Apply scene"
+                                },
                             ),
                             crate::preset_cards_ui::card_icon_button(Button::new())
                                 .automation_name(format!("Edit {}", name))
@@ -935,7 +994,6 @@ impl DirectorApp {
                                 .tooltip("Delete scene"),
                         ],
                         card_height,
-                        true,
                     ),
                 )
             })
@@ -1248,6 +1306,10 @@ impl DirectorApp {
             (Some(off), 0) => lines.push(format!("When leaving: {off}")),
             (Some(off), n) => lines.push(format!("When leaving: {off} · {}", actions(n))),
         }
+        // Return is the scene's final step, so it ends the list.
+        if s.return_to.is_some() {
+            lines.push(format!("Return: {}", self.return_label(s)));
+        }
         if lines.is_empty() {
             "This scene doesn’t change anything yet. Edit it to add steps.".into()
         } else {
@@ -1335,14 +1397,13 @@ fn pick_path(folder: bool) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod card_height_tests {
-    use super::scene_card_height;
+    use super::{SUMMARY_LINE, scene_card_height};
     #[test]
     fn cards_grow_with_their_lines_and_long_lines_wrap() {
         let three = scene_card_height(
             "Displays: Desk
 Sound: Soundbar · 10%
 FPS: RTSS · 228 FPS",
-            false,
             None,
         );
         let six = scene_card_height(
@@ -1352,15 +1413,13 @@ c
 d
 e
 f",
-            false,
             None,
         );
-        assert!((six - three - 60.0).abs() < 1e-9);
+        assert!((six - three - 3.0 * SUMMARY_LINE).abs() < 1e-9);
         // A line twice as long as fits counts as two.
-        let wrapped = scene_card_height(&"x".repeat(80), false, None);
-        let single = scene_card_height("x", false, None);
-        assert!((wrapped - single - 20.0).abs() < 1e-9);
-        assert!(scene_card_height("x", true, None) > single);
-        assert!(scene_card_height("x", false, Some("Missing TV".into())) > single);
+        let wrapped = scene_card_height(&"x".repeat(80), None);
+        let single = scene_card_height("x", None);
+        assert!((wrapped - single - SUMMARY_LINE).abs() < 1e-9);
+        assert!(scene_card_height("x", Some("Missing TV".into())) > single);
     }
 }

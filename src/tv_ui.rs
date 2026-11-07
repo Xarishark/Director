@@ -1003,6 +1003,7 @@ impl DirectorApp {
                     tv.id.clone(),
                     crate::preset_cards_ui::card(
                         &tv.name,
+                        None,
                         View::empty(),
                         body,
                         vec![
@@ -1034,7 +1035,6 @@ impl DirectorApp {
                                 .tooltip("Remove TV"),
                         ],
                         crate::preset_cards_ui::TV_CARD_HEIGHT,
-                        false,
                     ),
                 )
             })
