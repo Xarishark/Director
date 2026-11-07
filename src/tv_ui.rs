@@ -1003,6 +1003,7 @@ impl DirectorApp {
                     tv.id.clone(),
                     crate::preset_cards_ui::card(
                         &tv.name,
+                        None,
                         View::empty(),
                         body,
                         vec![

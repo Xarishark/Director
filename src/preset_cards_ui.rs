@@ -38,24 +38,31 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
                 .keyed_children(cards),
         )
 }
+/// The width of the slot before a card's name (the scene card's Active dot). Every card that
+/// has the slot reserves it, marked or not, so names line up and never shift.
+pub(crate) const LEAD_WIDTH: f64 = 14.0;
 /// The widest a card's name can be next to its command button and `actions` buttons.
-fn name_width(actions: usize, apply: bool) -> f64 {
+fn name_width(actions: usize, apply: bool, lead: bool) -> f64 {
     // Inner width, less the ">_" button (cards with Apply have one), Apply (about 72) and 40 per
-    // icon button.
+    // icon button, and the lead slot with its spacing.
     let n = actions as f64;
     let buttons = 44.0 * n + if apply { 32.0 + 36.0 } else { 0.0 };
-    (CARD_WIDTH - 28.0 - buttons).max(60.0)
+    let lead = if lead { LEAD_WIDTH + 4.0 } else { 0.0 };
+    (CARD_WIDTH - 28.0 - buttons - lead).max(60.0)
 }
 /// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
 /// `apply` says the first action is the text Apply button, which is wider than the icons.
+/// `lead`, when given, sits before the name in a slot `LEAD_WIDTH` wide.
 pub(crate) fn card(
     name: &str,
+    lead: Option<View>,
     command: View,
     body: View,
     actions: Vec<View>,
     height: f64,
     apply: bool,
 ) -> View {
+    let has_lead = lead.is_some();
     Border::new()
         .automation_name(name)
         .horizontal_alignment(HorizontalAlignment::Left)
@@ -72,22 +79,36 @@ pub(crate) fn card(
                 // The name shrinks (with an ellipsis and the full name on hover) so the
                 // buttons always fit, however long the name is.
                 Grid::new()
-                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-                    .column_spacing(4.0)
+                    .columns([
+                        GridLength::Pixel(if has_lead { LEAD_WIDTH } else { 0.0 }),
+                        GridLength::Auto,
+                        GridLength::Star(1.0),
+                        GridLength::Auto,
+                    ])
+                    .column_spacing(if has_lead { 4.0 } else { 0.0 })
                     .children((
+                        Border::new()
+                            .width(if has_lead { LEAD_WIDTH } else { 0.0 })
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .content(lead.unwrap_or_else(View::empty)),
                         TextBlock::new()
+                            .grid_column(1)
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
-                            .max_width(name_width(actions.len(), apply))
+                            .max_width(name_width(actions.len(), apply, has_lead))
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
                         Border::new()
-                            .grid_column(1)
+                            .grid_column(2)
+                            .margin(Thickness::new(4.0, 0.0, 0.0, 0.0))
                             .horizontal_alignment(HorizontalAlignment::Left)
                             .content(command),
-                        Border::new().grid_column(2).content(action_row(actions)),
+                        Border::new()
+                            .grid_column(3)
+                            .margin(Thickness::new(4.0, 0.0, 0.0, 0.0))
+                            .content(action_row(actions)),
                     )),
                 body,
             )),
@@ -347,6 +368,7 @@ impl DirectorApp {
                     p.id.clone(),
                     card(
                         &p.name,
+                        None,
                         crate::command_ui::command_button(
                             cx,
                             crate::command_ui::Target {

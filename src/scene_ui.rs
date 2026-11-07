@@ -162,7 +162,7 @@ fn msg(m: SceneMessage) -> Message {
 use crate::ui::note;
 /// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
 /// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
-fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 {
+fn scene_card_height(summary: &str, error: Option<String>) -> f64 {
     const LINE: f64 = 20.0;
     // About this many characters fit on a line of a card.
     const CHARS: usize = 42;
@@ -173,9 +173,6 @@ fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 
     };
     // Padding, header row and spacing, then the hero panel and the gap under it.
     let mut height = 28.0 + 32.0 + 12.0 + 124.0 + 8.0 + lines(summary) * LINE;
-    if active {
-        height += LINE + 8.0;
-    }
     if let Some(e) = error {
         height += lines(&e) * LINE + 8.0;
     }
@@ -881,7 +878,6 @@ impl DirectorApp {
             .map(|s| {
                 scene_card_height(
                     &self.scene_summary(s),
-                    self.scene.active.as_deref() == Some(s.id.as_str()),
                     scenes::resolve(s, &self.scene.displays, &self.scene.tvs).err(),
                 )
             })
@@ -903,25 +899,24 @@ impl DirectorApp {
                 } else {
                     "Apply".into()
                 };
-                let body = StackPanel::new().spacing(8.0).children((
-                    if active {
-                        StackPanel::new()
-                            .orientation(Orientation::Horizontal)
-                            .spacing(6.0)
-                            .children((
-                                TextBlock::new().text("●").foreground(crate::ui::SUCCESS),
-                                TextBlock::new()
-                                    .text(if returns {
-                                        format!("Active · {action_label}")
-                                    } else {
-                                        "Active".into()
-                                    })
-                                    .text_trimming(TextTrimming::CharacterEllipsis)
-                                    .font_weight(FontWeight::SEMI_BOLD),
-                            ))
+                // The Active dot sits before the name in a slot every scene card reserves, so
+                // marking a scene never moves its name or changes the card's height.
+                let lead = if active {
+                    let label = if returns {
+                        format!("Active · {action_label}")
                     } else {
-                        View::empty()
-                    },
+                        "Active".into()
+                    };
+                    TextBlock::new()
+                        .text("●")
+                        .foreground(crate::ui::SUCCESS)
+                        .horizontal_alignment(HorizontalAlignment::Center)
+                        .automation_name(label.as_str())
+                        .tooltip(label.as_str())
+                } else {
+                    View::empty()
+                };
+                let body = StackPanel::new().spacing(8.0).children((
                     self.scene_hero(s),
                     note(self.scene_summary(s)),
                     if let Err(e) = resolved {
@@ -938,6 +933,7 @@ impl DirectorApp {
                     s.id.clone(),
                     crate::preset_cards_ui::card(
                         &name,
+                        Some(lead),
                         crate::command_ui::command_button(
                             cx,
                             crate::command_ui::Target {
@@ -1403,7 +1399,6 @@ mod card_height_tests {
             "Displays: Desk
 Sound: Soundbar · 10%
 FPS: RTSS · 228 FPS",
-            false,
             None,
         );
         let six = scene_card_height(
@@ -1413,15 +1408,13 @@ c
 d
 e
 f",
-            false,
             None,
         );
         assert!((six - three - 60.0).abs() < 1e-9);
         // A line twice as long as fits counts as two.
-        let wrapped = scene_card_height(&"x".repeat(80), false, None);
-        let single = scene_card_height("x", false, None);
+        let wrapped = scene_card_height(&"x".repeat(80), None);
+        let single = scene_card_height("x", None);
         assert!((wrapped - single - 20.0).abs() < 1e-9);
-        assert!(scene_card_height("x", true, None) > single);
-        assert!(scene_card_height("x", false, Some("Missing TV".into())) > single);
+        assert!(scene_card_height("x", Some("Missing TV".into())) > single);
     }
 }
