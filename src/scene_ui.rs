@@ -1304,6 +1304,10 @@ impl DirectorApp {
             (Some(off), 0) => lines.push(format!("When leaving: {off}")),
             (Some(off), n) => lines.push(format!("When leaving: {off} · {}", actions(n))),
         }
+        // Return is the scene's final step, so it ends the list.
+        if s.return_to.is_some() {
+            lines.push(format!("Return: {}", self.return_label(s)));
+        }
         if lines.is_empty() {
             "This scene doesn’t change anything yet. Edit it to add steps.".into()
         } else {
