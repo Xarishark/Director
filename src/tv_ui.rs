@@ -1035,7 +1035,6 @@ impl DirectorApp {
                                 .tooltip("Remove TV"),
                         ],
                         crate::preset_cards_ui::TV_CARD_HEIGHT,
-                        false,
                     ),
                 )
             })

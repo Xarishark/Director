@@ -992,7 +992,6 @@ impl DirectorApp {
                                 .tooltip("Delete scene"),
                         ],
                         card_height,
-                        true,
                     ),
                 )
             })
