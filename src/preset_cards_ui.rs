@@ -7,7 +7,6 @@ use director::{
 use windows_reactor::*;
 /// Sized to the content so short cards don't end in empty space.
 pub(crate) const DISPLAY_CARD_HEIGHT: f64 = 300.0;
-pub(crate) const SCENE_CARD_HEIGHT: f64 = 340.0;
 pub(crate) const TV_CARD_HEIGHT: f64 = 220.0;
 const CARD_WIDTH: f64 = 340.0;
 const CARD_GAP: f64 = 8.0;

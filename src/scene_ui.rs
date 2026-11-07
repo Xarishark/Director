@@ -158,6 +158,28 @@ fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
 use crate::ui::note;
+/// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
+/// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
+fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 {
+    const LINE: f64 = 20.0;
+    // About this many characters fit on a line of a card.
+    const CHARS: usize = 42;
+    let lines = |text: &str| -> f64 {
+        text.lines()
+            .map(|l| l.chars().count().div_ceil(CHARS).max(1))
+            .sum::<usize>() as f64
+    };
+    // Padding, header row and spacing, then the hero panel and the gap under it.
+    let mut height = 28.0 + 32.0 + 12.0 + 124.0 + 8.0 + lines(summary) * LINE;
+    if active {
+        height += LINE + 8.0;
+    }
+    if let Some(e) = error {
+        height += lines(&e) * LINE + 8.0;
+    }
+    // A little room so a misjudged wrap doesn't clip the last line.
+    height + 12.0
+}
 /// What a hero panel's bar shows.
 enum Level {
     None,
@@ -810,6 +832,20 @@ impl DirectorApp {
         if let Some(d) = &self.scene.draft {
             return self.scene_editor(cx, d);
         }
+        // Every card gets the height the fullest one needs, so the grid lines up without a
+        // fixed gap under short summaries.
+        let card_height = self
+            .scene
+            .scenes
+            .iter()
+            .map(|s| {
+                scene_card_height(
+                    &self.scene_summary(s),
+                    self.scene.active.as_deref() == Some(s.id.as_str()),
+                    scenes::resolve(s, &self.scene.displays, &self.scene.tvs).err(),
+                )
+            })
+            .fold(0.0, f64::max);
         let cards = self
             .scene
             .scenes
@@ -898,7 +934,7 @@ impl DirectorApp {
                                 .content(crate::icons::delete_small())
                                 .tooltip("Delete scene"),
                         ],
-                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                        card_height,
                         true,
                     ),
                 )
@@ -934,11 +970,7 @@ impl DirectorApp {
                             .content(self.starter_card(cx)),
                     )
                 } else {
-                    crate::preset_cards_ui::card_grid(
-                        2,
-                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
-                        cards,
-                    )
+                    crate::preset_cards_ui::card_grid(2, card_height, cards)
                 },
                 if self.scene.cancel.is_some() {
                     Button::new()
@@ -1298,5 +1330,37 @@ fn pick_path(folder: bool) -> Result<Option<String>, String> {
         let path = PCWSTR(value.0).to_string().map_err(|e| e.to_string());
         CoTaskMemFree(Some(value.0.cast()));
         path.map(Some)
+    }
+}
+
+#[cfg(test)]
+mod card_height_tests {
+    use super::scene_card_height;
+    #[test]
+    fn cards_grow_with_their_lines_and_long_lines_wrap() {
+        let three = scene_card_height(
+            "Displays: Desk
+Sound: Soundbar · 10%
+FPS: RTSS · 228 FPS",
+            false,
+            None,
+        );
+        let six = scene_card_height(
+            "a
+b
+c
+d
+e
+f",
+            false,
+            None,
+        );
+        assert!((six - three - 60.0).abs() < 1e-9);
+        // A line twice as long as fits counts as two.
+        let wrapped = scene_card_height(&"x".repeat(80), false, None);
+        let single = scene_card_height("x", false, None);
+        assert!((wrapped - single - 20.0).abs() < 1e-9);
+        assert!(scene_card_height("x", true, None) > single);
+        assert!(scene_card_height("x", false, Some("Missing TV".into())) > single);
     }
 }
