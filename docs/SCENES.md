@@ -63,7 +63,7 @@ The runner snapshots volume and mute for every endpoint the step changes (a devi
 
 The Prepare TV step has **Turn off the TV when you leave this scene** (`off_when_leaving` on the scene's TV preparation). When it's on, a locked "Turn off C1" card sits under When leaving; its pencil opens Prepare TV and its bin turns the setting off. Removing the TV step clears it, and choosing another TV keeps it. Leaving runs the leave actions first and then turns the TV off through the same path as `director tv off`. A TV that doesn't answer is reported as a warning and never blocks the next scene.
 
-**End** appears next to the Scenes page's **+** only while the active scene has leave actions or turns its TV off; its tooltip lists what will run. The active card keeps an "Active" label.
+**End** appears next to the Scenes page's **+** only while the active scene has leave actions or turns its TV off; its tooltip lists what will run. The active card shows a green dot before its name (tooltip "Active", or where Return goes); every scene card reserves that slot, so names never shift. A scene with Return lists "Return: <scene>" last in its card summary.
 
 ## Return
 
