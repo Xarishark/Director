@@ -219,8 +219,7 @@ impl DirectorApp {
             Step::Leave => actions_summary(&d.leave),
             Step::Return => match &d.return_to {
                 None => String::new(),
-                Some(scenes::ReturnTarget::Previous) => "Previous scene".into(),
-                Some(scenes::ReturnTarget::Scene { id }) => s
+                Some(id) => s
                     .scenes
                     .iter()
                     .find(|scene| &scene.id == id)
@@ -647,32 +646,32 @@ impl DirectorApp {
             }
             Step::Return => {
                 let choices = self.scene.scenes.iter().filter(|s| s.id != d.id).collect::<Vec<_>>();
-                let mut labels = vec!["Previous scene".to_string()];
-                labels.extend(choices.iter().map(|s| s.name.clone()));
+                let mut labels = choices.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
                 let selected = match &d.return_to {
-                    Some(scenes::ReturnTarget::Scene { id }) => {
-                        choices.iter().position(|s| &s.id == id).map(|i| i + 1)
-                            .unwrap_or_else(|| {
-                                labels.push("Missing scene — choose another".into());
-                                labels.len() - 1
-                            })
-                    }
-                    _ => 0,
+                    Some(id) => Some(choices.iter().position(|s| &s.id == id).unwrap_or_else(|| {
+                        labels.push("Missing scene — choose another".into());
+                        labels.len() - 1
+                    })),
+                    None => (!choices.is_empty()).then_some(0),
                 };
                 StackPanel::new().spacing(12.0).children((
-                    note("Runs after the leave steps when you choose End or run this scene again while it is active."),
+                    note(if choices.is_empty() {
+                        "Add another scene to use Return."
+                    } else {
+                        "Applies the chosen scene after the leave steps when you choose End or run this scene again while it is active."
+                    }),
                     Grid::new().columns([GridLength::Auto, GridLength::Star(1.0)])
                         .column_spacing(12.0).children((
                             ToggleSwitch::new()
                                 .automation_name("Enable Return")
                                 .is_on(d.return_to.is_some())
-                                .is_enabled(available)
+                                .is_enabled(available && (d.return_to.is_some() || !choices.is_empty()))
                                 .vertical_alignment(VerticalAlignment::Center)
                                 .on_toggled(cx.callback(|v| msg(SceneMessage::ReturnEnabled(v)))),
                             ComboBox::new().grid_column(1)
                                 .automation_name("Return destination")
                                 .items_source(labels)
-                                .selected_index(Some(selected))
+                                .selected_index(selected)
                                 .is_enabled(available && d.return_to.is_some())
                                 .horizontal_alignment(HorizontalAlignment::Stretch)
                                 .on_selection_changed(cx.callback(|i| msg(SceneMessage::ReturnDestination(i)))),

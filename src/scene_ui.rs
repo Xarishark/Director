@@ -151,7 +151,6 @@ pub(crate) struct SceneState {
     pub(crate) snapshot: Option<Scene>,
     /// The scene applied last during this Windows session.
     pub(crate) active: Option<String>,
-    previous: Option<String>,
     /// App actions whose Advanced options section is open.
     pub(crate) advanced: Vec<(ActionList, usize)>,
     /// The first-run card: what it read and what's ticked.
@@ -372,7 +371,6 @@ impl DirectorApp {
                         self.inputs = inputs;
                         self.scene.ready = true;
                         self.scene.active = director::scene_session::active();
-                        self.scene.previous = director::scene_session::previous();
                         self.status = "Ready.".into();
                         self.library_select_in_scene(cx);
                         self.library_resume(cx);
@@ -419,34 +417,27 @@ impl DirectorApp {
             }
             SceneMessage::ReturnEnabled(enabled) if !self.busy => {
                 if let Some(d) = &mut self.scene.draft {
-                    d.return_to = if enabled {
-                        Some(
-                            d.return_to
-                                .clone()
-                                .unwrap_or(scenes::ReturnTarget::Previous),
-                        )
-                    } else {
-                        None
-                    };
+                    // Turning Return on picks the first other scene; with none it stays off.
+                    d.return_to = enabled
+                        .then(|| {
+                            d.return_to.clone().or_else(|| {
+                                self.scene
+                                    .scenes
+                                    .iter()
+                                    .find(|s| s.id != d.id)
+                                    .map(|s| s.id.clone())
+                            })
+                        })
+                        .flatten();
                 }
             }
             SceneMessage::ReturnDestination(Some(index)) if !self.busy => {
                 if let Some(d) = &mut self.scene.draft
                     && d.return_to.is_some()
+                    && let Some(target) =
+                        self.scene.scenes.iter().filter(|s| s.id != d.id).nth(index)
                 {
-                    let target = if index == 0 {
-                        Some(scenes::ReturnTarget::Previous)
-                    } else {
-                        self.scene
-                            .scenes
-                            .iter()
-                            .filter(|s| s.id != d.id)
-                            .nth(index - 1)
-                            .map(|s| scenes::ReturnTarget::Scene { id: s.id.clone() })
-                    };
-                    if let Some(target) = target {
-                        d.return_to = Some(target);
-                    }
+                    d.return_to = Some(target.id.clone());
                 }
             }
             SceneMessage::Sound(edit) if !self.busy => self.edit_sound(edit),
@@ -809,7 +800,6 @@ impl DirectorApp {
                 self.scene.confirm = None;
                 self.scene.remaining = None;
                 self.scene.active = director::scene_session::active();
-                self.scene.previous = director::scene_session::previous();
                 match result {
                     Ok(r) => {
                         self.error = !r.success;
@@ -870,21 +860,13 @@ impl DirectorApp {
             .tooltip(format!("Runs: {}.", work.join(", ")))
     }
     fn return_label(&self, scene: &Scene) -> String {
-        match &scene.return_to {
-            Some(scenes::ReturnTarget::Previous) => self
-                .scene
-                .previous
-                .as_ref()
-                .and_then(|id| self.scene.scenes.iter().find(|s| &s.id == id))
-                .map_or("previous scene".into(), |s| s.name.clone()),
-            Some(scenes::ReturnTarget::Scene { id }) => self
-                .scene
+        scene.return_to.as_ref().map_or(String::new(), |id| {
+            self.scene
                 .scenes
                 .iter()
                 .find(|s| &s.id == id)
-                .map_or("missing scene".into(), |s| s.name.clone()),
-            None => String::new(),
-        }
+                .map_or("missing scene".into(), |s| s.name.clone())
+        })
     }
     pub(crate) fn scene_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.scene.draft {

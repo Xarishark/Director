@@ -65,12 +65,8 @@ pub fn load_run_plan(id: &str, name: &str, notify: bool) -> Result<Plan, String>
             .iter()
             .find(|s| s.id == id)
             .ok_or("The scene was removed. Reopen Scenes.")?;
-        let target = scenes::apply_destination(
-            requested,
-            crate::scene_session::active().as_deref(),
-            crate::scene_session::previous().as_deref(),
-            &all,
-        )?;
+        let target =
+            scenes::apply_destination(requested, crate::scene_session::active().as_deref(), &all)?;
         checked_plan(target, &displays, &tvs)
     })()
     .inspect_err(|error| {
@@ -91,8 +87,7 @@ fn load_return_plan() -> Result<Option<Plan>, String> {
     let Some(scene) = all.iter().find(|s| s.id == active) else {
         return Ok(None);
     };
-    let previous = crate::scene_session::previous();
-    scenes::return_destination(scene, previous.as_deref(), &all)?
+    scenes::return_destination(scene, &all)?
         .map(|target| load_plan(&target.id))
         .transpose()
 }
@@ -148,12 +143,8 @@ pub fn run(
         progress(step);
     });
     report.details.splice(0..0, warnings);
-    let saved = if report.success {
-        crate::scene_session::applied(&plan.scene.id)
-    } else {
-        crate::scene_session::set(None)
-    };
-    if let Err(e) = saved {
+    let active = report.success.then_some(plan.scene.id.as_str());
+    if let Err(e) = crate::scene_session::set(active) {
         report.details.push(e);
     }
     save_result(&plan.scene.name, &stage, &report, notify);

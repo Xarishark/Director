@@ -28,9 +28,10 @@ pub struct Scene {
     /// Runs when another scene is applied or this one is ended.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub leave: Vec<Action>,
-    /// Where End (or running this active scene again) goes after the leave steps.
+    /// The ID of the scene that End (or running this active scene again) applies after the
+    /// leave steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub return_to: Option<ReturnTarget>,
+    pub return_to: Option<String>,
     /// Version 1 per-scene policy. Read so old files load, never written; see `ScenePolicy`.
     #[serde(default, rename = "keep_on_failure", skip_serializing)]
     legacy_keep_on_failure: Option<bool>,
@@ -45,45 +46,32 @@ pub struct Scene {
     #[serde(default, rename = "tv_audio_volume", skip_serializing)]
     legacy_tv_audio_volume: Option<u8>,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub enum ReturnTarget {
-    Previous,
-    Scene { id: String },
-}
-
 /// Resolve before any leave actions. A missing destination must keep the scene active.
 pub fn return_destination<'a>(
     scene: &Scene,
-    previous: Option<&str>,
     catalog: &'a [Scene],
 ) -> Result<Option<&'a Scene>, String> {
-    let id = match &scene.return_to {
-        None => return Ok(None),
-        Some(ReturnTarget::Previous) => {
-            previous.ok_or("No previous scene to return to. Select another scene.")?
-        }
-        Some(ReturnTarget::Scene { id }) => id,
+    let Some(id) = &scene.return_to else {
+        return Ok(None);
     };
-    if id == scene.id {
-        return Err("A scene cannot return to itself. Select another scene.".into());
+    if *id == scene.id {
+        return Err("A scene cannot return to itself. Edit its Return step.".into());
     }
     catalog
         .iter()
-        .find(|s| s.id == id)
+        .find(|s| s.id == *id)
         .map(Some)
-        .ok_or_else(|| "The return scene is unavailable. Select another scene.".into())
+        .ok_or_else(|| "The return scene was removed. Edit this scene's Return step.".into())
 }
 
 /// Running a different scene always chooses it directly, even if the active scene has Return.
 pub fn apply_destination<'a>(
     requested: &'a Scene,
     active: Option<&str>,
-    previous: Option<&str>,
     all: &'a [Scene],
 ) -> Result<&'a Scene, String> {
     if active == Some(requested.id.as_str()) {
-        return Ok(return_destination(requested, previous, all)?.unwrap_or(requested));
+        return Ok(return_destination(requested, all)?.unwrap_or(requested));
     }
     Ok(requested)
 }
@@ -350,7 +338,7 @@ impl Scene {
         }) {
             return Err("Select a saved TV and input, or leave TV preparation off.".into());
         }
-        if let Some(ReturnTarget::Scene { id }) = &self.return_to
+        if let Some(id) = &self.return_to
             && (id.is_empty() || id.len() > 200 || id == &self.id)
         {
             return Err("Choose another scene to return to.".into());
@@ -1007,35 +995,37 @@ mod tests {
         let mut game = scene();
         let desk = Scene::new("desk", "Renamed Desk");
         let catalog = [desk];
-        assert!(return_destination(&game, None, &catalog).unwrap().is_none());
-        game.return_to = Some(ReturnTarget::Previous);
-        assert!(apply_destination(&game, Some(&game.id), None, &catalog).is_err());
+        assert!(return_destination(&game, &catalog).unwrap().is_none());
         assert_eq!(
-            apply_destination(&catalog[0], Some(&game.id), None, &catalog).unwrap(),
-            &catalog[0]
+            apply_destination(&game, Some(&game.id), &catalog).unwrap(),
+            &game
         );
-        assert_eq!(
-            apply_destination(&game, Some(&game.id), Some("desk"), &catalog).unwrap(),
-            &catalog[0]
-        );
+        game.return_to = Some("desk".into());
         assert!(game.has_leave_work());
-        assert!(return_destination(&game, None, &catalog).is_err());
-        assert!(return_destination(&game, Some("deleted"), &catalog).is_err());
         assert_eq!(
-            return_destination(&game, Some("desk"), &catalog).unwrap(),
+            return_destination(&game, &catalog).unwrap(),
             Some(&catalog[0])
         );
-        game.return_to = Some(ReturnTarget::Scene { id: "desk".into() });
+        // Running the active scene again returns; running another scene goes straight there.
         assert_eq!(
-            return_destination(&game, None, &catalog).unwrap(),
-            Some(&catalog[0])
+            apply_destination(&game, Some(&game.id), &catalog).unwrap(),
+            &catalog[0]
         );
-        assert!(return_destination(&game, None, &[]).is_err());
-        game.return_to = Some(ReturnTarget::Scene {
-            id: game.id.clone(),
-        });
+        assert_eq!(
+            apply_destination(&game, Some("desk"), &catalog).unwrap(),
+            &game
+        );
+        assert!(return_destination(&game, &[]).is_err());
+        assert!(apply_destination(&game, Some(&game.id), &[]).is_err());
+        game.return_to = Some(game.id.clone());
         assert!(game.validate().is_err());
-        assert!(return_destination(&game, None, &catalog).is_err());
+        assert!(return_destination(&game, &catalog).is_err());
+        let json = serde_json::to_value(Scene {
+            return_to: Some("desk".into()),
+            ..Scene::new("game", "Game")
+        })
+        .unwrap();
+        assert_eq!(json["return_to"], "desk");
     }
 
     #[test]
