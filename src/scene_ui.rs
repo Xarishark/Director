@@ -162,8 +162,10 @@ fn msg(m: SceneMessage) -> Message {
 use crate::ui::note;
 /// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
 /// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
+/// The height of one summary line, as measured on a card.
+const SUMMARY_LINE: f64 = 18.7;
 fn scene_card_height(summary: &str, error: Option<String>) -> f64 {
-    const LINE: f64 = 20.0;
+    const LINE: f64 = SUMMARY_LINE;
     // About this many characters fit on a line of a card.
     const CHARS: usize = 42;
     let lines = |text: &str| -> f64 {
@@ -176,8 +178,8 @@ fn scene_card_height(summary: &str, error: Option<String>) -> f64 {
     if let Some(e) = error {
         height += lines(&e) * LINE + 8.0;
     }
-    // A little room so a misjudged wrap doesn't clip the last line.
-    height + 12.0
+    // A little room for rounding, so the last line is never clipped.
+    height + 4.0
 }
 /// What a hero panel's bar shows.
 enum Level {
@@ -1395,7 +1397,7 @@ fn pick_path(folder: bool) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod card_height_tests {
-    use super::scene_card_height;
+    use super::{SUMMARY_LINE, scene_card_height};
     #[test]
     fn cards_grow_with_their_lines_and_long_lines_wrap() {
         let three = scene_card_height(
@@ -1413,11 +1415,11 @@ e
 f",
             None,
         );
-        assert!((six - three - 60.0).abs() < 1e-9);
+        assert!((six - three - 3.0 * SUMMARY_LINE).abs() < 1e-9);
         // A line twice as long as fits counts as two.
         let wrapped = scene_card_height(&"x".repeat(80), None);
         let single = scene_card_height("x", None);
-        assert!((wrapped - single - 20.0).abs() < 1e-9);
+        assert!((wrapped - single - SUMMARY_LINE).abs() < 1e-9);
         assert!(scene_card_height("x", Some("Missing TV".into())) > single);
     }
 }
