@@ -533,12 +533,14 @@ Could not read audio outputs: {e}"
                     }
                 }
             }
-            CurrentMessage::SaveDisplays if !self.busy && self.current.display.drag.is_none() => {
-                if self.current.display.draft.is_some() {
-                    self.current.save_name = Some(String::new());
-                    self.current.save_error = None;
-                    self.current.save_revision += 1;
-                }
+            CurrentMessage::SaveDisplays
+                if !self.busy
+                    && self.current.display.drag.is_none()
+                    && self.current.display.draft.is_some() =>
+            {
+                self.current.save_name = Some(String::new());
+                self.current.save_error = None;
+                self.current.save_revision += 1;
             }
             CurrentMessage::SaveName(name) => {
                 if let Some(current) = &mut self.current.save_name {

@@ -1,9 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <title>Director temporary app icon</title>
-  <rect x="8" y="8" width="240" height="240" rx="52" fill="#172033"/>
-  <rect x="42" y="49" width="172" height="122" rx="18" fill="#a99bff"/>
-  <rect x="54" y="61" width="148" height="98" rx="8" fill="#172033"/>
-  <path d="M111 82 155 110 111 138Z" fill="#ffffff"/>
-  <rect x="117" y="171" width="22" height="25" rx="5" fill="#a99bff"/>
-  <rect x="85" y="193" width="86" height="13" rx="6.5" fill="#a99bff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 160 160" role="img" aria-label="Director – Cascade"><title>Cascade</title>
+  <defs><linearGradient id="screen0" x2=".75" y2="1"><stop offset="0" stop-color="#f6eeff"/><stop offset="0.32" stop-color="#bea5ff"/><stop offset="0.71" stop-color="#9166f1"/><stop offset="1" stop-color="#6141bc"/></linearGradient><linearGradient id="rim0" x2=".16" y2="1"><stop offset="0" stop-color="#bea5ff"/><stop offset="0.55" stop-color="#8b70d4"/><stop offset="1" stop-color="#423479"/></linearGradient><linearGradient id="stand0" x2=".8" y2=".7"><stop offset="0" stop-color="#423479"/><stop offset="0.42" stop-color="#8b70d4"/><stop offset="1" stop-color="#302755"/></linearGradient><clipPath id="glass0"><rect x="3.5" y="3.5" width="93" height="51" rx="4"/></clipPath><linearGradient id="screen1" x2=".75" y2="1"><stop offset="0" stop-color="#e2fcff"/><stop offset="0.32" stop-color="#88e5ff"/><stop offset="0.71" stop-color="#379ef0"/><stop offset="1" stop-color="#386bd8"/></linearGradient><linearGradient id="rim1" x2=".16" y2="1"><stop offset="0" stop-color="#88e5ff"/><stop offset="0.55" stop-color="#4f8ab8"/><stop offset="1" stop-color="#24457c"/></linearGradient><linearGradient id="stand1" x2=".8" y2=".7"><stop offset="0" stop-color="#24457c"/><stop offset="0.42" stop-color="#4f8ab8"/><stop offset="1" stop-color="#192e58"/></linearGradient><clipPath id="glass1"><rect x="3.5" y="3.5" width="93" height="51" rx="4"/></clipPath></defs>
+  <g transform="matrix(.78 -.12 0 .83 77 38)">
+    <path fill="#302755" d="M34 77 48 72l19 3v4l-5 2H33z"/>
+    <path fill="url(#rim0)" d="m32 76 14-5 20 3q2 0 1 2l-6 2H34q-3 0-2-2z"/>
+    <path fill="url(#stand0)" d="M44 55h12l-1 13q0 4 5 7H41q6-3 5-7z"/>
+    <rect x="1.5" y="2" width="99" height="59" rx="7" fill="#302755"/>
+    <rect width="99" height="59" rx="7" fill="url(#rim0)"/>
+    <rect x="3.5" y="3.5" width="93" height="51" rx="4" fill="url(#screen0)"/>
+    <g clip-path="url(#glass0)"><path d="M-5 42Q28 42 50 22T106 0v-9H-5z" fill="#f6eeff" opacity=".42"/><path d="M25 60q26-26 52-27t31-12v39z" fill="#6141bc" opacity=".35"/></g>
+    <path d="M7 1.3h83" stroke="#f6eeff" opacity=".75" stroke-width="1.4" stroke-linecap="round"/>
+  </g><g transform="matrix(.96 .14 0 .96 5 52)">
+    <path fill="#192e58" d="M34 77 48 72l19 3v4l-5 2H33z"/>
+    <path fill="url(#rim1)" d="m32 76 14-5 20 3q2 0 1 2l-6 2H34q-3 0-2-2z"/>
+    <path fill="url(#stand1)" d="M44 55h12l-1 13q0 4 5 7H41q6-3 5-7z"/>
+    <rect x="1.5" y="2" width="99" height="59" rx="7" fill="#192e58"/>
+    <rect width="99" height="59" rx="7" fill="url(#rim1)"/>
+    <rect x="3.5" y="3.5" width="93" height="51" rx="4" fill="url(#screen1)"/>
+    <g clip-path="url(#glass1)"><path d="M-5 42Q28 42 50 22T106 0v-9H-5z" fill="#e2fcff" opacity=".42"/><path d="M25 60q26-26 52-27t31-12v39z" fill="#386bd8" opacity=".35"/></g>
+    <path d="M7 1.3h83" stroke="#e2fcff" opacity=".75" stroke-width="1.4" stroke-linecap="round"/>
+  </g>
 </svg>
