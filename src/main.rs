@@ -16,7 +16,6 @@ mod options_ui;
 #[cfg(test)]
 mod preset_cards_preview;
 mod preset_cards_ui;
-mod preset_ui;
 mod samsung_ui;
 mod scene_editor_ui;
 mod scene_ui;
@@ -26,6 +25,7 @@ mod tv_controls_ui;
 mod tv_power_state;
 mod tv_tip_ui;
 mod tv_ui;
+mod ui;
 use display_ui::{DisplayMessage, DisplayState};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
@@ -157,6 +157,53 @@ impl DirectorApp {
     /// Ready for work that saves settings: nothing running and close protection installed.
     fn ready(&self) -> bool {
         !self.busy && self.guard_ready
+    }
+    /// Options sits in the pane footer as a button (reactor 0.100 has no footer menu items),
+    /// styled like a navigation item, with the same selection pill when it's the open page.
+    fn options_item(&self, cx: &ViewContext<Self>) -> View {
+        let selected = self.page == Page::Options;
+        // The pill and the selected fill sit outside the button, which clips its content.
+        Border::new()
+            .corner_radius(crate::ui::RADIUS_S)
+            .background(if selected {
+                Brush::from(crate::ui::SUBTLE_FILL)
+            } else {
+                Brush::from(Color::transparent())
+            })
+            .content(
+                Grid::new()
+                    .columns([GridLength::Pixel(3.0), GridLength::Star(1.0)])
+                    .children((
+                        Border::new()
+                            .height(16.0)
+                            .corner_radius(1.5)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .background(if selected {
+                                Brush::from(ThemeBrush::Accent)
+                            } else {
+                                Brush::from(Color::transparent())
+                            }),
+                        Button::new()
+                            .grid_column(1)
+                            .automation_name("Options")
+                            .style(ButtonStyle::Subtle)
+                            .horizontal_alignment(HorizontalAlignment::Stretch)
+                            .horizontal_content_alignment(HorizontalAlignment::Left)
+                            .is_enabled(!self.busy)
+                            .on_click(cx.message(Message::Navigate(Some("options".into()))))
+                            .content(
+                                StackPanel::new()
+                                    .orientation(Orientation::Horizontal)
+                                    .spacing(12.0)
+                                    .children((
+                                        FontIcon::new().glyph("\u{e713}"),
+                                        TextBlock::new()
+                                            .text("Options")
+                                            .vertical_alignment(VerticalAlignment::Center),
+                                    )),
+                            ),
+                    )),
+            )
     }
     fn nav_item(&self, page: Page, tag: &str, label: &str, glyph: &str) -> View {
         NavigationViewItem::new()
@@ -379,16 +426,27 @@ impl Component for DirectorApp {
         )]);
         let status = self.status_view(cx);
         let body = Border::new()
-            .padding(Thickness::new(28.0, 20.0, 28.0, 20.0))
+            .padding(Thickness::new(
+                crate::ui::PAGE_PADDING_X,
+                crate::ui::PAGE_PADDING_Y,
+                crate::ui::PAGE_PADDING_X,
+                crate::ui::PAGE_PADDING_Y,
+            ))
             .content(
                 Grid::new()
                     .rows([GridLength::Star(1.0), GridLength::Auto])
                     .row_spacing(if self.status_visible() { 16.0 } else { 0.0 })
                     .children((
                         Border::new().grid_row(0).content(content),
-                        Border::new()
-                            .grid_row(1)
-                            .content(ScrollViewer::new().max_height(160.0).content(status)),
+                        // Only while something needs attention: an empty ScrollViewer still
+                        // takes height and shortens the page above it.
+                        if self.status_visible() {
+                            Border::new()
+                                .grid_row(1)
+                                .content(ScrollViewer::new().max_height(160.0).content(status))
+                        } else {
+                            View::empty()
+                        },
                     )),
             );
         // The window's TitleBar carries the app name and the pane toggle, as in Windows 11
@@ -401,7 +459,7 @@ impl Component for DirectorApp {
         let nav = NavigationView::new()
             .grid_row(1)
             .is_pane_toggle_button_visible(false)
-            .open_pane_length(200.0)
+            .open_pane_length(crate::ui::PANE_OPEN)
             .pane_display_mode(NavigationViewPaneDisplayMode::Left)
             .is_pane_open(self.pane_open)
             .on_is_pane_open_changed(cx.callback(Message::Pane))
@@ -421,57 +479,13 @@ impl Component for DirectorApp {
                             self.nav_item(Page::Current, "current", "Now", "\u{e9e9}"),
                         ),
                         KeyedView::new(
-                            "library",
-                            NavigationViewItem::new()
-                                .tag("library")
-                                .selects_on_invoked(false)
-                                .is_expanded(true)
-                                .slots([
-                                    SlotView::new(NavigationViewItemSlot::Content, "Library"),
-                                    SlotView::new(
-                                        NavigationViewItemSlot::Icon,
-                                        FontIcon::new().glyph("\u{e8f1}"),
-                                    ),
-                                    SlotView::collection(
-                                        NavigationViewItemSlot::MenuItems,
-                                        [
-                                            KeyedView::new(
-                                                "displays",
-                                                self.nav_item(
-                                                    Page::Displays,
-                                                    "displays",
-                                                    "Displays",
-                                                    "\u{e7f8}",
-                                                ),
-                                            ),
-                                            KeyedView::new(
-                                                "tvs",
-                                                self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}"),
-                                            ),
-                                        ],
-                                    ),
-                                ]),
+                            "displays",
+                            self.nav_item(Page::Displays, "displays", "Displays", "\u{e7f8}"),
                         ),
+                        KeyedView::new("tvs", self.nav_item(Page::Tvs, "tvs", "TVs", "\u{e7f4}")),
                     ],
                 ),
-                SlotView::new(
-                    NavigationViewSlot::PaneFooter,
-                    Button::new()
-                        .automation_name("Options")
-                        .style(ButtonStyle::Subtle)
-                        .horizontal_alignment(HorizontalAlignment::Stretch)
-                        .is_enabled(!self.busy)
-                        .on_click(cx.message(Message::Navigate(Some("options".into()))))
-                        .content(
-                            StackPanel::new()
-                                .orientation(Orientation::Horizontal)
-                                .spacing(12.0)
-                                .children((
-                                    FontIcon::new().glyph("\u{e713}"),
-                                    TextBlock::new().text("Options"),
-                                )),
-                        ),
-                ),
+                SlotView::new(NavigationViewSlot::PaneFooter, self.options_item(cx)),
                 SlotView::new(NavigationViewSlot::Content, body),
             ]);
         Grid::new()
@@ -496,6 +510,7 @@ impl Component for DirectorApp {
                 KeyedView::new("options-dialog", self.options_dialog(cx)),
                 KeyedView::new("audio-relink-dialog", self.audio_relink_dialog(cx)),
                 KeyedView::new("display-dialog", self.display_dialog(cx)),
+                KeyedView::new("current-dialog", self.current_dialog(cx)),
                 KeyedView::new("tv-dialog", self.tv_dialog(cx)),
                 KeyedView::new("scene-dialog", self.scene_dialog(cx)),
             ])

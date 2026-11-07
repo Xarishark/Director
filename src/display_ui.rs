@@ -53,6 +53,10 @@ pub(crate) struct DisplayState {
     pub drag_token: u64,
     pub orientation_revision: u64,
     pub drag: Option<director::display_editor::Drag>,
+    /// The display selected in the arrangement map.
+    pub selected: usize,
+    /// A success message to show once the preset list has loaded (loading clears notices).
+    pub notice_after_load: Option<String>,
     pub editor: Option<director::display_editor::Editor>,
     pub progress: Option<Arc<Mutex<mpsc::Receiver<u64>>>>,
     pub confirmation: Option<(u64, mpsc::Sender<Decision>)>,
@@ -84,7 +88,7 @@ fn monitor_details(layout: &Layout) -> View {
                             .text_wrapping(TextWrapping::Wrap),
                         TextBlock::new()
                             .text(m.summary())
-                            .opacity(0.75)
+                            .opacity(crate::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap),
                     )),
                 )
@@ -267,6 +271,12 @@ impl DirectorApp {
                 }
                 .into();
                 self.details = errors.join("\n");
+                if let Some(notice) = self.display.notice_after_load.take()
+                    && !self.error
+                {
+                    self.status = notice;
+                    self.announce(cx);
+                }
                 self.library_resume(cx);
             }
             DisplayMessage::Create if self.display_ready() && self.display.draft.is_none() => {
@@ -285,6 +295,9 @@ impl DirectorApp {
             DisplayMessage::PointerDown(index, point)
                 if !self.busy && point.is_left_button_pressed =>
             {
+                // A press selects the screen; moving while pressed drags it.
+                self.display.selected = index;
+                let (width, height) = self.map_size();
                 if let Some(d) = &self.display.draft
                     && point.capture_succeeded
                 {
@@ -293,6 +306,7 @@ impl DirectorApp {
                         index,
                         point.window_x,
                         point.window_y,
+                        director::display_editor::MapTransform::new(&d.layout, width, height),
                     ) {
                         Ok(drag) => {
                             self.display.drag_token = self.display.drag_token.wrapping_add(1);
@@ -542,116 +556,111 @@ impl DirectorApp {
     pub(crate) fn display_view(&self, cx: &ViewContext<Self>) -> View {
         if let Some(d) = &self.display.draft {
             let editing = self.display.presets.iter().any(|p| p.id == d.id);
-            return Grid::new()
-                .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+            let body = StackPanel::new()
+                .spacing(crate::ui::GAP_L)
+                .horizontal_alignment(HorizontalAlignment::Stretch)
                 .children((
-                    StackPanel::new()
-                        .grid_row(0)
-                        .spacing(6.0)
-                        .margin(Thickness::new(0.0, 0.0, 0.0, 20.0))
-                        .children((
-                            TextBlock::new()
-                                .text(if editing {
-                                    "Edit display preset"
-                                } else {
-                                    "New display preset"
-                                })
-                                .font_size(28.0)
-                                .font_weight(FontWeight::SEMI_BOLD),
-                            TextBlock::new()
-                                .text("Saving or renaming never changes your screens.")
-                                .opacity(0.72)
-                                .text_wrapping(TextWrapping::Wrap),
-                        )),
-                    ScrollViewer::new()
-                        .grid_row(1)
-                        .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                        .content(
-                            StackPanel::new()
-                                .spacing(16.0)
-                                .horizontal_alignment(HorizontalAlignment::Stretch)
-                                .children((
-                                    self.tv_setup_tip(cx, editing),
-                                    TextBlock::new()
-                                        .text("Preset name")
-                                        .font_weight(FontWeight::SEMI_BOLD),
-                                    TextBox::new()
-                                        .text(&d.name)
-                                        .automation_name("Display preset name")
-                                        .max_width(460.0).horizontal_alignment(HorizontalAlignment::Left)
-                                        .placeholder_text("For example, Desk monitors")
-                                        .is_enabled(!self.busy)
-                                        .on_text_changed(
-                                            cx.callback(|name| msg(DisplayMessage::Name(name))),
-                                        ),
-                                    TextBlock::new().text(d.layout.summary()).opacity(0.72),
-                                    if let Some(editor)=&self.display.editor {
-                                        self.monitor_editor(&d.layout,editor,cx)
-                                    }else if self.busy {
-                                        TextBlock::new().text("Loading display controls…").into()
-                                    }else{
-                                        monitor_details(&d.layout)
-                                    },
-                                    StackPanel::new().spacing(4.0).children((
-                                        ToggleSwitch::new()
-                                            .automation_name("Ask to keep display changes")
-                                            .is_on(d.confirm_changes)
-                                            .is_enabled(!self.busy)
-                                            .on_toggled(cx.callback(|value| msg(DisplayMessage::ConfirmChanges(value))))
-                                            .slot(ToggleSwitchSlot::Header, "Ask to keep display changes"),
-                                        TextBlock::new()
-                                            .text("When off, verified changes are kept automatically. Failed changes still revert.")
-                                            .text_wrapping(TextWrapping::Wrap)
-                                            .opacity(0.72),
-                                    )),
-                                )),
+                    self.tv_setup_tip(cx, editing),
+                    StackPanel::new().spacing(crate::ui::GAP_S).children((
+                        crate::ui::label("Preset name"),
+                        TextBox::new()
+                            .text(&d.name)
+                            .automation_name("Display preset name")
+                            .width(360.0)
+                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .placeholder_text("For example, Desk monitors")
+                            .is_enabled(!self.busy)
+                            .on_text_changed(cx.callback(|name| msg(DisplayMessage::Name(name)))),
+                        crate::ui::caption(d.layout.summary()),
+                    )),
+                    if let Some(editor) = &self.display.editor {
+                        self.monitor_editor(&d.layout, editor, cx)
+                    } else if self.busy {
+                        crate::ui::note("Loading display controls…")
+                    } else {
+                        monitor_details(&d.layout)
+                    },
+                    StackPanel::new().spacing(4.0).children((
+                        ToggleSwitch::new()
+                            .automation_name("Ask to keep display changes")
+                            .is_on(d.confirm_changes)
+                            .is_enabled(!self.busy)
+                            .on_toggled(
+                                cx.callback(|value| msg(DisplayMessage::ConfirmChanges(value))),
+                            )
+                            .slot(ToggleSwitchSlot::Header, "Ask to keep display changes"),
+                        crate::ui::caption(
+                            "When off, verified changes are kept automatically. Failed changes still revert.",
                         ),
-                    Grid::new().grid_row(2).margin(Thickness::new(0.0,20.0,0.0,0.0)).columns([GridLength::Star(1.0),GridLength::Auto]).column_spacing(12.0).children((
-                        TextBlock::new().grid_column(0).text("Saving won’t change your screens.").text_wrapping(TextWrapping::Wrap).opacity(0.72).vertical_alignment(VerticalAlignment::Center),
-                        StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).children((
-                            Button::new().is_enabled(!self.busy && self.display.setup.recovery.is_none()).on_click(cx.message(msg(DisplayMessage::Cancel))).content("Cancel"),
-                            Button::new().style(ButtonStyle::Accent).automation_name("Save display preset").is_enabled(self.display_ready() && self.display.drag.is_none() && !d.name.trim().is_empty() && d.name.trim().len()<=160 && self.draft_changed(crate::Page::Displays)).on_click(cx.message(msg(DisplayMessage::Save))).content("Save preset"),
-                        )),
                     )),
                 ));
+            let can_save = self.display_ready()
+                && self.display.drag.is_none()
+                && !d.name.trim().is_empty()
+                && d.name.trim().len() <= 160
+                && self.draft_changed(crate::Page::Displays);
+            return crate::ui::page(
+                crate::ui::header(
+                    if editing {
+                        "Edit display preset"
+                    } else {
+                        "New display preset"
+                    },
+                    "A saved layout for your scenes. Saving never changes your screens.",
+                    vec![],
+                ),
+                body,
+                Some(crate::ui::footer(
+                    crate::ui::note(if self.draft_changed(crate::Page::Displays) {
+                        "Saving won’t change your screens."
+                    } else {
+                        "No changes to save."
+                    }),
+                    vec![
+                        Button::new()
+                            .is_enabled(!self.busy && self.display.setup.recovery.is_none())
+                            .on_click(cx.message(msg(DisplayMessage::Cancel)))
+                            .content("Cancel"),
+                        Button::new()
+                            .style(ButtonStyle::Accent)
+                            .automation_name("Save display preset")
+                            .is_enabled(can_save)
+                            .on_click(cx.message(msg(DisplayMessage::Save)))
+                            .content("Save preset"),
+                    ],
+                )),
+            );
         }
         let rows = self.display_preset_cards(cx);
         let list = if rows.is_empty() {
             Border::new()
                 .grid_row(1)
-                .padding(Thickness::xy(8.0, 24.0))
-                .content(
-                    StackPanel::new().spacing(10.0).children((
-                        TextBlock::new()
-                            .text(if self.busy {
-                                "Reading your layouts…"
-                            } else {
-                                "Keep your monitor setup ready"
-                            })
-                            .font_size(20.0)
-                            .text_wrapping(TextWrapping::Wrap),
-                        TextBlock::new()
-                            .text("Create a custom preset, capture the layout you already use, or arrange your screens in Now and save them from there.")
-                            .text_wrapping(TextWrapping::Wrap)
-                            .opacity(0.72),
+                .content(crate::ui::empty_state(
+                    if self.busy {
+                        "Reading your layouts…"
+                    } else {
+                        "Keep your monitor setup ready"
+                    },
+                    "Choose + to build a layout, capture the one you use now, or arrange your screens in Now and save them from there.",
+                    Some(
                         Button::new()
                             .is_enabled(!self.busy)
                             .on_click(cx.message(crate::Message::Navigate(Some("current".into()))))
                             .content("Open Now"),
-                    )),
-                )
+                    ),
+                ))
         } else {
             crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
-                crate::preset_ui::header(
+                crate::ui::header(
                     "Displays",
                     "Saved monitor layouts you can use in scenes.",
                     vec![
-                        crate::preset_ui::current(
-                            "CURRENT LAYOUT",
+                        crate::ui::current(
+                            "Current layout",
                             self.display
                                 .current
                                 .as_ref()

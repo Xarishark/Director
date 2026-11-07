@@ -401,9 +401,14 @@ pub struct MapTransform {
     pub scale: f64,
     pub left: f64,
     pub top: f64,
+    /// The map box the layout is drawn into, in DIP.
+    pub width: f64,
+    pub height: f64,
 }
 impl MapTransform {
-    pub fn new(layout: &Layout) -> Self {
+    /// Scale and centre the enabled screens in a `width` × `height` box, leaving room around
+    /// them to drag a screen past the others.
+    pub fn new(layout: &Layout, width: f64, height: f64) -> Self {
         let active = layout
             .monitors
             .iter()
@@ -419,11 +424,13 @@ impl MapTransform {
             .iter()
             .map(|d| d.y as f64 + d.height as f64)
             .fold(1.0, f64::max);
-        let scale = (290.0 / (right - left)).min(100.0 / (bottom - top));
+        let scale = (width * 0.725 / (right - left)).min(height * 0.555 / (bottom - top));
         Self {
             scale,
-            left: (400.0 - (right - left) * scale) / 2.0 - left * scale,
-            top: (180.0 - (bottom - top) * scale) / 2.0 - top * scale,
+            left: (width - (right - left) * scale) / 2.0 - left * scale,
+            top: (height - (bottom - top) * scale) / 2.0 - top * scale,
+            width,
+            height,
         }
     }
 }
@@ -436,7 +443,13 @@ pub struct Drag {
     pub pointer_y: f64,
 }
 impl Drag {
-    pub fn begin(layout: &Layout, index: usize, x: f64, y: f64) -> Result<Self, String> {
+    pub fn begin(
+        layout: &Layout,
+        index: usize,
+        x: f64,
+        y: f64,
+        map: MapTransform,
+    ) -> Result<Self, String> {
         let _d = layout
             .monitors
             .get(index)
@@ -445,7 +458,7 @@ impl Drag {
         Ok(Self {
             index,
             before: layout.clone(),
-            map: MapTransform::new(layout),
+            map,
             pointer_x: x,
             pointer_y: y,
         })
@@ -456,10 +469,14 @@ impl Drag {
         }
         let mut layout = self.before.clone();
         let d = layout.monitors[self.index].desktop.as_mut().unwrap();
-        let px = (self.map.left + d.x as f64 * self.map.scale + x - self.pointer_x)
-            .clamp(6.0, (394.0 - d.width as f64 * self.map.scale).max(6.0));
-        let py = (self.map.top + d.y as f64 * self.map.scale + y - self.pointer_y)
-            .clamp(6.0, (174.0 - d.height as f64 * self.map.scale).max(6.0));
+        let px = (self.map.left + d.x as f64 * self.map.scale + x - self.pointer_x).clamp(
+            6.0,
+            (self.map.width - 6.0 - d.width as f64 * self.map.scale).max(6.0),
+        );
+        let py = (self.map.top + d.y as f64 * self.map.scale + y - self.pointer_y).clamp(
+            6.0,
+            (self.map.height - 6.0 - d.height as f64 * self.map.scale).max(6.0),
+        );
         d.x = ((px - self.map.left) / self.map.scale).round() as i32;
         d.y = ((py - self.map.top) / self.map.scale).round() as i32;
         let (dx, dy) = (d.x, d.y);
@@ -547,6 +564,44 @@ impl Drag {
             (x, y) = candidates
                 .ok_or("No free position was found. Try moving this display further out.")?;
         }
+        // Like Windows, a display dropped away from the others moves back to touch the
+        // nearest one, sharing part of an edge, so the desktop stays in one piece.
+        let (w, h) = (d.width as i64, d.height as i64);
+        let touches = |x: i64, y: i64| {
+            others.iter().any(|b| {
+                let (bx, by, bw, bh) = (b.x as i64, b.y as i64, b.width as i64, b.height as i64);
+                let rows = y < by + bh && by < y + h;
+                let columns = x < bx + bw && bx < x + w;
+                (rows && (x + w == bx || bx + bw == x))
+                    || (columns && (y + h == by || by + bh == y))
+            })
+        };
+        if !others.is_empty() && !touches(x as i64, y as i64) {
+            let (cx, cy) = (x as i64, y as i64);
+            (x, y) = others
+                .iter()
+                .flat_map(|b| {
+                    let (bx, by, bw, bh) =
+                        (b.x as i64, b.y as i64, b.width as i64, b.height as i64);
+                    // Keep at least one pixel of the shared edge.
+                    let along_y = cy.clamp(by - h + 1, by + bh - 1);
+                    let along_x = cx.clamp(bx - w + 1, bx + bw - 1);
+                    [
+                        (bx - w, along_y),
+                        (bx + bw, along_y),
+                        (along_x, by - h),
+                        (along_x, by + bh),
+                    ]
+                })
+                .filter_map(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)))
+                .filter(|(x, y)| valid(*x, *y))
+                .min_by_key(|(x, y)| {
+                    let dx = *x as i128 - cx as i128;
+                    let dy = *y as i128 - cy as i128;
+                    dx * dx + dy * dy
+                })
+                .ok_or("No free position was found next to the other displays.")?;
+        }
         let moved = next.monitors[self.index].desktop.as_mut().unwrap();
         moved.x = x;
         moved.y = y;
@@ -591,9 +646,53 @@ mod drag_tests {
         l
     }
     #[test]
+    fn map_centres_the_layout_and_scales_with_its_box() {
+        let l = layout();
+        let small = MapTransform::new(&l, 400.0, 180.0);
+        let big = MapTransform::new(&l, 1000.0, 450.0);
+        assert!((big.scale / small.scale - 2.5).abs() < 1e-9);
+        // Two 2560-wide screens side by side: centred horizontally in the box.
+        let width = 5120.0 * big.scale;
+        assert!((big.left - (1000.0 - width) / 2.0).abs() < 1e-9);
+        assert!(big.top > 0.0 && big.top + 1440.0 * big.scale < 450.0);
+    }
+    #[test]
+    fn a_display_dropped_away_from_the_others_moves_back_to_touch_them() {
+        let l = layout();
+        let drag = Drag::begin(&l, 1, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
+        // Far to the right and a little down: it comes back to the first display's right edge.
+        let mut moved = l.clone();
+        let d = moved.monitors[1].desktop.as_mut().unwrap();
+        d.x = 9000;
+        d.y = 300;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (2560, 300));
+        // Far below: it comes back under the first display (x 100 also snaps to its left edge).
+        let mut moved = l.clone();
+        let d = moved.monitors[1].desktop.as_mut().unwrap();
+        d.x = 100;
+        d.y = 8000;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (0, 1440));
+        // Touching already: left as it is.
+        let mut moved = l.clone();
+        moved.monitors[1].desktop.as_mut().unwrap().y = 500;
+        let d = drag.finish(&moved).unwrap().monitors[1]
+            .desktop
+            .clone()
+            .unwrap();
+        assert_eq!((d.x, d.y), (2560, 500));
+    }
+    #[test]
     fn dragging_primary_preserves_primary_and_snaps_overlaps() {
         let l = layout();
-        let drag = Drag::begin(&l, 0, 100.0, 100.0).unwrap();
+        let drag = Drag::begin(&l, 0, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
         let moved = drag.moved(130.0, 140.0).unwrap();
         let finished = drag.finish(&moved).unwrap();
         assert!(finished.monitors[0].desktop.as_ref().unwrap().primary());
@@ -604,7 +703,7 @@ mod drag_tests {
     #[test]
     fn secondary_drag_snaps_to_edges_and_rejects_invalid_input() {
         let l = layout();
-        let drag = Drag::begin(&l, 1, 100.0, 100.0).unwrap();
+        let drag = Drag::begin(&l, 1, 100.0, 100.0, MapTransform::new(&l, 400.0, 180.0)).unwrap();
         assert!(drag.moved(f64::NAN, 0.0).is_err());
         let mut moved = l.clone();
         let d = moved.monitors[1].desktop.as_mut().unwrap();

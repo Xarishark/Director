@@ -1,6 +1,36 @@
 # Director interface
 
-## Information architecture — current
+## Design system — current
+
+Every page is built from `src/ui.rs`, so pages line up and follow the system theme:
+
+- **Type ramp** (Fluent): caption 12, body 14, label 14 semibold, section subtitle 20 semibold, page title 28 semibold. Secondary text uses one opacity (0.72).
+- **Spacing** 8/12/16/32 and **radii** 4 (inner panels, controls) and 8 (cards). Page padding and pane widths are constants that width calculations reuse.
+- **Colour** comes from theme brushes: card fill and stroke, critical red and the accent. Translucent greys mark inner panels, dashed outlines and the arrangement map, so they read on light and dark. Layout previews keep one fixed set of screen colours.
+- **Page**: fixed header (title, one-line subtitle, actions at the top right), scrolling body with a scroll-bar gutter, and an optional fixed footer: a hint on the left, Cancel then the accent action on the right.
+- **Section**: a subtitle with an optional quiet action beside it (Save as…), a one-line description, then the content. Forms stay within 650 DIP; monitor cards use up to three columns of about 400 DIP.
+- **Settings**: Options uses Windows-Settings-style cards, each with a title and description on the left and its control on the right.
+- Empty states use one helper: a subtitle, a line of explanation and at most one button.
+
+## Navigation — current
+
+The pane lists Scenes, Now, Displays and TVs, with Options in the pane footer. The Library group was removed once it only held Displays and TVs. Reactor 0.100 has no footer menu items, so Options is a button styled like a navigation item that shows the same selection pill and fill when open. This supersedes "Library is an expanded, non-selectable parent item" below.
+
+## Display editor — current
+
+The arrangement map follows Windows Settings › Display: it is centred, spans the editor (up to 1000 DIP) and is 280 DIP tall. Pressing a screen selects it, drawn in the accent colour, and its card below gets an accent outline; dragging still moves it. A display dropped away from the others moves back to share part of an edge with the nearest one, as in Windows. On Now, Discard and **Apply changes** sit in the map's bottom-right corner, where Windows keeps its display actions, in a strip of their own under the screens with a solid backing so no screen is drawn behind them.
+
+Every display has a card: its name with Primary or Make primary and the On switch, then Resolution beside Refresh rate, Desktop mode beside Orientation, and HDR. A one-display, Windows-style layout was tried side by side and not kept.
+
+## FPS card — current
+
+FPS limit is one card, kept to the form width: its title and current state on the left and the switch on the right, then Method beside Limit and Frames per second beside VRR-safe cap, always shown, with one caption. While the switch is off the controls are greyed out and show what turning it on would use, so switching it on never changes the page's height. On Now, a staged change says it waits for Apply changes on the display map. A scene's FPS step uses the same controls without the card.
+
+## Now — current
+
+Now has no page title (the sidebar already says Now). It starts with Displays and the FPS card, which stage edits for **Apply changes** in the map's corner; then a divider captioned "Sound changes below apply right away"; then Sound, which applies each change as it is made. At the bottom of Sound, the "Different device for calls" switch enables the calls output picker beside it (always shown, greyed out while off, so nothing moves), which sets only Windows' communications role; it is on when Windows already sends calls elsewhere, and turning it off sends calls back to the main output. Apply changes applies displays and then, if that succeeded, the FPS limit; Discard rereads Windows. Save as display preset… and Save as scene… sit beside their section titles. Save as display preset… asks only for a name in a dialog (errors such as a clashing name show in the dialog, which keeps the name), saves the layout shown, including unapplied edits, and then opens the Displays list with a "Saved" confirmation; Now keeps its staged edits. Save as scene… copies the output and microphone with volume and mute and opens the new scene on its Sound step dialog. Mute buttons read Mute or Unmute with matching icons. This supersedes "Keep separate Apply display changes and Apply audio changes actions, plus Discard edits" below.
+
+## Information architecture (earlier)
 
 The navigation pane has three areas. Scenes is the start page (except when opened from a failed-scene notification, which opens Options). Now (formerly Current setup) adjusts the live setup without saving. Library is an expanded, non-selectable parent item with Displays, Audio and TVs. Options stays in the pane footer. Each area has its own icon; Displays and TVs no longer share one.
 

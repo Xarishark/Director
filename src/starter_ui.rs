@@ -53,13 +53,7 @@ impl Default for StarterState {
 fn msg(m: StarterMessage) -> Message {
     Message::Scene(SceneMessage::Starter(m))
 }
-fn note(s: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(s)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
+use crate::ui::note;
 
 impl DirectorApp {
     /// The current FPS limit to keep, from the FPS survey the Scenes page already runs.
@@ -250,17 +244,17 @@ impl DirectorApp {
             .horizontal_alignment(HorizontalAlignment::Left)
             .vertical_alignment(VerticalAlignment::Top)
             .padding(24.0)
-            .corner_radius(8.0)
+            .corner_radius(crate::ui::RADIUS_L)
             .border_thickness(1.0)
-            .border_brush(Color::argb(48, 128, 128, 128))
-            .background(Color::argb(12, 128, 128, 128))
+            .border_brush(crate::ui::card_stroke())
+            .background(crate::ui::card_fill())
             .automation_name("Start with your everyday setup")
             .content(
                 StackPanel::new().spacing(18.0).children((
                     StackPanel::new().spacing(6.0).children((
                         TextBlock::new()
                             .text("Start with your everyday setup")
-                            .font_size(20.0)
+                            .font_size(crate::ui::SUBTITLE)
                             .font_weight(FontWeight::SEMI_BOLD),
                         note("Save how your PC is set up right now as a scene. Whenever another scene changes your screens or sound, this one brings everything back in one click."),
                     )),
@@ -276,8 +270,8 @@ impl DirectorApp {
                         match problem {
                             Some(p) if !name.is_empty() || !s.name.is_empty() => TextBlock::new()
                                 .text(p)
-                                .font_size(12.0)
-                                .foreground(Color::rgb(240, 130, 115))
+                                .font_size(crate::ui::CAPTION)
+                                .foreground(crate::ui::critical())
                                 .into(),
                             _ => View::empty(),
                         },
@@ -309,8 +303,8 @@ impl DirectorApp {
                                 .content(label),
                             TextBlock::new()
                                 .text("Saving doesn’t change anything on your PC.")
-                                .font_size(12.0)
-                                .opacity(0.65)
+                                .font_size(crate::ui::CAPTION)
+                                .opacity(crate::ui::SECONDARY)
                                 .vertical_alignment(VerticalAlignment::Center),
                         )),
                     HyperlinkButton::new()
@@ -337,10 +331,10 @@ impl DirectorApp {
         Border::new()
             .padding(Thickness::xy(16.0, 12.0))
             .margin(Thickness::new(0.0, 0.0, 0.0, 16.0))
-            .corner_radius(8.0)
+            .corner_radius(crate::ui::RADIUS_L)
             .border_thickness(1.0)
-            .border_brush(Color::argb(48, 128, 128, 128))
-            .background(Color::argb(12, 128, 128, 128))
+            .border_brush(crate::ui::card_stroke())
+            .background(crate::ui::card_fill())
             .automation_name("Next scene tip")
             .content(
                 Grid::new()
@@ -349,7 +343,7 @@ impl DirectorApp {
                     .children((
                         FontIcon::new()
                             .glyph("\u{e946}")
-                            .opacity(0.65)
+                            .opacity(crate::ui::SECONDARY)
                             .vertical_alignment(VerticalAlignment::Center),
                         TextBlock::new()
                             .grid_column(1)

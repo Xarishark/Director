@@ -7,7 +7,6 @@ use director::{
 use windows_reactor::*;
 /// Sized to the content so short cards don't end in empty space.
 pub(crate) const DISPLAY_CARD_HEIGHT: f64 = 300.0;
-pub(crate) const SCENE_CARD_HEIGHT: f64 = 340.0;
 pub(crate) const TV_CARD_HEIGHT: f64 = 220.0;
 const CARD_WIDTH: f64 = 340.0;
 const CARD_GAP: f64 = 8.0;
@@ -39,8 +38,24 @@ pub(crate) fn card_grid(row: i32, card_height: f64, cards: Vec<KeyedView>) -> Vi
                 .keyed_children(cards),
         )
 }
+/// The widest a card's name can be next to its command button and `actions` buttons.
+fn name_width(actions: usize, apply: bool) -> f64 {
+    // Inner width, less the ">_" button (cards with Apply have one), Apply (about 72) and 40 per
+    // icon button.
+    let n = actions as f64;
+    let buttons = 44.0 * n + if apply { 32.0 + 36.0 } else { 0.0 };
+    (CARD_WIDTH - 28.0 - buttons).max(60.0)
+}
 /// A preset or scene card. `command` sits right after the name (the ">_" button, or empty).
-pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, height: f64) -> View {
+/// `apply` says the first action is the text Apply button, which is wider than the icons.
+pub(crate) fn card(
+    name: &str,
+    command: View,
+    body: View,
+    actions: Vec<View>,
+    height: f64,
+    apply: bool,
+) -> View {
     Border::new()
         .automation_name(name)
         .horizontal_alignment(HorizontalAlignment::Left)
@@ -48,31 +63,31 @@ pub(crate) fn card(name: &str, command: View, body: View, actions: Vec<View>, he
         .width(CARD_WIDTH)
         .height(height)
         .padding(14.0)
-        .corner_radius(8.0)
-        .background(Color::argb(12, 128, 128, 128))
-        .border_brush(Color::rgb(70, 70, 70))
+        .corner_radius(crate::ui::RADIUS_L)
+        .background(crate::ui::card_fill())
+        .border_brush(crate::ui::card_stroke())
         .border_thickness(1.0)
         .content(
             StackPanel::new().spacing(12.0).children((
+                // The name shrinks (with an ellipsis and the full name on hover) so the
+                // buttons always fit, however long the name is.
                 Grid::new()
-                    .columns([
-                        GridLength::Auto,
-                        GridLength::Auto,
-                        GridLength::Star(1.0),
-                        GridLength::Auto,
-                    ])
+                    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
                     .column_spacing(4.0)
                     .children((
                         TextBlock::new()
                             .text(name)
                             .font_size(18.0)
                             .font_weight(FontWeight::SEMI_BOLD)
-                            .max_width(150.0)
+                            .max_width(name_width(actions.len(), apply))
                             .text_trimming(TextTrimming::CharacterEllipsis)
                             .vertical_alignment(VerticalAlignment::Center)
                             .tooltip(name),
-                        Border::new().grid_column(1).content(command),
-                        Border::new().grid_column(3).content(action_row(actions)),
+                        Border::new()
+                            .grid_column(1)
+                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .content(command),
+                        Border::new().grid_column(2).content(action_row(actions)),
                     )),
                 body,
             )),
@@ -205,15 +220,15 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         .fold(f64::NEG_INFINITY, f64::max);
     if active.is_empty() {
         return Border::new()
-            .background(Color::argb(18, 128, 128, 128))
-            .corner_radius(6.0)
+            .background(crate::ui::SUBTLE_FILL)
+            .corner_radius(crate::ui::RADIUS_S)
             .content(
                 Grid::new()
                     .width(WIDTH)
                     .height(height)
                     .children((TextBlock::new()
                         .text("All displays off")
-                        .font_size(12.0)
+                        .font_size(crate::ui::CAPTION)
                         .opacity(0.72)
                         .horizontal_alignment(HorizontalAlignment::Center)
                         .vertical_alignment(VerticalAlignment::Center),)),
@@ -273,14 +288,14 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
                     0.0,
                     0.0,
                 ))
-                .background(Color::rgb(38, 52, 69))
+                .background(crate::ui::SCREEN_FILL)
                 .border_brush(if d.primary() {
-                    Color::rgb(255, 148, 113)
+                    crate::ui::SCREEN_PRIMARY
                 } else {
-                    Color::rgb(145, 167, 187)
+                    crate::ui::SCREEN_OTHER
                 })
                 .border_thickness(1.0)
-                .corner_radius(4.0)
+                .corner_radius(crate::ui::RADIUS_S)
                 .content(
                     StackPanel::new()
                         .vertical_alignment(VerticalAlignment::Center)
@@ -297,8 +312,8 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         })
         .collect::<Vec<_>>();
     Border::new()
-        .background(Color::argb(18, 128, 128, 128))
-        .corner_radius(6.0)
+        .background(crate::ui::SUBTLE_FILL)
+        .corner_radius(crate::ui::RADIUS_S)
         .content(
             Grid::new()
                 .width(WIDTH)
@@ -319,7 +334,7 @@ impl DirectorApp {
                     layout_preview(&p.layout, 200.0),
                     TextBlock::new()
                         .text(off_summary(&p.layout).unwrap_or_default())
-                        .font_size(12.0)
+                        .font_size(crate::ui::CAPTION)
                         .opacity(0.72)
                         .text_wrapping(TextWrapping::NoWrap)
                         .text_trimming(TextTrimming::CharacterEllipsis)
@@ -367,6 +382,7 @@ impl DirectorApp {
                                 .tooltip("Delete display preset"),
                         ],
                         DISPLAY_CARD_HEIGHT,
+                        true,
                     ),
                 )
             })

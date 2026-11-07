@@ -67,13 +67,7 @@ impl FpsState {
 fn msg(m: FpsMessage) -> Message {
     Message::Fps(m)
 }
-fn note(text: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(text)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
-}
+use crate::ui::{self, note};
 impl DirectorApp {
     fn fps_request(&self, target: Target) -> Option<&Request> {
         match target {
@@ -139,20 +133,7 @@ impl DirectorApp {
                 self.fps.checking = false;
             }
             FpsMessage::Enable(target, on) if !self.busy => {
-                let request = if on {
-                    self.fps.caps.iter().find(|c| c.available).map(|c| Request {
-                        provider: c.provider,
-                        limit: Some(
-                            c.current
-                                .as_ref()
-                                .map_or(60, |s| if s.value == 0 { 60 } else { s.value })
-                                .clamp(1, c.maximum),
-                        ),
-                        vrr_safe: false,
-                    })
-                } else {
-                    None
-                };
+                let request = if on { self.fps_default() } else { None };
                 match target {
                     Target::Current => self.fps.live = request,
                     Target::Scene => {
@@ -308,6 +289,18 @@ impl DirectorApp {
                     .and_then(|l| l.primary_refresh_hz())
             })
     }
+    /// Now's staged FPS change can be applied: it's valid and its method is available.
+    pub(crate) fn live_fps_ready(&self) -> bool {
+        self.current.fps_dirty
+            && self.fps.live.as_ref().is_some_and(|r| {
+                r.validate().is_ok()
+                    && self
+                        .fps
+                        .caps
+                        .iter()
+                        .any(|c| c.provider == r.provider && c.available)
+            })
+    }
     pub(crate) fn fps_controls(&self, cx: &ViewContext<Self>, target: Target) -> View {
         let request = self.fps_request(target);
         let methods = self
@@ -317,8 +310,6 @@ impl DirectorApp {
             .filter(|c| c.available)
             .collect::<Vec<_>>();
         let available = !self.busy && self.guard_ready;
-        let selected = request.and_then(|r| methods.iter().position(|c| c.provider == r.provider));
-        let cap = request.and_then(|r| self.fps.caps.iter().find(|c| c.provider == r.provider));
         // Only the selected method: the others don't matter for this step.
         let current = request
             .and_then(|r| self.fps.caps.iter().find(|c| c.provider == r.provider))
@@ -339,25 +330,234 @@ impl DirectorApp {
                     }
                 )
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                // On Now with nothing staged, say what every method has set right now.
+                if target != Target::Current {
+                    return String::new();
+                }
+                let set = self
+                    .fps
+                    .caps
+                    .iter()
+                    .filter_map(|c| c.current.as_ref().map(|s| (c.provider, s.value)))
+                    .map(|(provider, value)| {
+                        if value == 0 {
+                            format!("{} no limit", provider.label())
+                        } else {
+                            format!("{} {value} FPS", provider.label())
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if set.is_empty() {
+                    String::new()
+                } else {
+                    format!("Currently: {}", set.join(" · "))
+                }
+            });
         let refresh = self.fps_preview_refresh(target);
-        StackPanel::new().spacing(12.0).children((
-if target==Target::Scene{View::empty()}else{TextBlock::new().text("FPS limit").font_size(24.0).font_weight(FontWeight::SEMI_BOLD).into()},
-if current.is_empty(){View::empty()}else{note(current)},
-ToggleSwitch::new().automation_name("Change FPS limit").is_on(request.is_some()).is_enabled(available&&(!methods.is_empty()||request.is_some())).on_toggled(cx.callback(move|v|msg(FpsMessage::Enable(target,v)))).slot(ToggleSwitchSlot::Header,"Change FPS limit"),
-if !self.fps.loaded||self.fps.checking{note("Checking installed FPS methods…")}else if methods.is_empty(){note(self.fps.caps.iter().map(|c|format!("{}: {}",c.provider.label(),c.detail)).collect::<Vec<_>>().join("\n"))}else{View::empty()},
-if self.fps.loaded&&self.fps.caps.iter().any(|c|!c.available){Button::new().automation_name("Check FPS methods").is_enabled(!self.fps.checking).on_click(cx.message(msg(FpsMessage::Discover))).content("Check available methods")}else{View::empty()},
-if let Some(r)=request{StackPanel::new().spacing(12.0).children((
-ComboBox::new().automation_name("FPS method").items_source(methods.iter().map(|c|c.provider.label())).selected_index(selected).placeholder_text(format!("{} unavailable",r.provider.label())).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(available).on_selection_changed(cx.callback(move|i|msg(FpsMessage::Method(target,i)))).slot(ComboBoxSlot::Header,"Method"),
-ComboBox::new().automation_name("FPS limit mode").items_source(["Set a frame rate limit","Remove the global limit"]).selected_index(Some(if r.limit.is_some()||r.vrr_safe{0}else{1})).horizontal_alignment(HorizontalAlignment::Stretch).is_enabled(available).on_selection_changed(cx.callback(move|i|msg(FpsMessage::Mode(target,i)))).slot(ComboBoxSlot::Header,"Limit"),
-if r.limit.is_some()||r.vrr_safe{ToggleSwitch::new().automation_name("VRR-safe cap").is_on(r.vrr_safe).is_enabled(available).on_toggled(cx.callback(move|v|msg(FpsMessage::VrrSafe(target,v)))).slot(ToggleSwitchSlot::Header,"VRR-safe cap")}else{note("Turns off a global cap that’s already set. To leave the current setting as it is, turn off Change FPS limit.")},
-if r.vrr_safe{note(match refresh{Some(hz)=>format!("{} FPS on a {} Hz display. Worked out from the primary display when {} runs.",director::fps::vrr_safe_cap(hz),hz.round(),if target==Target::Scene{"the scene"}else{"this"}),None=>"A little below the primary display’s refresh rate, worked out when applied.".into()})}else if let Some(n)=r.limit{NumberBox::new().automation_name("FPS value").value(Some(f64::from(n))).minimum(1.0).maximum(f64::from(cap.map_or(1000,|c|c.maximum))).is_enabled(available).on_value_changed(cx.callback(move|v|msg(FpsMessage::Value(target,v)))).slot(NumberBoxSlot::Header,"Frames per second")}else{View::empty()},
-if let Some(c)=cap{note(&c.detail)}else{note("The saved method is unavailable. Applying will fail before any scene changes.")},
-if let Err(e)=r.validate(){note(e)}else{View::empty()},
-note("Global setting. Game-specific profiles and other limiters can still apply. RTSS must stay running when selected. A running game may need restarting."),
-))}else{note("Off leaves all existing FPS settings unchanged.")},
-if target==Target::Current{Button::new().automation_name("Apply current FPS changes").style(ButtonStyle::Accent).horizontal_alignment(HorizontalAlignment::Left).is_enabled(available&&self.current.fps_dirty&&request.is_some_and(|r|r.validate().is_ok())&&cap.is_some_and(|c|c.available)).on_click(cx.message(msg(FpsMessage::Apply))).content("Apply FPS changes")}else{View::empty()},
-))
+        // The controls are always shown, so turning the limit on never changes the page's
+        // height. While off they show what turning it on would use, greyed out.
+        let on = request.is_some();
+        let shown = request.cloned().or_else(|| self.fps_default());
+        let editable = available && on;
+        let selected = shown
+            .as_ref()
+            .and_then(|r| methods.iter().position(|c| c.provider == r.provider));
+        let cap = shown
+            .as_ref()
+            .and_then(|r| self.fps.caps.iter().find(|c| c.provider == r.provider));
+        let switch = ToggleSwitch::new()
+            .automation_name("Change FPS limit")
+            .is_on(on)
+            .is_enabled(available && (!methods.is_empty() || on))
+            .on_toggled(cx.callback(move |v| msg(FpsMessage::Enable(target, v))));
+        let header = Grid::new()
+            .columns([GridLength::Star(1.0), GridLength::Auto])
+            .column_spacing(ui::GAP_L)
+            .children((
+                StackPanel::new()
+                    .spacing(2.0)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .children((
+                        ui::label(if target == Target::Current {
+                            "FPS limit"
+                        } else {
+                            "Change FPS limit"
+                        }),
+                        ui::caption(if target == Target::Current && self.current.fps_dirty {
+                            "Not applied yet: use Apply changes on the display map.".into()
+                        } else if on {
+                            current
+                        } else if current.is_empty() {
+                            "Off leaves FPS settings as they are.".into()
+                        } else {
+                            format!("{current}. Off leaves it as it is.")
+                        }),
+                    )),
+                Border::new()
+                    .grid_column(1)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .content(switch),
+            ));
+        let status = if !self.fps.loaded || self.fps.checking {
+            note("Checking installed FPS methods…")
+        } else if methods.is_empty() {
+            note(
+                self.fps
+                    .caps
+                    .iter()
+                    .map(|c| format!("{}: {}", c.provider.label(), c.detail))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        } else {
+            View::empty()
+        };
+        let check = if self.fps.loaded && self.fps.caps.iter().any(|c| !c.available) {
+            Button::new()
+                .automation_name("Check FPS methods")
+                .is_enabled(!self.fps.checking)
+                .on_click(cx.message(msg(FpsMessage::Discover)))
+                .content("Check available methods")
+        } else {
+            View::empty()
+        };
+        // Two compact rows of labelled controls, like a display card, so the card stays short.
+        let field = |title: &str, control: View| -> View {
+            StackPanel::new()
+                .spacing(4.0)
+                .children((TextBlock::new().text(title), control))
+        };
+        let pair = |left: View, right: View| -> View {
+            Grid::new()
+                .columns([GridLength::Star(1.0), GridLength::Star(1.0)])
+                .column_spacing(ui::GAP_M)
+                .children((
+                    Border::new().content(left),
+                    Border::new().grid_column(1).content(right),
+                ))
+        };
+        let body = match &shown {
+            Some(r) => {
+                let limited = r.limit.is_some() || r.vrr_safe;
+                let rate: View = if r.vrr_safe {
+                    field(
+                        "Frames per second",
+                        ui::note(match refresh {
+                            Some(hz) => format!(
+                                "{} FPS on a {} Hz display",
+                                director::fps::vrr_safe_cap(hz),
+                                hz.round()
+                            ),
+                            None => "Worked out from the refresh rate".into(),
+                        }),
+                    )
+                } else if let Some(n) = r.limit {
+                    field(
+                        "Frames per second",
+                        NumberBox::new()
+                            .automation_name("FPS value")
+                            .horizontal_alignment(HorizontalAlignment::Stretch)
+                            .value(Some(f64::from(n)))
+                            .minimum(1.0)
+                            .maximum(f64::from(cap.map_or(1000, |c| c.maximum)))
+                            .is_enabled(editable)
+                            .on_value_changed(
+                                cx.callback(move |v| msg(FpsMessage::Value(target, v))),
+                            )
+                            .into(),
+                    )
+                } else {
+                    ui::note("Turns off a global cap that’s already set.")
+                };
+                StackPanel::new()
+                    .spacing(ui::GAP_M)
+                    .opacity(if on { 1.0 } else { 0.55 })
+                    .children((
+                        pair(
+                            field(
+                                "Method",
+                                ComboBox::new()
+                                    .automation_name("FPS method")
+                                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                                    .items_source(methods.iter().map(|c| c.provider.label()))
+                                    .selected_index(selected)
+                                    .placeholder_text(format!(
+                                        "{} unavailable",
+                                        r.provider.label()
+                                    ))
+                                    .is_enabled(editable)
+                                    .on_selection_changed(
+                                        cx.callback(move |i| msg(FpsMessage::Method(target, i))),
+                                    )
+                                    .into(),
+                            ),
+                            field(
+                                "Limit",
+                                ComboBox::new()
+                                    .automation_name("FPS limit mode")
+                                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                                    .items_source(["Set a frame rate limit", "Remove the global limit"])
+                                    .selected_index(Some(if limited { 0 } else { 1 }))
+                                    .is_enabled(editable)
+                                    .on_selection_changed(
+                                        cx.callback(move |i| msg(FpsMessage::Mode(target, i))),
+                                    )
+                                    .into(),
+                            ),
+                        ),
+                        pair(
+                            rate,
+                            if limited {
+                                field(
+                                    "VRR-safe cap",
+                                    ToggleSwitch::new()
+                                        .automation_name("VRR-safe cap")
+                                        .is_on(r.vrr_safe)
+                                        .is_enabled(editable)
+                                        .on_toggled(
+                                            cx.callback(move |v| msg(FpsMessage::VrrSafe(target, v))),
+                                        )
+                                        .into(),
+                                )
+                            } else {
+                                View::empty()
+                            },
+                        ),
+                        match r.validate() {
+                            Err(e) if on => ui::caption(e),
+                            _ => View::empty(),
+                        },
+                        ui::caption(match cap {
+                            Some(c) => c.detail.clone(),
+                            None => "The saved method is unavailable. Applying will fail before any scene changes.".into(),
+                        }),
+                    ))
+            }
+            None => View::empty(),
+        };
+        let content = StackPanel::new()
+            .spacing(ui::GAP_M)
+            .children((header, status, check, body));
+        if target == Target::Current {
+            ui::card(content)
+        } else {
+            content
+        }
+    }
+    /// The request turning the limit on starts from: the first available method, at its
+    /// current limit (or 60 when it has none).
+    fn fps_default(&self) -> Option<Request> {
+        self.fps.caps.iter().find(|c| c.available).map(|c| Request {
+            provider: c.provider,
+            limit: Some(
+                c.current
+                    .as_ref()
+                    .map_or(60, |s| if s.value == 0 { 60 } else { s.value })
+                    .clamp(1, c.maximum),
+            ),
+            vrr_safe: false,
+        })
     }
 }
 #[cfg(test)]

@@ -68,8 +68,8 @@ impl DirectorApp {
                             .text_wrapping(TextWrapping::Wrap),
                         Border::new()
                             .padding(Thickness::xy(10.0, 7.0))
-                            .corner_radius(4.0)
-                            .background(Color::argb(40, 128, 128, 128))
+                            .corner_radius(crate::ui::RADIUS_S)
+                            .background(crate::ui::CODE_FILL)
                             .content(
                                 TextBlock::new()
                                     .text(report.summary.clone())
@@ -82,8 +82,8 @@ impl DirectorApp {
                             .text_wrapping(TextWrapping::Wrap),
                         TextBlock::new()
                             .text("The full report, with recent log lines, is saved in your Director logs folder. Attach it to the issue if you’re happy to share it.")
-                            .font_size(12.0)
-                            .opacity(0.65)
+                            .font_size(crate::ui::CAPTION)
+                            .opacity(crate::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap),
                     )),
             )

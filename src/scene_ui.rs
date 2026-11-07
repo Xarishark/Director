@@ -157,12 +157,28 @@ pub(crate) struct SceneState {
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
-fn note(s: impl Into<String>) -> View {
-    TextBlock::new()
-        .text(s)
-        .text_wrapping(TextWrapping::Wrap)
-        .opacity(0.72)
-        .into()
+use crate::ui::note;
+/// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
+/// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
+fn scene_card_height(summary: &str, active: bool, error: Option<String>) -> f64 {
+    const LINE: f64 = 20.0;
+    // About this many characters fit on a line of a card.
+    const CHARS: usize = 42;
+    let lines = |text: &str| -> f64 {
+        text.lines()
+            .map(|l| l.chars().count().div_ceil(CHARS).max(1))
+            .sum::<usize>() as f64
+    };
+    // Padding, header row and spacing, then the hero panel and the gap under it.
+    let mut height = 28.0 + 32.0 + 12.0 + 124.0 + 8.0 + lines(summary) * LINE;
+    if active {
+        height += LINE + 8.0;
+    }
+    if let Some(e) = error {
+        height += lines(&e) * LINE + 8.0;
+    }
+    // A little room so a misjudged wrap doesn't clip the last line.
+    height + 12.0
 }
 /// What a hero panel's bar shows.
 enum Level {
@@ -193,7 +209,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                             .corner_radius(2.0)
                             .horizontal_alignment(HorizontalAlignment::Left)
                             .width(BAR * f64::from(v.min(100)) / 100.0)
-                            .background(Color::rgb(76, 194, 255)),
+                            .background(ThemeBrush::Accent),
                     )),
                 TextBlock::new().text(format!("{v}%")).opacity(0.72),
             )),
@@ -206,7 +222,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                 i.to_string(),
                 TextBlock::new()
                     .text(line)
-                    .font_size(12.0)
+                    .font_size(crate::ui::CAPTION)
                     .opacity(0.72)
                     .text_trimming(TextTrimming::CharacterEllipsis),
             )
@@ -215,8 +231,8 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
     Border::new()
         .height(124.0)
         .padding(Thickness::xy(16.0, 12.0))
-        .corner_radius(6.0)
-        .background(Color::argb(18, 128, 128, 128))
+        .corner_radius(crate::ui::RADIUS_S)
+        .background(crate::ui::SUBTLE_FILL)
         .content(
             Grid::new()
                 .columns([GridLength::Auto, GridLength::Star(1.0)])
@@ -225,7 +241,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                     Viewbox::new()
                         .width(36.0)
                         .height(36.0)
-                        .opacity(0.8)
+                        .opacity(crate::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center)
                         .slot(ViewboxSlot::Child, FontIcon::new().glyph(glyph)),
                     StackPanel::new()
@@ -816,6 +832,20 @@ impl DirectorApp {
         if let Some(d) = &self.scene.draft {
             return self.scene_editor(cx, d);
         }
+        // Every card gets the height the fullest one needs, so the grid lines up without a
+        // fixed gap under short summaries.
+        let card_height = self
+            .scene
+            .scenes
+            .iter()
+            .map(|s| {
+                scene_card_height(
+                    &self.scene_summary(s),
+                    self.scene.active.as_deref() == Some(s.id.as_str()),
+                    scenes::resolve(s, &self.scene.displays, &self.scene.tvs).err(),
+                )
+            })
+            .fold(0.0, f64::max);
         let cards = self
             .scene
             .scenes
@@ -829,11 +859,15 @@ impl DirectorApp {
                 let active = self.scene.active.as_deref() == Some(s.id.as_str());
                 let body = StackPanel::new().spacing(8.0).children((
                     if active {
-                        TextBlock::new()
-                            .text("● Active")
-                            .font_weight(FontWeight::SEMI_BOLD)
-                            .foreground(Color::rgb(108, 203, 95))
-                            .into()
+                        StackPanel::new()
+                            .orientation(Orientation::Horizontal)
+                            .spacing(6.0)
+                            .children((
+                                TextBlock::new().text("●").foreground(crate::ui::SUCCESS),
+                                TextBlock::new()
+                                    .text("Active")
+                                    .font_weight(FontWeight::SEMI_BOLD),
+                            ))
                     } else {
                         View::empty()
                     },
@@ -842,7 +876,7 @@ impl DirectorApp {
                     if let Err(e) = resolved {
                         TextBlock::new()
                             .text(e)
-                            .foreground(Color::rgb(240, 130, 115))
+                            .foreground(crate::ui::critical())
                             .text_wrapping(TextWrapping::Wrap)
                             .into()
                     } else {
@@ -900,7 +934,8 @@ impl DirectorApp {
                                 .content(crate::icons::delete_small())
                                 .tooltip("Delete scene"),
                         ],
-                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
+                        card_height,
+                        true,
                     ),
                 )
             })
@@ -913,7 +948,7 @@ impl DirectorApp {
                 GridLength::Auto,
             ])
             .children((
-                crate::preset_ui::header(
+                crate::ui::header(
                     "Scenes",
                     "Switch your whole setup in one click.",
                     vec![
@@ -935,11 +970,7 @@ impl DirectorApp {
                             .content(self.starter_card(cx)),
                     )
                 } else {
-                    crate::preset_cards_ui::card_grid(
-                        2,
-                        crate::preset_cards_ui::SCENE_CARD_HEIGHT,
-                        cards,
-                    )
+                    crate::preset_cards_ui::card_grid(2, card_height, cards)
                 },
                 if self.scene.cancel.is_some() {
                     Button::new()
@@ -1162,46 +1193,46 @@ impl DirectorApp {
             vec![],
         )
     }
+    /// One line per step the scene changes, in run order. Steps it leaves alone are omitted.
     fn scene_summary(&self, s: &Scene) -> String {
-        let display = s
-            .display
-            .as_ref()
-            .map(|id| {
-                self.scene
-                    .displays
-                    .iter()
-                    .find(|p| &p.id == id)
-                    .map_or("Missing display preset", |p| p.name.as_str())
-            })
-            .unwrap_or("Unchanged");
-        let sound = s
-            .sound
-            .as_ref()
-            .map_or("Unchanged".into(), |sound| self.sound_label(sound));
-        let tv =
-            s.tv.as_ref()
-                .map(|p| {
-                    self.scene
-                        .tvs
-                        .iter()
-                        .find(|t| t.id == p.id)
-                        .map_or("Missing TV", |t| t.name.as_str())
-                })
-                .unwrap_or("None");
+        let actions = |n: usize| {
+            if n == 1 {
+                "1 action".to_string()
+            } else {
+                format!("{n} actions")
+            }
+        };
         let mut lines = vec![];
         if !s.before.is_empty() {
-            lines.push(format!("Before: {} action(s)", s.before.len()));
+            lines.push(format!("Before: {}", actions(s.before.len())));
         }
-        lines.push(format!("TV: {tv}"));
-        lines.push(format!("Displays: {display}"));
-        lines.push(format!("Sound: {sound}"));
-        lines.push(format!(
-            "FPS: {}",
-            s.fps
-                .as_ref()
-                .map_or("Leave unchanged".into(), |r| r.label())
-        ));
-        lines.push(format!("After: {} action(s)", s.actions.len()));
+        if let Some(p) = &s.tv {
+            let tv = self
+                .scene
+                .tvs
+                .iter()
+                .find(|t| t.id == p.id)
+                .map_or("Missing TV", |t| t.name.as_str());
+            lines.push(format!("TV: {tv}"));
+        }
+        if let Some(id) = &s.display {
+            let display = self
+                .scene
+                .displays
+                .iter()
+                .find(|p| &p.id == id)
+                .map_or("Missing display preset", |p| p.name.as_str());
+            lines.push(format!("Displays: {display}"));
+        }
+        if let Some(sound) = &s.sound {
+            lines.push(format!("Sound: {}", self.sound_label(sound)));
+        }
+        if let Some(fps) = &s.fps {
+            lines.push(format!("FPS: {}", fps.label()));
+        }
+        if !s.actions.is_empty() {
+            lines.push(format!("After: {}", actions(s.actions.len())));
+        }
         let tv_off = s.tv.as_ref().filter(|t| t.off_when_leaving).map(|p| {
             self.scene
                 .tvs
@@ -1213,11 +1244,15 @@ impl DirectorApp {
         });
         match (tv_off, s.leave.len()) {
             (None, 0) => {}
-            (None, n) => lines.push(format!("When leaving: {n} action(s)")),
+            (None, n) => lines.push(format!("When leaving: {}", actions(n))),
             (Some(off), 0) => lines.push(format!("When leaving: {off}")),
-            (Some(off), n) => lines.push(format!("When leaving: {off} · {n} action(s)")),
+            (Some(off), n) => lines.push(format!("When leaving: {off} · {}", actions(n))),
         }
-        lines.join("\n")
+        if lines.is_empty() {
+            "This scene doesn’t change anything yet. Edit it to add steps.".into()
+        } else {
+            lines.join("\n")
+        }
     }
     pub(crate) fn scene_dialog(&self, cx: &ViewContext<Self>) -> View {
         if self.scene.open.is_some() && self.scene.draft.is_some() {
@@ -1295,5 +1330,37 @@ fn pick_path(folder: bool) -> Result<Option<String>, String> {
         let path = PCWSTR(value.0).to_string().map_err(|e| e.to_string());
         CoTaskMemFree(Some(value.0.cast()));
         path.map(Some)
+    }
+}
+
+#[cfg(test)]
+mod card_height_tests {
+    use super::scene_card_height;
+    #[test]
+    fn cards_grow_with_their_lines_and_long_lines_wrap() {
+        let three = scene_card_height(
+            "Displays: Desk
+Sound: Soundbar · 10%
+FPS: RTSS · 228 FPS",
+            false,
+            None,
+        );
+        let six = scene_card_height(
+            "a
+b
+c
+d
+e
+f",
+            false,
+            None,
+        );
+        assert!((six - three - 60.0).abs() < 1e-9);
+        // A line twice as long as fits counts as two.
+        let wrapped = scene_card_height(&"x".repeat(80), false, None);
+        let single = scene_card_height("x", false, None);
+        assert!((wrapped - single - 20.0).abs() < 1e-9);
+        assert!(scene_card_height("x", true, None) > single);
+        assert!(scene_card_height("x", false, Some("Missing TV".into())) > single);
     }
 }

@@ -4,16 +4,16 @@ Now (formerly Current setup) is an alternative workspace for adjusting the activ
 
 ## Using the view
 
-Open **Now** in the navigation pane. Displays, Sound and the FPS limit appear in one scrolling view:
+Open **Now** in the navigation pane. Displays and FPS limit come first and wait for **Apply changes**, in the bottom-right corner of the display map. Below a divider, Sound applies as you change it:
 
 - Arrange screens by dragging them in the box; hover for technical details.
 - Enable/disable monitors, choose the primary, resolution, refresh rate, HDR, and orientation.
-- Sound changes apply right away: choose the default output or microphone, move a volume slider, or press a mute button. See [Sound](AUDIO.md).
-- Apply display changes when they're ready. No preset name or Save action is involved.
-- Discard edits to reread the actual Windows state.
-- **Save as display preset…** opens a new display preset seeded with what Now has staged, including edits you haven’t applied. **Save as scene…** opens a new scene whose Sound step holds the current output and volume. Saving happens in the normal editor, and Cancel discards it.
+- Sound changes apply right away: choose the default output or microphone, move a volume slider, or press a mute button. Turn on **Use a different device for calls** to send calls to their own output; the main output then sets apps and media only. See [Sound](AUDIO.md).
+- **Apply changes** applies everything staged: displays first, then the FPS limit (only if the display change succeeded). Its tooltip says what is staged. No preset name or Save action is involved.
+- **Discard** (on only while something is staged) rereads the actual Windows state.
+- **Save as display preset…** asks for a name and saves what Now shows, including edits you haven’t applied, then opens the Displays list. Your screens don’t change, and Now keeps its staged edits. **Save as scene…** opens a new scene with its Sound step dialog open, holding the current output and microphone with their volume and mute state. Saving happens in the normal editor, and Cancel discards it.
 
-Display and FPS controls stage changes until their Apply button is pressed, so a multi-monitor arrangement can be prepared before reconfiguring hardware. Display Apply uses verification/recovery and keeps verified changes without a Keep/Revert prompt. Sound controls don't stage: choosing an output makes it the default for all three roles, a volume slider sends its level once it rests for 150 ms, and mute toggles. Each change is verified and put back if Windows does not confirm it.
+Display and FPS controls stage changes until Apply changes is pressed, so a multi-monitor arrangement can be prepared before reconfiguring hardware. Display Apply uses verification/recovery and keeps verified changes without a Keep/Revert prompt. Sound controls don't stage: choosing an output makes it the default for all three roles, a volume slider sends its level once it rests for 150 ms, and mute toggles. Each change is verified and put back if Windows does not confirm it.
 
 Pending live edits survive page navigation independently of preset drafts. Opening a clean Now page rereads Windows. After display Apply, audio devices are reread so HDMI endpoints can appear. Each page has an independent native control tree to prevent scroll positions leaking between pages.
 

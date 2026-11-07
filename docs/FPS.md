@@ -4,7 +4,7 @@ Director can change the global FPS setting through the NVIDIA driver or an insta
 
 ## Use it
 
-- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, choose **Set a frame rate limit** (a number, or **VRR-safe cap**) or **Remove the global limit**, and click **Apply FPS changes**.
+- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, choose **Set a frame rate limit** (a number, or **VRR-safe cap**) or **Remove the global limit**, and click **Apply changes** at the bottom of the page.
 - In a **scene**, use the same controls. Saving does not apply anything. The scene applies TV preparation → displays → audio → FPS → final apps/URIs. A scene containing only FPS is supported.
 - **Change FPS limit off means leave all FPS settings unchanged.** To remove the selected provider’s global cap, turn the switch on and choose **Disable global limit**.
 - Only available methods appear in the dropdown. Open RTSS first if using it. Check available methods can rediscover unavailable providers. Unavailable saved methods remain saved but fail preflight before scene device changes; there is no automatic provider fallback.

@@ -10,6 +10,13 @@ pub(crate) enum EditorTarget {
     Preset,
     Current,
 }
+/// How many monitor cards fit side by side in a column `width` wide (at least 1, at most 3).
+pub(crate) fn monitor_columns(width: f64) -> usize {
+    // Cards need about 400 DIP each, with 16 between them; n cards plus their gaps fit in n × (CARD + GAP) − GAP.
+    const CARD: f64 = 400.0;
+    const GAP: f64 = 16.0;
+    (((width + GAP) / (CARD + GAP)).floor() as usize).clamp(1, 3)
+}
 fn route(target: EditorTarget, value: DisplayMessage) -> Message {
     match target {
         EditorTarget::Preset => Message::Display(value),
@@ -59,15 +66,21 @@ fn preview(
     layout: &Layout,
     cx: &ViewContext<DirectorApp>,
     target: EditorTarget,
+    actions: Vec<View>,
 ) -> View {
     let drag = match target {
         EditorTarget::Preset => app.display.drag.as_ref(),
         EditorTarget::Current => app.current.display.drag.as_ref(),
     };
+    let (width, height) = app.map_size();
     let map = drag.map_or_else(
-        || director::display_editor::MapTransform::new(layout),
+        || director::display_editor::MapTransform::new(layout, width, height),
         |d| d.map,
     );
+    let selected = match target {
+        EditorTarget::Preset => app.display.selected,
+        EditorTarget::Current => app.current.display.selected,
+    };
     let cards = layout
         .monitors
         .iter()
@@ -98,14 +111,18 @@ fn preview(
                         0.0,
                         0.0,
                     ))
-                    .background(Brush::Solid(Color::rgb(38, 52, 69)))
-                    .border_brush(Brush::Solid(if primary {
-                        Color::rgb(255, 148, 113)
+                    .background(if group.contains(&selected) {
+                        Brush::from(ThemeBrush::Accent)
                     } else {
-                        Color::rgb(155, 180, 207)
+                        Brush::from(crate::ui::SCREEN_FILL)
+                    })
+                    .border_brush(Brush::Solid(if primary {
+                        crate::ui::SCREEN_PRIMARY
+                    } else {
+                        crate::ui::SCREEN_OTHER
                     }))
                     .border_thickness(Thickness::uniform(2.0))
-                    .corner_radius(CornerRadius::uniform(5.0))
+                    .corner_radius(crate::ui::RADIUS_S)
                     .capture_pointer_on_press(!app.busy)
                     .on_pointer_pressed(cx.callback(move |point| {
                         route(target, DisplayMessage::PointerDown(i, point))
@@ -129,8 +146,10 @@ fn preview(
                                     .join(" | "),
                                 if primary { " ★" } else { "" }
                             ))
-                            .font_size(18.0)
-                            .foreground(Color::rgb(240, 244, 249))
+                            .font_size(
+                                (d.height.min(d.width) as f64 * map.scale * 0.3).clamp(12.0, 28.0),
+                            )
+                            .foreground(crate::ui::SCREEN_TEXT)
                             .horizontal_alignment(HorizontalAlignment::Center)
                             .vertical_alignment(VerticalAlignment::Center),
                     )
@@ -138,7 +157,7 @@ fn preview(
                         "{}{}
 {} × {} · {}
 Position: {}, {}
-Drag to move this screen.",
+Select to edit it; drag to move it.",
                         m.name,
                         if primary { " · Primary" } else { "" },
                         d.width,
@@ -150,21 +169,63 @@ Drag to move this screen.",
             ))
         })
         .collect::<Vec<_>>();
+    let has_actions = !actions.is_empty();
+    let mut children = cards;
+    if has_actions {
+        // Windows keeps the display page's actions in the map's bottom-right corner.
+        children.push(KeyedView::new(
+            "map-actions",
+            StackPanel::new()
+                .orientation(Orientation::Horizontal)
+                .spacing(crate::ui::GAP_S)
+                .horizontal_alignment(HorizontalAlignment::Right)
+                .vertical_alignment(VerticalAlignment::Bottom)
+                .keyed_children(
+                    actions
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, v)| {
+                            // Buttons are translucent; a solid backing keeps them readable.
+                            KeyedView::new(
+                                format!("action-{i}"),
+                                Border::new()
+                                    .corner_radius(crate::ui::RADIUS_S)
+                                    .background(ThemeBrush::SolidBackground)
+                                    .content(v),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+        ));
+    }
     Border::new()
-        .horizontal_alignment(HorizontalAlignment::Left)
+        .horizontal_alignment(HorizontalAlignment::Center)
         .border_thickness(Thickness::uniform(1.0))
-        .border_brush(Brush::Solid(Color::rgb(100, 110, 125)))
-        .corner_radius(CornerRadius::uniform(8.0))
+        .border_brush(crate::ui::OUTLINE)
+        .corner_radius(crate::ui::RADIUS_L)
         .padding(Thickness::uniform(10.0))
         .content(
             Grid::new()
-                .width(400.0)
-                .height(180.0)
+                .width(width)
+                .height(height + if has_actions { MAP_ACTIONS_HEIGHT } else { 0.0 })
                 .automation_name("Display arrangement")
-                .keyed_children(cards),
+                .keyed_children(children),
         )
 }
+/// The arrangement map's height, as in Windows Settings › Display.
+const MAP_HEIGHT: f64 = 280.0;
+/// A strip under the screens for the map's buttons, so screens never sit behind them.
+const MAP_ACTIONS_HEIGHT: f64 = 52.0;
+/// The widest the map gets on a large window.
+const MAP_MAX_WIDTH: f64 = 1000.0;
 impl DirectorApp {
+    /// The arrangement map's box: the editor's width (less the scroll gutter, the map's
+    /// padding and border), capped, and a fixed height.
+    pub(crate) fn map_size(&self) -> (f64, f64) {
+        let width =
+            crate::ui::page_width(self.window_width, self.pane_open) - crate::ui::GAP_L - 22.0;
+        (width.clamp(320.0, MAP_MAX_WIDTH), MAP_HEIGHT)
+    }
     pub(crate) fn monitor_editor(
         &self,
         layout: &Layout,
@@ -180,241 +241,440 @@ impl DirectorApp {
         cx: &ViewContext<Self>,
         target: EditorTarget,
     ) -> View {
-        let revision = match target {
-            EditorTarget::Preset => self.display.orientation_revision,
-            EditorTarget::Current => self.current.display.orientation_revision,
+        self.monitor_editor_with(layout, editor, cx, target, vec![])
+    }
+    /// The editor with buttons in the map's bottom-right corner, where Windows puts its
+    /// display actions.
+    pub(crate) fn monitor_editor_with(
+        &self,
+        layout: &Layout,
+        editor: &Editor,
+        cx: &ViewContext<Self>,
+        target: EditorTarget,
+        map_actions: Vec<View>,
+    ) -> View {
+        // Now's Displays section has its own heading and hint.
+        let heading = matches!(target, EditorTarget::Preset);
+        StackPanel::new().spacing(16.0).children((
+            if heading {
+                crate::ui::subtitle("Arrange your displays").into()
+            } else {
+                View::empty()
+            },
+            if heading {
+                crate::ui::note(
+                    "Select a display to find its settings. Drag displays to rearrange them.",
+                )
+            } else {
+                View::empty()
+            },
+            preview(self, layout, cx, target, map_actions),
+            self.all_displays(layout, editor, cx, target),
+        ))
+    }
+    /// A card for every display, side by side when there's room.
+    fn all_displays(
+        &self,
+        layout: &Layout,
+        editor: &Editor,
+        cx: &ViewContext<Self>,
+        target: EditorTarget,
+    ) -> View {
+        let columns = monitor_columns(crate::ui::page_width(self.window_width, self.pane_open));
+        let labelled =
+            |title: View, control: View| StackPanel::new().spacing(4.0).children((title, control));
+        let pair = |left: View, right: View| -> View {
+            Grid::new()
+                .columns([GridLength::Star(1.0), GridLength::Star(1.0)])
+                .column_spacing(12.0)
+                .children((
+                    Border::new().content(left),
+                    Border::new().grid_column(1).content(right),
+                ))
         };
-        let columns = if matches!(target, EditorTarget::Current) {
-            1
-        } else {
-            (((self.window_width - 380.0) / 430.0).floor() as usize).clamp(1, 3)
+        let selected = match target {
+            EditorTarget::Preset => self.display.selected,
+            EditorTarget::Current => self.current.display.selected,
         };
-        let cards = layout
-            .monitors
-            .iter()
-            .enumerate()
-            .map(|(i, m)| {
-                let options=director::display_mirroring::common_options(editor,layout,i);
-                let group=director::display_mirroring::members(layout,i);
-                let mirror_targets=layout.monitors.iter().enumerate().filter(|(j,m)|*j!=i&&m.enabled).map(|(j,_)|j).collect::<Vec<_>>();
-                let mirror_selected=group.iter().copied().find(|j|*j!=i).and_then(|j|mirror_targets.iter().position(|v|*v==j)).map_or(Some(0),|j|Some(j+1));
-                let mirror_labels=std::iter::once("Extend desktop".to_string()).chain(mirror_targets.iter().map(|j|format!("Mirror with {}. {}",j+1,layout.monitors[*j].name))).collect::<Vec<_>>();
-                let mirror_select_targets=mirror_targets.clone();
-                let mirror_mode=ComboBox::new().horizontal_alignment(HorizontalAlignment::Stretch)
-                    .automation_name(format!("Desktop mode for {}",m.name)).items_source(mirror_labels)
-                    .selected_index(mirror_selected).is_enabled(!self.busy&&m.enabled)
-                    .on_selection_changed(cx.callback(move|selected|match selected{
-                        Some(0)=>msg(target,i,Change::Mirror(None)),
-                        Some(n)=>mirror_select_targets.get(n-1).map_or(route(target,DisplayMessage::Noop),|j|msg(target,i,Change::Mirror(Some(*j)))),
-                        None=>route(target,DisplayMessage::Noop),
-                    })).slot(ComboBoxSlot::Header,"Desktop mode");
-                let d = m.desktop.as_ref();
-                let resolutions = options.resolutions();
-                let resolution = d.and_then(|d| {
-                    resolutions
-                        .iter()
-                        .position(|r| *r == (d.source_width, d.source_height))
-                });
-                let rates = d
-                    .map(|d| options.rates(d.source_width, d.source_height))
-                    .unwrap_or_default();
-                let rate = d.and_then(|d| rates.iter().position(|r| *r == d.refresh_rate));
-                let primary = d.is_some_and(DesktopMode::primary);
-                let detecting = matches!(target,EditorTarget::Preset) && self.display.setup.index==Some(i) && self.display.setup.stage.is_some();
-                let editable = !self.busy && m.enabled;
-                let configured = !options.modes.is_empty() && options.warning.as_deref().is_none_or(|w|w.starts_with("Previously detected"));
-                let hdr_toggle=ToggleSwitch::new().automation_name(format!("HDR for {}",m.name))
-                    .is_on(m.hdr.or(options.hdr).unwrap_or(false))
-                    .is_enabled(editable&&options.hdr.is_some())
-                    .on_toggled(cx.callback(move|on|msg(target,i,Change::Hdr(on))))
-                    .slot(ToggleSwitchSlot::Header,"HDR");
-                let hdr_control:View=if options.hdr.is_none(){
-                    Grid::new().children((
-                        hdr_toggle,
-                        Border::new().background(Color::argb(0,0,0,0))
-                            .automation_name(format!("Why HDR is unavailable for {}",m.name))
-                            .tooltip("HDR is unavailable for this display or Windows version."),
-                    ))
-                }else{
-                    hdr_toggle.tooltip("Enable or disable HDR for this display.")
-                };
-                let details: View = if let Some(d) = d.filter(|_|configured) {
-                    StackPanel::new().spacing(12.0).children((
-                        Grid::new()
-                            .columns([GridLength::Star(1.0), GridLength::Star(1.0)])
-                            .column_spacing(12.0)
-                            .children((
-                                ComboBox::new()
-                                    .grid_column(0)
-                                    .horizontal_alignment(HorizontalAlignment::Stretch)
-                                    .automation_name(format!("Resolution for {}", m.name))
-                                    .items_source(
-                                        resolutions.iter().map(|(w, h)| format!("{w} × {h}")),
-                                    )
-                                    .selected_index(resolution)
-                                    .placeholder_text("Unavailable while inactive")
-                                    .is_enabled(editable && !resolutions.is_empty())
-                                    .on_selection_changed(cx.callback(move |v| match v {
-                                        Some(v) => msg(target,i, Change::Resolution(v)),
-                                        None => route(target,DisplayMessage::Noop),
-                                    }))
-                                    .slot(ComboBoxSlot::Header, "Resolution"),
-                                ComboBox::new()
-                                    .grid_column(1)
-                                    .horizontal_alignment(HorizontalAlignment::Stretch)
-                                    .automation_name(format!("Refresh rate for {}", m.name))
-                                    .items_source(rates.iter().map(|r| r.label()))
-                                    .selected_index(rate)
-                                    .placeholder_text("Unavailable while inactive")
-                                    .is_enabled(editable && !rates.is_empty())
-                                    .on_selection_changed(cx.callback(move |v| match v {
-                                        Some(v) => msg(target,i, Change::Refresh(v)),
-                                        None => route(target,DisplayMessage::Noop),
-                                    }))
-                                    .slot(ComboBoxSlot::Header, TextBlock::new().text("Refresh rate").tooltip("Only rates for the selected resolution are shown. Windows marks rates that require a different resolution with an asterisk.")),
-                            )),
-                        hdr_control,
-                        StackPanel::new().spacing(4.0).children((
-                            TextBlock::new().text("Orientation"),
-                            Grid::new().keyed_children([KeyedView::new(format!("orientation-{i}-{revision}"),
-                            Button::new()
-                                .automation_name(format!("Orientation for {}", m.name))
-                                .is_enabled(editable)
-                                .content(
-                                    StackPanel::new()
-                                        .orientation(Orientation::Horizontal)
-                                        .spacing(12.0)
-                                        .children((
-                                            orientation(d.rotation_degrees),
-                                            FontIcon::new()
-                                                .glyph("")
-                                                .vertical_alignment(VerticalAlignment::Center),
-                                        )),
-                                )
-                                .flyout_with(
-                                    Flyout::rich(
-                                        StackPanel::new().width(236.0).spacing(0.0).keyed_children(
-                                            ORIENTATIONS
-                                                .iter()
-                                                .map(|(degrees, label)| {
-                                                    let degrees = *degrees;
-                                                    KeyedView::new(
-                                                        format!("rotation-{degrees}"),
-                                                        Button::new()
-                                                            .height(36.0)
-                                                            .style(ButtonStyle::Subtle)
-                                                            .horizontal_alignment(
-                                                                HorizontalAlignment::Stretch,
-                                                            )
-                                                            .automation_name(format!(
-                                                                "{label} for {}",
-                                                                m.name
-                                                            ))
-                                                            .on_click(cx.callback(move |()| {
-                                                                msg(target,i, Change::Rotation(degrees))
-                                                            }))
-                                                            .content(orientation(degrees)),
-                                                    )
-                                                })
-                                                .collect::<Vec<_>>(),
-                                        ),
-                                    )
-                                    .placement(FlyoutPlacement::Bottom),
-                                ))]),
+        let cards = (0..layout.monitors.len())
+            .map(|i| {
+                let p = self.monitor_parts(layout, editor, cx, target, i);
+                let text = |s: &str| -> View { TextBlock::new().text(s).into() };
+                let mode = p.mode.map(|mode| labelled(text("Desktop mode"), mode));
+                let body: View = match p.details {
+                    Some(d) => StackPanel::new()
+                        .spacing(12.0)
+                        .children((
+                            pair(
+                                labelled(text("Resolution"), d.resolution),
+                                labelled(
+                                    TextBlock::new()
+                                        .text("Refresh rate")
+                                        .tooltip("Only rates for the selected resolution are shown. Windows marks rates that require a different resolution with an asterisk."),
+                                    d.rate,
+                                ),
+                            ),
+                            // Desktop mode sits beside Orientation instead of taking a row.
+                            pair(
+                                mode.unwrap_or_else(View::empty),
+                                labelled(text("Orientation"), d.orientation),
+                            ),
+                            labelled(text("HDR"), d.hdr),
                         )),
-                    ))
-                } else {
-                    View::empty()
+                    None => mode.unwrap_or_else(View::empty),
                 };
                 KeyedView::new(
                     format!("editor-{i}"),
                     Border::new()
-                        .grid_column((i % columns) as i32).grid_row((i / columns) as i32)
+                        .grid_column((i % columns) as i32)
+                        .grid_row((i / columns) as i32)
                         .vertical_alignment(VerticalAlignment::Top)
-                        .padding(Thickness::uniform(16.0))
-                        .border_thickness(Thickness::uniform(1.0))
-                        .border_brush(Brush::Solid(Color::rgb(90, 90, 90)))
-                        .corner_radius(CornerRadius::uniform(8.0))
                         .content(
-                            StackPanel::new().spacing(12.0).children((
-                                Grid::new().columns([GridLength::Star(1.0), GridLength::Auto, GridLength::Auto])
-                                    .column_spacing(12.0).children((
-                                        TextBlock::new().text(format!("{}. {}", i + 1, m.name))
-                                            .font_size(18.0).font_weight(FontWeight::SEMI_BOLD)
-                                            .vertical_alignment(VerticalAlignment::Center)
-                                            .text_wrapping(TextWrapping::Wrap),
-                                        if primary {
-                                            TextBlock::new().grid_column(1).text(if group.len()>1 {"★ Primary group"}else{"★ Primary"})
-                                                .automation_name(format!("{} is the primary display",m.name))
-                                                .font_size(12.0).opacity(0.72)
-                                                .vertical_alignment(VerticalAlignment::Center).into()
-                                        } else if m.enabled && !detecting {
-                                            Button::new().grid_column(1).style(ButtonStyle::Subtle)
-                                                .vertical_alignment(VerticalAlignment::Center)
-                                                .is_enabled(editable)
-                                                .automation_name(format!("Make {} primary",m.name))
-                                                .on_click(cx.callback(move|()|msg(target,i,Change::Primary)))
-                                                .content("Make primary")
-                                        } else {View::empty()},
-                                        Grid::new().grid_column(2).children((
-                                            ToggleSwitch::new()
-                                                .automation_name(format!("Enable {}",m.name))
-                                                .is_on(m.enabled)
-                                                .is_enabled(!self.busy && (!primary || group.len()>1) && (m.enabled || configured && (m.connected || options.warning.as_deref().is_some_and(|w|w.starts_with("Previously detected")))))
-                                                .on_toggled(cx.callback(move|v|msg(target,i,Change::Enabled(v))))
-                                                .tooltip("Include this display in the preset."),
-                                            if primary && group.len()==1 {
-                                                // A disabled control does not receive hover input.
-                                                // This transparent, enabled layer owns its tooltip.
-                                                Border::new().background(Color::argb(0,0,0,0))
-                                                    .automation_name(format!("Why {} cannot be disabled",m.name))
-                                                    .tooltip("Choose another primary display before disabling this one.")
-                                            }else{View::empty()},
-                                        )),
-                                    )),
-                                TextBlock::new().text(if detecting {"Temporary detection · preset unchanged"} else if m.enabled && group.len()>1 { "Mirrored desktop · shared arrangement and resolution" } else if m.enabled { "Active in this preset" } else if m.connected { "Disabled in this preset · connected" } else { "Not detected · turn the display on" }).font_size(12.0).opacity(0.65),
-                                self.tip.tvs.iter().find(|tv| tv.display.as_ref().is_some_and(|link| m.device_path.as_ref().is_some_and(|path| link.device_path.eq_ignore_ascii_case(path)))).map(|tv| {
-                                    Grid::new().columns([GridLength::Star(1.0), GridLength::Auto]).column_spacing(8.0).children((
-                                        TextBlock::new().text(format!("Linked TV: {}", tv.name)).font_size(12.0).opacity(0.72).vertical_alignment(VerticalAlignment::Center).text_wrapping(TextWrapping::Wrap),
-                                        Button::new().grid_column(1).style(ButtonStyle::Subtle).automation_name(format!("View linked TV {}", tv.name)).is_enabled(!self.busy)
-                                            .on_click(cx.message(Message::Go("tvs".into()))).content("View TV"),
-                                    ))
-                                }).unwrap_or_else(View::empty),
-                                options
-                                    .warning
-                                    .as_ref().filter(|_|!detecting && self.display.setup.review!=Some(i))
-                                    .map(|w| {
-                                        TextBlock::new()
-                                            .text(w)
-                                            .opacity(0.72)
-                                            .text_wrapping(TextWrapping::Wrap)
-                                            .into()
-                                    })
-                                    .unwrap_or_else(View::empty),
-                                if matches!(target,EditorTarget::Preset) { self.display_setup_panel(i,cx) } else {View::empty()},
-                                if m.enabled && !detecting {mirror_mode}else{View::empty()},
-                                details,
-                            )),
+                            // The selected display's card is outlined like its screen on the map.
+                            Border::new()
+                                .padding(crate::ui::GAP_L)
+                                .corner_radius(crate::ui::RADIUS_L)
+                                .background(crate::ui::card_fill())
+                                .border_brush(if i == selected {
+                                    Brush::from(ThemeBrush::Accent)
+                                } else {
+                                    crate::ui::card_stroke()
+                                })
+                                .border_thickness(if i == selected { 2.0 } else { 1.0 })
+                                .content(StackPanel::new().spacing(12.0).children((
+                                    p.header, p.status, p.linked, p.warning, p.setup, body,
+                                ))),
                         ),
                 )
             })
             .collect::<Vec<_>>();
-        StackPanel::new().spacing(16.0).children((
-            TextBlock::new()
-                .text("Arrange your displays")
-                .font_size(20.0)
-                .font_weight(FontWeight::SEMI_BOLD),
-            TextBlock::new()
-                .text("Drag screens to arrange them. Hover for details.")
-                .text_wrapping(TextWrapping::Wrap)
-                .opacity(0.72),
-            preview(self, layout, cx, target),
-            Grid::new()
-                .columns((0..columns).map(|_| GridLength::Star(1.0)))
-                .rows((0..layout.monitors.len().div_ceil(columns)).map(|_| GridLength::Auto))
-                .column_spacing(16.0)
-                .row_spacing(16.0)
-                .keyed_children(cards),
-        ))
+        Grid::new()
+            .columns((0..columns).map(|_| GridLength::Star(1.0)))
+            .rows((0..layout.monitors.len().div_ceil(columns)).map(|_| GridLength::Auto))
+            .column_spacing(16.0)
+            .row_spacing(16.0)
+            .keyed_children(cards)
     }
+    /// The pieces of one display's editor, shared by both views. Controls carry no header;
+    /// each view labels them its own way.
+    fn monitor_parts(
+        &self,
+        layout: &Layout,
+        editor: &Editor,
+        cx: &ViewContext<Self>,
+        target: EditorTarget,
+        i: usize,
+    ) -> MonitorParts {
+        let revision = match target {
+            EditorTarget::Preset => self.display.orientation_revision,
+            EditorTarget::Current => self.current.display.orientation_revision,
+        };
+        let m = &layout.monitors[i];
+        let options = director::display_mirroring::common_options(editor, layout, i);
+        let group = director::display_mirroring::members(layout, i);
+        let d = m.desktop.as_ref();
+        let primary = d.is_some_and(DesktopMode::primary);
+        let detecting = matches!(target, EditorTarget::Preset)
+            && self.display.setup.index == Some(i)
+            && self.display.setup.stage.is_some();
+        let editable = !self.busy && m.enabled;
+        let configured = !options.modes.is_empty()
+            && options
+                .warning
+                .as_deref()
+                .is_none_or(|w| w.starts_with("Previously detected"));
+
+        let mirror_targets = layout
+            .monitors
+            .iter()
+            .enumerate()
+            .filter(|(j, m)| *j != i && m.enabled)
+            .map(|(j, _)| j)
+            .collect::<Vec<_>>();
+        let mirror_selected = group
+            .iter()
+            .copied()
+            .find(|j| *j != i)
+            .and_then(|j| mirror_targets.iter().position(|v| *v == j))
+            .map_or(Some(0), |j| Some(j + 1));
+        let mirror_labels = std::iter::once("Extend desktop".to_string())
+            .chain(
+                mirror_targets
+                    .iter()
+                    .map(|j| format!("Mirror with {}. {}", j + 1, layout.monitors[*j].name)),
+            )
+            .collect::<Vec<_>>();
+        let mode: View = ComboBox::new()
+            .horizontal_alignment(HorizontalAlignment::Stretch)
+            .automation_name(format!("Desktop mode for {}", m.name))
+            .items_source(mirror_labels)
+            .selected_index(mirror_selected)
+            .is_enabled(!self.busy && m.enabled)
+            .on_selection_changed(cx.callback(move |selected| {
+                match selected {
+                    Some(0) => msg(target, i, Change::Mirror(None)),
+                    Some(n) => mirror_targets
+                        .get(n - 1)
+                        .map_or(route(target, DisplayMessage::Noop), |j| {
+                            msg(target, i, Change::Mirror(Some(*j)))
+                        }),
+                    None => route(target, DisplayMessage::Noop),
+                }
+            }))
+            .into();
+
+        let details = d.filter(|_| configured).map(|d| {
+            let resolutions = options.resolutions();
+            let resolution = resolutions
+                .iter()
+                .position(|r| *r == (d.source_width, d.source_height));
+            let rates = options.rates(d.source_width, d.source_height);
+            let rate = rates.iter().position(|r| *r == d.refresh_rate);
+            let hdr_toggle = ToggleSwitch::new()
+                .automation_name(format!("HDR for {}", m.name))
+                .is_on(m.hdr.or(options.hdr).unwrap_or(false))
+                .is_enabled(editable && options.hdr.is_some())
+                .on_toggled(cx.callback(move |on| msg(target, i, Change::Hdr(on))));
+            let hdr: View = if options.hdr.is_none() {
+                Grid::new().children((
+                    hdr_toggle,
+                    // A disabled control gets no hover; this enabled layer explains it.
+                    Border::new()
+                        .background(Color::argb(0, 0, 0, 0))
+                        .automation_name(format!("Why HDR is unavailable for {}", m.name))
+                        .tooltip("HDR is unavailable for this display or Windows version."),
+                ))
+            } else {
+                hdr_toggle.tooltip("Enable or disable HDR for this display.")
+            };
+            Details {
+                resolution: ComboBox::new()
+                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .automation_name(format!("Resolution for {}", m.name))
+                    .items_source(resolutions.iter().map(|(w, h)| format!("{w} × {h}")))
+                    .selected_index(resolution)
+                    .placeholder_text("Unavailable while inactive")
+                    .is_enabled(editable && !resolutions.is_empty())
+                    .on_selection_changed(cx.callback(move |v| match v {
+                        Some(v) => msg(target, i, Change::Resolution(v)),
+                        None => route(target, DisplayMessage::Noop),
+                    }))
+                    .into(),
+                rate: ComboBox::new()
+                    .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .automation_name(format!("Refresh rate for {}", m.name))
+                    .items_source(rates.iter().map(|r| r.label()))
+                    .selected_index(rate)
+                    .placeholder_text("Unavailable while inactive")
+                    .is_enabled(editable && !rates.is_empty())
+                    .on_selection_changed(cx.callback(move |v| match v {
+                        Some(v) => msg(target, i, Change::Refresh(v)),
+                        None => route(target, DisplayMessage::Noop),
+                    }))
+                    .into(),
+                hdr,
+                orientation: Grid::new().keyed_children([KeyedView::new(
+                    format!("orientation-{i}-{revision}"),
+                    Button::new()
+                        .automation_name(format!("Orientation for {}", m.name))
+                        .horizontal_alignment(HorizontalAlignment::Stretch)
+                        .horizontal_content_alignment(HorizontalAlignment::Stretch)
+                        .is_enabled(editable)
+                        .content(
+                            Grid::new()
+                                .columns([GridLength::Star(1.0), GridLength::Auto])
+                                .column_spacing(12.0)
+                                .children((
+                                    Border::new()
+                                        .horizontal_alignment(HorizontalAlignment::Left)
+                                        .content(orientation(d.rotation_degrees)),
+                                    // The 12 px chevron ComboBoxes use.
+                                    Viewbox::new()
+                                        .grid_column(1)
+                                        .width(12.0)
+                                        .height(12.0)
+                                        .vertical_alignment(VerticalAlignment::Center)
+                                        .slot(
+                                            ViewboxSlot::Child,
+                                            FontIcon::new().glyph("\u{e70d}"),
+                                        ),
+                                )),
+                        )
+                        .flyout_with(
+                            Flyout::rich(
+                                StackPanel::new().width(236.0).spacing(0.0).keyed_children(
+                                    ORIENTATIONS
+                                        .iter()
+                                        .map(|(degrees, label)| {
+                                            let degrees = *degrees;
+                                            KeyedView::new(
+                                                format!("rotation-{degrees}"),
+                                                Button::new()
+                                                    .height(36.0)
+                                                    .style(ButtonStyle::Subtle)
+                                                    .horizontal_alignment(
+                                                        HorizontalAlignment::Stretch,
+                                                    )
+                                                    .automation_name(format!(
+                                                        "{label} for {}",
+                                                        m.name
+                                                    ))
+                                                    .on_click(cx.callback(move |()| {
+                                                        msg(target, i, Change::Rotation(degrees))
+                                                    }))
+                                                    .content(orientation(degrees)),
+                                            )
+                                        })
+                                        .collect::<Vec<_>>(),
+                                ),
+                            )
+                            .placement(FlyoutPlacement::Bottom),
+                        ),
+                )]),
+            }
+        });
+
+        let header: View = Grid::new()
+            .columns([GridLength::Star(1.0), GridLength::Auto, GridLength::Auto])
+            .column_spacing(12.0)
+            .children((
+                TextBlock::new()
+                    .text(format!("{}. {}", i + 1, m.name))
+                    .font_size(18.0)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .vertical_alignment(VerticalAlignment::Center)
+                    .text_wrapping(TextWrapping::Wrap),
+                if primary {
+                    TextBlock::new()
+                        .grid_column(1)
+                        .text(if group.len() > 1 {
+                            "★ Primary group"
+                        } else {
+                            "★ Primary"
+                        })
+                        .automation_name(format!("{} is the primary display", m.name))
+                        .font_size(crate::ui::CAPTION)
+                        .opacity(crate::ui::SECONDARY)
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .into()
+                } else if m.enabled && !detecting {
+                    Button::new()
+                        .grid_column(1)
+                        .style(ButtonStyle::Subtle)
+                        .vertical_alignment(VerticalAlignment::Center)
+                        .is_enabled(editable)
+                        .automation_name(format!("Make {} primary", m.name))
+                        .on_click(cx.callback(move |()| msg(target, i, Change::Primary)))
+                        .content("Make primary")
+                } else {
+                    View::empty()
+                },
+                Grid::new().grid_column(2).children((
+                    ToggleSwitch::new()
+                        .automation_name(format!("Enable {}", m.name))
+                        .is_on(m.enabled)
+                        .is_enabled(
+                            !self.busy
+                                && (!primary || group.len() > 1)
+                                && (m.enabled
+                                    || configured
+                                        && (m.connected
+                                            || options.warning.as_deref().is_some_and(|w| {
+                                                w.starts_with("Previously detected")
+                                            }))),
+                        )
+                        .on_toggled(cx.callback(move |v| msg(target, i, Change::Enabled(v))))
+                        .tooltip("Include this display in the preset."),
+                    if primary && group.len() == 1 {
+                        // A disabled control does not receive hover input.
+                        // This transparent, enabled layer owns its tooltip.
+                        Border::new()
+                            .background(Color::argb(0, 0, 0, 0))
+                            .automation_name(format!("Why {} cannot be disabled", m.name))
+                            .tooltip("Choose another primary display before disabling this one.")
+                    } else {
+                        View::empty()
+                    },
+                )),
+            ));
+        let preset = matches!(target, EditorTarget::Preset);
+        let status = crate::ui::caption(if detecting {
+            "Temporary detection · preset unchanged"
+        } else if m.enabled && group.len() > 1 {
+            "Mirrored desktop · shared arrangement and resolution"
+        } else if m.enabled {
+            if preset { "Active in this preset" } else { "" }
+        } else if m.connected {
+            if preset {
+                "Disabled in this preset · connected"
+            } else {
+                "Off · connected"
+            }
+        } else {
+            "Not detected · turn the display on"
+        });
+        let linked = self
+            .tip
+            .tvs
+            .iter()
+            .find(|tv| {
+                tv.display.as_ref().is_some_and(|link| {
+                    m.device_path
+                        .as_ref()
+                        .is_some_and(|path| link.device_path.eq_ignore_ascii_case(path))
+                })
+            })
+            .map(|tv| {
+                Grid::new()
+                    .columns([GridLength::Star(1.0), GridLength::Auto])
+                    .column_spacing(8.0)
+                    .children((
+                        crate::ui::caption(format!("Linked TV: {}", tv.name)),
+                        Button::new()
+                            .grid_column(1)
+                            .style(ButtonStyle::Subtle)
+                            .automation_name(format!("View linked TV {}", tv.name))
+                            .is_enabled(!self.busy)
+                            .on_click(cx.message(Message::Go("tvs".into())))
+                            .content("View TV"),
+                    ))
+            })
+            .unwrap_or_else(View::empty);
+        let warning = options
+            .warning
+            .as_ref()
+            .filter(|_| !detecting && self.display.setup.review != Some(i))
+            .map(crate::ui::note)
+            .unwrap_or_else(View::empty);
+        MonitorParts {
+            header,
+            status,
+            linked,
+            warning,
+            setup: if preset {
+                self.display_setup_panel(i, cx)
+            } else {
+                View::empty()
+            },
+            mode: (m.enabled && !detecting).then_some(mode),
+            details,
+        }
+    }
+}
+/// One display's editor pieces; see `monitor_parts`.
+struct MonitorParts {
+    header: View,
+    status: View,
+    linked: View,
+    warning: View,
+    setup: View,
+    mode: Option<View>,
+    details: Option<Details>,
+}
+/// The mode controls, present once the display's modes are known.
+struct Details {
+    resolution: View,
+    rate: View,
+    hdr: View,
+    orientation: View,
 }
