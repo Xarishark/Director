@@ -32,19 +32,6 @@ pub struct Scene {
     /// leave steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_to: Option<String>,
-    /// Version 1 per-scene policy. Read so old files load, never written; see `ScenePolicy`.
-    #[serde(default, rename = "keep_on_failure", skip_serializing)]
-    legacy_keep_on_failure: Option<bool>,
-    #[serde(default, rename = "wait_seconds", skip_serializing)]
-    legacy_wait_seconds: Option<u16>,
-    /// Version 1–2 audio preset reference and linked TV audio. Read so old files load and
-    /// migrate into sound, never written.
-    #[serde(default, rename = "audio", skip_serializing)]
-    legacy_audio: Option<String>,
-    #[serde(default, rename = "tv_audio", skip_serializing)]
-    legacy_tv_audio: Option<String>,
-    #[serde(default, rename = "tv_audio_volume", skip_serializing)]
-    legacy_tv_audio_volume: Option<u8>,
 }
 /// Resolve before any leave actions. A missing destination must keep the scene active.
 pub fn return_destination<'a>(
@@ -363,37 +350,6 @@ impl Scene {
         }
         Ok(())
     }
-    /// Drop version 1 per-scene policy fields once they have been read, and move version 1–2
-    /// audio into the Sound step. A preset that can't be found leaves an empty Sound step, so
-    /// the scene asks to be edited instead of silently losing its sound.
-    fn normalize(&mut self, presets: &[LegacyPreset]) {
-        self.legacy_keep_on_failure = None;
-        self.legacy_wait_seconds = None;
-        let tv = self.legacy_tv_audio.take();
-        let volume = self.legacy_tv_audio_volume.take();
-        let preset = self.legacy_audio.take();
-        if self.sound.is_some() {
-            return;
-        }
-        if let Some(id) = tv {
-            self.sound = Some(Sound {
-                output: Some(SoundOutput::Tv { id }),
-                volume,
-                ..Default::default()
-            });
-        } else if let Some(id) = preset {
-            self.sound = Some(
-                presets
-                    .iter()
-                    .find(|p| p.id == id)
-                    .map(LegacyPreset::sound)
-                    .unwrap_or_default(),
-            );
-        }
-    }
-    fn has_legacy_audio(&self) -> bool {
-        self.legacy_audio.is_some()
-    }
 }
 #[derive(Clone)]
 pub struct Plan {
@@ -491,66 +447,6 @@ pub fn sound_request(
         }),
     })
 }
-/// An audio preset from `audio-presets.json`, which version 1–2 scenes referred to. Read
-/// only to migrate those scenes; Director no longer writes this file.
-#[derive(Deserialize)]
-struct LegacyPreset {
-    id: String,
-    output_id: String,
-    output_name: String,
-    volume_percent: Option<u8>,
-    #[serde(default)]
-    communications_output: Option<DeviceSelection>,
-    #[serde(default)]
-    input: Option<LegacyInput>,
-}
-#[derive(Deserialize)]
-struct LegacyInput {
-    id: String,
-    name: String,
-    volume_percent: Option<u8>,
-}
-impl LegacyPreset {
-    fn sound(&self) -> Sound {
-        Sound {
-            output: Some(SoundOutput::Device {
-                id: self.output_id.clone(),
-                name: self.output_name.clone(),
-            }),
-            volume: self.volume_percent,
-            mute: None,
-            calls: self.communications_output.clone(),
-            mic: self.input.as_ref().map(|i| Mic {
-                device: DeviceSelection {
-                    id: i.id.clone(),
-                    name: i.name.clone(),
-                },
-                volume: i.volume_percent,
-                mute: None,
-            }),
-        }
-    }
-}
-/// Migrate version 1–2 scenes read from somewhere other than the scene file (a backup),
-/// using the audio presets stored alongside them.
-pub(crate) fn migrate(scenes: &mut [Scene], legacy_presets: Option<serde_json::Value>) {
-    let presets: Vec<LegacyPreset> = legacy_presets
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    scenes.iter_mut().for_each(|s| s.normalize(&presets));
-}
-/// Saved audio presets next to `scenes`, for migration. Missing or unreadable means none.
-fn legacy_presets(scenes: &Path) -> Vec<LegacyPreset> {
-    #[derive(Deserialize)]
-    struct Document {
-        presets: Vec<LegacyPreset>,
-    }
-    fs::read(scenes.with_file_name("audio-presets.json"))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Document>(&bytes).ok())
-        .map(|d| d.presets)
-        .unwrap_or_default()
-}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
@@ -599,19 +495,13 @@ pub fn load(path: &Path) -> Result<Vec<Scene>, String> {
     if data.len() > STORAGE_LIMIT {
         return Err("Scene file is too large. It was left unchanged.".into());
     }
-    let mut doc: Document = serde_json::from_slice(&data)
+    let doc: Document = serde_json::from_slice(&data)
         .map_err(|_| "Could not read scenes. The file was left unchanged.")?;
-    if !(1..=VERSION).contains(&doc.version) {
+    if doc.version != VERSION {
         return Err(
             "These scenes require a newer Director version. The file was left unchanged.".into(),
         );
     }
-    let presets = if doc.scenes.iter().any(Scene::has_legacy_audio) {
-        legacy_presets(path)
-    } else {
-        Vec::new()
-    };
-    doc.scenes.iter_mut().for_each(|s| s.normalize(&presets));
     validate(&doc.scenes)?;
     Ok(doc.scenes)
 }
@@ -629,10 +519,8 @@ pub fn save(path: &Path, expected: &[Scene], next: &[Scene]) -> Result<(), Strin
         },
     )
 }
-/// Version 2 adds Before/Leave actions, waited apps and Close actions, and drops the
-/// per-scene failure policy. Version 3 replaces the audio preset reference and linked TV
-/// audio with the inline Sound step. Version 1 and 2 files still load and migrate.
-const VERSION: u32 = 4;
+/// The scenes file format. Other versions are refused and left unchanged.
+const VERSION: u32 = 1;
 pub fn references(kind: &str, id: &str) -> Result<Vec<String>, String> {
     Ok(load(&path()?)?
         .into_iter()
@@ -966,10 +854,6 @@ mod tests {
         b.calls.clear();
         assert!(!apply(&mut b, &p, &AtomicBool::new(false), |_| {}).success);
         assert_eq!(b.calls, ["snapshot", "fps"]);
-        let mut legacy = serde_json::to_value(scene()).unwrap();
-        legacy.as_object_mut().unwrap().remove("fps");
-        let legacy: Scene = serde_json::from_value(legacy).unwrap();
-        assert!(legacy.fps.is_none());
         let mut only = s;
         only.actions.clear();
         assert!(only.validate().is_ok());
@@ -1220,19 +1104,19 @@ mod tests {
         assert_eq!(warnings.len(), 1);
     }
     #[test]
-    fn version_one_files_load_and_save_as_the_current_version_without_policy_fields() {
+    fn files_save_as_version_one_and_other_versions_are_refused() {
         let path =
-            std::env::temp_dir().join(format!("director-scenes-v1-{}.json", std::process::id()));
-        let v1 = serde_json::json!({"version":1,"scenes":[{"id":"s","name":"Desk","display":null,"audio":null,"tv":null,"actions":[{"kind":"uri","target":"steam://close/bigpicture"}],"keep_on_failure":true,"wait_seconds":45}]});
-        fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
-        let loaded = load(&path).unwrap();
-        assert_eq!(loaded[0].legacy_keep_on_failure, None);
-        save(&path, &loaded, &loaded).unwrap();
+            std::env::temp_dir().join(format!("director-scenes-version-{}.json", std::process::id()));
+        let scenes = vec![scene()];
+        save(&path, &[], &scenes).unwrap();
         let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(written["version"], 4);
-        let scene = &written["scenes"][0];
-        assert!(scene.get("keep_on_failure").is_none() && scene.get("wait_seconds").is_none());
-        assert_eq!(load(&path).unwrap(), loaded);
+        assert_eq!(written["version"], 1);
+        assert_eq!(load(&path).unwrap(), scenes);
+        let mut other = written.clone();
+        other["version"] = 2.into();
+        fs::write(&path, serde_json::to_vec(&other).unwrap()).unwrap();
+        assert!(load(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), serde_json::to_vec(&other).unwrap());
         let _ = fs::remove_file(path);
     }
     #[test]
@@ -1254,43 +1138,6 @@ mod tests {
         let request = plan.sound.unwrap();
         assert_eq!(request.volume_percent, Some(35));
         assert_eq!(request.mute, Some(false));
-    }
-    #[test]
-    fn version_two_audio_presets_and_tv_audio_migrate_into_sound() {
-        let dir =
-            std::env::temp_dir().join(format!("director-scene-migrate-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("scenes.json");
-        fs::write(
-            dir.join("audio-presets.json"),
-            serde_json::to_vec(&serde_json::json!({"version":1,"presets":[{"id":"p","name":"Desk sound","output_id":"soundbar","output_name":"SOUNDBAR","volume_percent":10,"keep_changes":false,"input":{"id":"mic","name":"Mic","volume_percent":80}}]})).unwrap(),
-        )
-        .unwrap();
-        let v2 = serde_json::json!({"version":2,"scenes":[
-            {"id":"a","name":"Desk","display":null,"audio":"p","tv":null,"actions":[]},
-            {"id":"b","name":"Couch","display":null,"audio":null,"tv_audio":"tv","tv_audio_volume":30,"tv":null,"actions":[]},
-            {"id":"c","name":"Lost","display":null,"audio":"gone","tv":null,"actions":[]}
-        ]});
-        fs::write(&path, serde_json::to_vec(&v2).unwrap()).unwrap();
-        let loaded = load(&path).unwrap();
-        let desk = loaded[0].sound.as_ref().unwrap();
-        assert_eq!(
-            desk.output,
-            Some(SoundOutput::Device {
-                id: "soundbar".into(),
-                name: "SOUNDBAR".into()
-            })
-        );
-        assert_eq!(desk.volume, Some(10));
-        assert_eq!(desk.mic.as_ref().unwrap().volume, Some(80));
-        assert_eq!(loaded[1].sound, Some(tv_sound(Some(30))));
-        assert_eq!(loaded[2].sound, Some(Sound::default()));
-        save(&path, &loaded, &loaded).unwrap();
-        let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(written["version"], 4);
-        assert!(written["scenes"][0].get("audio").is_none());
-        assert_eq!(load(&path).unwrap(), loaded);
-        let _ = fs::remove_dir_all(dir);
     }
     #[test]
     fn leaving_turns_the_tv_off_after_the_leave_actions() {
