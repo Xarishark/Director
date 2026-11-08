@@ -13,5 +13,6 @@ pub mod preferences;
 pub mod scene;
 pub mod storage;
 pub mod tv;
+pub mod update;
 #[cfg(windows)]
 pub mod windows_close;

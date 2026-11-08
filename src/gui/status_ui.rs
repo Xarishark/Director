@@ -118,8 +118,11 @@ impl DirectorApp {
                 TextBlock::new()
                     .text(self.status.clone())
                     .opacity(0.72)
-                    .text_trimming(TextTrimming::CharacterEllipsis),
-                ProgressBar::new().is_indeterminate(true),
+                    .text_wrapping(TextWrapping::Wrap),
+                match self.update_progress() {
+                    Some(done) => ProgressBar::new().maximum(1.0).value(done),
+                    None => ProgressBar::new().is_indeterminate(true),
+                },
             ));
         }
         match &self.notices.notice {

@@ -22,6 +22,12 @@ pub struct Preferences {
     /// their input.
     #[serde(default = "default_input_guard")]
     pub tv_input_guard_seconds: u16,
+    /// Ask GitHub for a newer Director version when the window opens.
+    #[serde(default = "default_true")]
+    pub check_for_updates: bool,
+}
+fn default_true() -> bool {
+    true
 }
 fn default_wait() -> u16 {
     30
@@ -38,6 +44,7 @@ impl Default for Preferences {
             device_wait_seconds: default_wait(),
             hide_next_scene_tip: false,
             tv_input_guard_seconds: default_input_guard(),
+            check_for_updates: true,
         }
     }
 }
@@ -120,6 +127,7 @@ mod tests {
         assert_eq!(initial.device_wait_seconds, 30);
         assert!(!initial.hide_next_scene_tip);
         assert_eq!(initial.tv_input_guard_seconds, 10);
+        assert!(initial.check_for_updates);
         assert_eq!(initial.audio_policy(), crate::audio::FailurePolicy::Revert);
         let hidden = Preferences {
             hide_tv_setup_tip: true,
@@ -128,6 +136,7 @@ mod tests {
             device_wait_seconds: 45,
             hide_next_scene_tip: true,
             tv_input_guard_seconds: 0,
+            check_for_updates: false,
         };
         save(&path, &initial, &hidden).unwrap();
         assert_eq!(load(&path).unwrap(), hidden);

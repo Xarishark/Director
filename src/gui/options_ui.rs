@@ -436,13 +436,16 @@ impl DirectorApp {
             "About",
             "",
             None,
-            StackPanel::new().spacing(2.0).children((
-                ui::label(concat!("Director ", env!("CARGO_PKG_VERSION"))),
-                ui::note(env!("CARGO_PKG_DESCRIPTION")),
-                ui::caption(concat!(
-                    env!("CARGO_PKG_AUTHORS"),
-                    " · Requires Windows 11, version 24H2 or newer."
+            StackPanel::new().spacing(ui::GAP_L).children((
+                StackPanel::new().spacing(2.0).children((
+                    ui::label(concat!("Director ", env!("CARGO_PKG_VERSION"))),
+                    ui::note(env!("CARGO_PKG_DESCRIPTION")),
+                    ui::caption(concat!(
+                        env!("CARGO_PKG_AUTHORS"),
+                        " · Requires Windows 11, version 24H2 or newer."
+                    )),
                 )),
+                self.update_settings(cx, editable),
             )),
         );
         ui::page(

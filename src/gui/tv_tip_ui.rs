@@ -24,6 +24,7 @@ pub(crate) enum TipMessage {
     KeepCompleted(bool),
     DeviceWait(Option<f64>),
     InputGuard(Option<f64>),
+    CheckUpdates(bool),
     /// Hide the Scenes page's "make your next scene" tip for good.
     HideNextSceneTip,
     Saved(Result<Preferences, String>),
@@ -64,6 +65,7 @@ impl DirectorApp {
             message @ (TipMessage::Show(_)
             | TipMessage::NotifySceneFailures(_)
             | TipMessage::KeepCompleted(_)
+            | TipMessage::CheckUpdates(_)
             | TipMessage::HideNextSceneTip
             | TipMessage::DeviceWait(Some(_))
             | TipMessage::InputGuard(Some(_)))
@@ -82,6 +84,7 @@ impl DirectorApp {
                         next.notify_scene_failures = enabled
                     }
                     TipMessage::KeepCompleted(keep) => next.keep_completed_changes = keep,
+                    TipMessage::CheckUpdates(on) => next.check_for_updates = on,
                     TipMessage::HideNextSceneTip => next.hide_next_scene_tip = true,
                     TipMessage::DeviceWait(Some(seconds)) => {
                         next.device_wait_seconds = seconds.round().clamp(1.0, 120.0) as u16

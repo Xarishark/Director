@@ -2,6 +2,10 @@
 
 Each release's installer and full notes are on [GitHub Releases](https://github.com/Xarishark/Director/releases).
 
+## Unreleased
+
+- **Updates**: Director checks GitHub for a newer version when the window opens and offers **Install update**, which downloads setup, verifies its SHA-256 checksum and starts it. Turn the check off or check by hand in **Options → About**; `director update [--install]` does the same from a terminal.
+
 ## 0.13.0 (2026-11-08)
 
 - Director is open source under the **MIT License**. The installer adds `LICENSE.txt` and the third-party notices beside the app.

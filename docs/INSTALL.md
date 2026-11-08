@@ -31,7 +31,13 @@ From an elevated terminal:
 
 ## Update
 
-Download and run the newer setup. It replaces the installed version and keeps your settings. `director --version` or **Options → About** shows the installed version.
+When you open the window, Director asks GitHub for the latest release. If there's a newer one, a bar at the bottom of the Scenes page offers **Install update**. Director downloads setup with a progress bar, checks it against the SHA-256 checksum GitHub publishes for the release, starts it and closes so setup can replace the files. Confirm the Windows prompt; setup shows only its progress, with nothing to click, and Director reopens when it's done. Your settings and desktop shortcut stay as they are. If you cancel the prompt or setup fails, Director stays closed and offers the update again next time. Nothing is downloaded or installed until you choose it.
+
+- **Options → About** has **Check for updates** and the switch for the check at startup. With the switch off, Director contacts GitHub only when you ask.
+- From a terminal: `director update` says whether a newer version exists; `director update --install` downloads, verifies and starts setup (it doesn't reopen the window). Commands never check on their own, so shortcuts and Stream Deck buttons stay offline.
+- You can still download and run the newer setup yourself. `director --version` or **Options → About** shows the installed version.
+
+A copy that isn't the installed one (for example a build from source) offers **Download** instead, which opens the release page.
 
 ## Uninstall
 

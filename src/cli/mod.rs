@@ -42,6 +42,10 @@ FPS
   director fps status
   director fps set <nvidia|rtss> <FPS|vrr|off>
 
+Updates
+  director update                     Check GitHub for a newer version
+  director update --install           Download it, verify its checksum and start setup
+
   director --version
 
 Without arguments, opens the window. Leaving out the device in an audio command means the
@@ -107,6 +111,9 @@ pub fn run(args: &[String]) -> i32 {
         }
         if args.first().is_some_and(|area| area == "fps") {
             return crate::fps::windows_fps::cli(&args[1..]);
+        }
+        if args.first().is_some_and(|area| area == "update") {
+            return crate::update::cli(&args[1..]);
         }
         if args.first().is_some_and(|area| area == "audio") {
             return crate::audio::audio_cli::run(&args[1..]);
