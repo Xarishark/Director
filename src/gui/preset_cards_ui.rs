@@ -1,5 +1,5 @@
 //! Saved-state previews. Rendering never queries or changes a device.
-use crate::{DirectorApp, Message, display_ui::DisplayMessage};
+use crate::{DirectorApp, Message, gui::display_ui::DisplayMessage};
 use director::{
     display::display_mirroring,
     display::displays::{Layout, Monitor},
@@ -59,9 +59,9 @@ pub(crate) fn card(
         .width(CARD_WIDTH)
         .height(height)
         .padding(14.0)
-        .corner_radius(crate::ui::RADIUS_L)
-        .background(crate::ui::card_fill())
-        .border_brush(crate::ui::card_stroke())
+        .corner_radius(crate::gui::ui::RADIUS_L)
+        .background(crate::gui::ui::card_fill())
+        .border_brush(crate::gui::ui::card_stroke())
         .border_thickness(1.0)
         .content(
             StackPanel::new().spacing(12.0).children((
@@ -237,15 +237,15 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         .fold(f64::NEG_INFINITY, f64::max);
     if active.is_empty() {
         return Border::new()
-            .background(crate::ui::SUBTLE_FILL)
-            .corner_radius(crate::ui::RADIUS_S)
+            .background(crate::gui::ui::SUBTLE_FILL)
+            .corner_radius(crate::gui::ui::RADIUS_S)
             .content(
                 Grid::new()
                     .width(WIDTH)
                     .height(height)
                     .children((TextBlock::new()
                         .text("All displays off")
-                        .font_size(crate::ui::CAPTION)
+                        .font_size(crate::gui::ui::CAPTION)
                         .opacity(0.72)
                         .horizontal_alignment(HorizontalAlignment::Center)
                         .vertical_alignment(VerticalAlignment::Center),)),
@@ -305,14 +305,14 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
                     0.0,
                     0.0,
                 ))
-                .background(crate::ui::SCREEN_FILL)
+                .background(crate::gui::ui::SCREEN_FILL)
                 .border_brush(if d.primary() {
-                    crate::ui::SCREEN_PRIMARY
+                    crate::gui::ui::SCREEN_PRIMARY
                 } else {
-                    crate::ui::SCREEN_OTHER
+                    crate::gui::ui::SCREEN_OTHER
                 })
                 .border_thickness(1.0)
-                .corner_radius(crate::ui::RADIUS_S)
+                .corner_radius(crate::gui::ui::RADIUS_S)
                 .content(
                     StackPanel::new()
                         .vertical_alignment(VerticalAlignment::Center)
@@ -329,8 +329,8 @@ fn preview(layout: &Layout, height: f64, tooltips: bool) -> View {
         })
         .collect::<Vec<_>>();
     Border::new()
-        .background(crate::ui::SUBTLE_FILL)
-        .corner_radius(crate::ui::RADIUS_S)
+        .background(crate::gui::ui::SUBTLE_FILL)
+        .corner_radius(crate::gui::ui::RADIUS_S)
         .content(
             Grid::new()
                 .width(WIDTH)
@@ -351,7 +351,7 @@ impl DirectorApp {
                     layout_preview(&p.layout, 200.0),
                     TextBlock::new()
                         .text(off_summary(&p.layout).unwrap_or_default())
-                        .font_size(crate::ui::CAPTION)
+                        .font_size(crate::gui::ui::CAPTION)
                         .opacity(0.72)
                         .text_wrapping(TextWrapping::NoWrap)
                         .text_trimming(TextTrimming::CharacterEllipsis)
@@ -362,10 +362,10 @@ impl DirectorApp {
                     card(
                         &p.name,
                         None,
-                        crate::command_ui::command_button(
+                        crate::gui::command_ui::command_button(
                             cx,
-                            crate::command_ui::Target {
-                                kind: crate::command_ui::Kind::Display,
+                            crate::gui::command_ui::Target {
+                                kind: crate::gui::command_ui::Kind::Display,
                                 name: p.name.clone(),
                                 id: p.id.clone(),
                                 can_end: false,
@@ -396,7 +396,7 @@ impl DirectorApp {
                                 .on_click(cx.callback(move |()| {
                                     Message::Display(DisplayMessage::Delete(delete.clone()))
                                 }))
-                                .content(crate::icons::delete_small())
+                                .content(crate::gui::icons::delete_small())
                                 .tooltip("Delete display preset"),
                         ],
                         DISPLAY_CARD_HEIGHT,

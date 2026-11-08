@@ -1,5 +1,5 @@
 //! Native per-monitor draft controls. All changes remain in memory until Save.
-use crate::{DirectorApp, Message, display_ui::DisplayMessage};
+use crate::{DirectorApp, Message, gui::display_ui::DisplayMessage};
 use director::{
     display::display_editor::{Change, Editor},
     display::displays::{DesktopMode, Layout},
@@ -21,7 +21,7 @@ fn route(target: EditorTarget, value: DisplayMessage) -> Message {
     match target {
         EditorTarget::Preset => Message::Display(value),
         EditorTarget::Current => {
-            Message::Current(crate::current_ui::CurrentMessage::Display(value))
+            Message::Current(crate::gui::current_ui::CurrentMessage::Display(value))
         }
     }
 }
@@ -114,15 +114,15 @@ fn preview(
                     .background(if group.contains(&selected) {
                         Brush::from(ThemeBrush::Accent)
                     } else {
-                        Brush::from(crate::ui::SCREEN_FILL)
+                        Brush::from(crate::gui::ui::SCREEN_FILL)
                     })
                     .border_brush(Brush::Solid(if primary {
-                        crate::ui::SCREEN_PRIMARY
+                        crate::gui::ui::SCREEN_PRIMARY
                     } else {
-                        crate::ui::SCREEN_OTHER
+                        crate::gui::ui::SCREEN_OTHER
                     }))
                     .border_thickness(Thickness::uniform(2.0))
-                    .corner_radius(crate::ui::RADIUS_S)
+                    .corner_radius(crate::gui::ui::RADIUS_S)
                     .capture_pointer_on_press(!app.busy)
                     .on_pointer_pressed(cx.callback(move |point| {
                         route(target, DisplayMessage::PointerDown(i, point))
@@ -149,7 +149,7 @@ fn preview(
                             .font_size(
                                 (d.height.min(d.width) as f64 * map.scale * 0.3).clamp(12.0, 28.0),
                             )
-                            .foreground(crate::ui::SCREEN_TEXT)
+                            .foreground(crate::gui::ui::SCREEN_TEXT)
                             .horizontal_alignment(HorizontalAlignment::Center)
                             .vertical_alignment(VerticalAlignment::Center),
                     )
@@ -177,7 +177,7 @@ Select to edit it; drag to move it.",
             "map-actions",
             StackPanel::new()
                 .orientation(Orientation::Horizontal)
-                .spacing(crate::ui::GAP_S)
+                .spacing(crate::gui::ui::GAP_S)
                 .horizontal_alignment(HorizontalAlignment::Right)
                 .vertical_alignment(VerticalAlignment::Bottom)
                 .keyed_children(
@@ -189,7 +189,7 @@ Select to edit it; drag to move it.",
                             KeyedView::new(
                                 format!("action-{i}"),
                                 Border::new()
-                                    .corner_radius(crate::ui::RADIUS_S)
+                                    .corner_radius(crate::gui::ui::RADIUS_S)
                                     .background(ThemeBrush::SolidBackground)
                                     .content(v),
                             )
@@ -201,8 +201,8 @@ Select to edit it; drag to move it.",
     Border::new()
         .horizontal_alignment(HorizontalAlignment::Center)
         .border_thickness(Thickness::uniform(1.0))
-        .border_brush(crate::ui::OUTLINE)
-        .corner_radius(crate::ui::RADIUS_L)
+        .border_brush(crate::gui::ui::OUTLINE)
+        .corner_radius(crate::gui::ui::RADIUS_L)
         .padding(Thickness::uniform(10.0))
         .content(
             Grid::new()
@@ -222,8 +222,9 @@ impl DirectorApp {
     /// The arrangement map's box: the editor's width (less the scroll gutter, the map's
     /// padding and border), capped, and a fixed height.
     pub(crate) fn map_size(&self) -> (f64, f64) {
-        let width =
-            crate::ui::page_width(self.window_width, self.pane_open) - crate::ui::GAP_L - 22.0;
+        let width = crate::gui::ui::page_width(self.window_width, self.pane_open)
+            - crate::gui::ui::GAP_L
+            - 22.0;
         (width.clamp(320.0, MAP_MAX_WIDTH), MAP_HEIGHT)
     }
     pub(crate) fn monitor_editor(
@@ -257,12 +258,12 @@ impl DirectorApp {
         let heading = matches!(target, EditorTarget::Preset);
         StackPanel::new().spacing(16.0).children((
             if heading {
-                crate::ui::subtitle("Arrange your displays").into()
+                crate::gui::ui::subtitle("Arrange your displays").into()
             } else {
                 View::empty()
             },
             if heading {
-                crate::ui::note(
+                crate::gui::ui::note(
                     "Select a display to find its settings. Drag displays to rearrange them.",
                 )
             } else {
@@ -280,7 +281,10 @@ impl DirectorApp {
         cx: &ViewContext<Self>,
         target: EditorTarget,
     ) -> View {
-        let columns = monitor_columns(crate::ui::page_width(self.window_width, self.pane_open));
+        let columns = monitor_columns(crate::gui::ui::page_width(
+            self.window_width,
+            self.pane_open,
+        ));
         let labelled =
             |title: View, control: View| StackPanel::new().spacing(4.0).children((title, control));
         let pair = |left: View, right: View| -> View {
@@ -332,13 +336,13 @@ impl DirectorApp {
                         .content(
                             // The selected display's card is outlined like its screen on the map.
                             Border::new()
-                                .padding(crate::ui::GAP_L)
-                                .corner_radius(crate::ui::RADIUS_L)
-                                .background(crate::ui::card_fill())
+                                .padding(crate::gui::ui::GAP_L)
+                                .corner_radius(crate::gui::ui::RADIUS_L)
+                                .background(crate::gui::ui::card_fill())
                                 .border_brush(if i == selected {
                                     Brush::from(ThemeBrush::Accent)
                                 } else {
-                                    crate::ui::card_stroke()
+                                    crate::gui::ui::card_stroke()
                                 })
                                 .border_thickness(if i == selected { 2.0 } else { 1.0 })
                                 .content(StackPanel::new().spacing(12.0).children((
@@ -553,8 +557,8 @@ impl DirectorApp {
                             "★ Primary"
                         })
                         .automation_name(format!("{} is the primary display", m.name))
-                        .font_size(crate::ui::CAPTION)
-                        .opacity(crate::ui::SECONDARY)
+                        .font_size(crate::gui::ui::CAPTION)
+                        .opacity(crate::gui::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center)
                         .into()
                 } else if m.enabled && !detecting {
@@ -598,7 +602,7 @@ impl DirectorApp {
                 )),
             ));
         let preset = matches!(target, EditorTarget::Preset);
-        let status = crate::ui::caption(if detecting {
+        let status = crate::gui::ui::caption(if detecting {
             "Temporary detection · preset unchanged"
         } else if m.enabled && group.len() > 1 {
             "Mirrored desktop · shared arrangement and resolution"
@@ -629,7 +633,7 @@ impl DirectorApp {
                     .columns([GridLength::Star(1.0), GridLength::Auto])
                     .column_spacing(8.0)
                     .children((
-                        crate::ui::caption(format!("Linked TV: {}", tv.name)),
+                        crate::gui::ui::caption(format!("Linked TV: {}", tv.name)),
                         Button::new()
                             .grid_column(1)
                             .style(ButtonStyle::Subtle)
@@ -644,7 +648,7 @@ impl DirectorApp {
             .warning
             .as_ref()
             .filter(|_| !detecting && self.display.setup.review != Some(i))
-            .map(crate::ui::note)
+            .map(crate::gui::ui::note)
             .unwrap_or_else(View::empty);
         MonitorParts {
             header,

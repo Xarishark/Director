@@ -282,7 +282,7 @@ impl DirectorApp {
         });
     }
     pub(crate) fn options_view(&self, cx: &ViewContext<Self>) -> View {
-        use crate::ui;
+        use crate::gui::ui;
         let prefs = self.tip.pending.as_ref().or(self.tip.preferences.as_ref());
         let editable = !self.busy && self.tip.preferences.is_some() && self.tip.pending.is_none();
         let seconds =
@@ -311,7 +311,7 @@ impl DirectorApp {
                             .is_on(prefs.is_some_and(|p| p.keep_completed_changes))
                             .is_enabled(editable)
                             .on_toggled(cx.callback(|keep| {
-                                Message::Tip(crate::tv_tip_ui::TipMessage::KeepCompleted(keep))
+                                Message::Tip(crate::gui::tv_tip_ui::TipMessage::KeepCompleted(keep))
                             })),
                     ),
                     ui::setting(
@@ -322,7 +322,7 @@ impl DirectorApp {
                             1.0,
                             120.0,
                             "Device wait seconds",
-                            |v| Message::Tip(crate::tv_tip_ui::TipMessage::DeviceWait(v)),
+                            |v| Message::Tip(crate::gui::tv_tip_ui::TipMessage::DeviceWait(v)),
                         ),
                     ),
                     ui::setting(
@@ -333,7 +333,7 @@ impl DirectorApp {
                             0.0,
                             f64::from(director::tv::tv_input_guard::MAX_SECONDS),
                             "TV input protection seconds",
-                            |v| Message::Tip(crate::tv_tip_ui::TipMessage::InputGuard(v)),
+                            |v| Message::Tip(crate::gui::tv_tip_ui::TipMessage::InputGuard(v)),
                         ),
                     ),
                     ui::setting(
@@ -344,7 +344,7 @@ impl DirectorApp {
                             .is_on(prefs.is_some_and(|p| p.notify_scene_failures))
                             .is_enabled(editable)
                             .on_toggled(cx.callback(|enabled| {
-                                Message::Tip(crate::tv_tip_ui::TipMessage::NotifySceneFailures(
+                                Message::Tip(crate::gui::tv_tip_ui::TipMessage::NotifySceneFailures(
                                     enabled,
                                 ))
                             })),
@@ -361,7 +361,7 @@ impl DirectorApp {
                                     && self.tip.pending.is_none(),
                             )
                             .on_toggled(cx.callback(|show| {
-                                Message::Tip(crate::tv_tip_ui::TipMessage::Show(show))
+                                Message::Tip(crate::gui::tv_tip_ui::TipMessage::Show(show))
                             })),
                     ),
                     match &self.tip.error {
@@ -415,7 +415,7 @@ impl DirectorApp {
                             Button::new()
                                 .automation_name("Report a problem")
                                 .on_click(cx.message(Message::Crash(
-                                    crate::crash_ui::CrashMessage::ReportProblem,
+                                    crate::gui::crash_ui::CrashMessage::ReportProblem,
                                 )))
                                 .content("Report a problem"),
                         )),

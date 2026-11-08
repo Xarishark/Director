@@ -3,7 +3,7 @@
 //! Each block shows a one-line summary and expands in place to edit that step. Unused steps
 //! are muted "+ Add" slots. When leaving runs at a different time, so it sits apart from the
 //! line.
-use crate::{DirectorApp, Message, scene_ui::SceneMessage};
+use crate::{DirectorApp, Message, gui::scene_ui::SceneMessage};
 use director::scene::scenes::{self, Action, ActionList, Scene};
 use windows_reactor::*;
 
@@ -73,7 +73,7 @@ impl Step {
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
-use crate::ui::note;
+use crate::gui::ui::note;
 /// The widest the flow column gets.
 const FLOW_WIDTH: f64 = 720.0;
 /// Every step card, filled or empty, has this height.
@@ -94,7 +94,7 @@ const DASH_COLOR: Color = Color::argb(110, 128, 128, 128);
 /// A small down arrow between steps ("then"), centred on the cards' icon column.
 fn connector() -> View {
     StackPanel::new()
-        .opacity(crate::ui::SECONDARY)
+        .opacity(crate::gui::ui::SECONDARY)
         .margin(Thickness::new(
             CONTENT_INSET + (ICON_COLUMN - ARROW) / 2.0,
             4.0,
@@ -263,7 +263,8 @@ impl DirectorApp {
     /// bar, up to FLOW_WIDTH.
     fn flow_width(&self) -> f64 {
         // Room for the scroll bar's gutter beside the column.
-        (crate::ui::page_width(self.window_width, self.pane_open) - 28.0).clamp(320.0, FLOW_WIDTH)
+        (crate::gui::ui::page_width(self.window_width, self.pane_open) - 28.0)
+            .clamp(320.0, FLOW_WIDTH)
     }
 
     /// One step as a fixed-size card. A filled step shows its summary with edit and remove;
@@ -325,17 +326,17 @@ impl DirectorApp {
                 .margin(Thickness::new(0.0, 0.0, 8.0, 0.0))
                 .vertical_alignment(VerticalAlignment::Center)
                 .children((
-                    crate::preset_cards_ui::card_icon_button(Button::new())
+                    crate::gui::preset_cards_ui::card_icon_button(Button::new())
                         .automation_name(format!("Edit {}", step.title()))
                         .is_enabled(available)
                         .on_click(cx.message(msg(SceneMessage::Open(Some(step)))))
-                        .content(crate::preset_cards_ui::card_edit_icon())
+                        .content(crate::gui::preset_cards_ui::card_edit_icon())
                         .tooltip(format!("Edit {}", step.title())),
-                    crate::preset_cards_ui::card_icon_button(Button::new())
+                    crate::gui::preset_cards_ui::card_icon_button(Button::new())
                         .automation_name(format!("Remove {}", step.title()))
                         .is_enabled(available)
                         .on_click(cx.message(msg(SceneMessage::ClearStep(step))))
-                        .content(crate::icons::delete_small())
+                        .content(crate::gui::icons::delete_small())
                         .tooltip(format!("Remove {} from this scene", step.title())),
                 ))
         } else {
@@ -373,10 +374,10 @@ impl DirectorApp {
         if used {
             Border::new()
                 .height(CARD_HEIGHT)
-                .corner_radius(crate::ui::RADIUS_L)
+                .corner_radius(crate::gui::ui::RADIUS_L)
                 .border_thickness(1.0)
-                .border_brush(crate::ui::card_stroke())
-                .background(crate::ui::card_fill())
+                .border_brush(crate::gui::ui::card_stroke())
+                .background(crate::gui::ui::card_fill())
                 .padding(1.0)
                 .content(content)
         } else {
@@ -444,10 +445,10 @@ impl DirectorApp {
             );
         Border::new()
             .height(CARD_HEIGHT)
-            .corner_radius(crate::ui::RADIUS_L)
+            .corner_radius(crate::gui::ui::RADIUS_L)
             .border_thickness(1.0)
-            .border_brush(crate::ui::card_stroke())
-            .background(crate::ui::card_fill())
+            .border_brush(crate::gui::ui::card_stroke())
+            .background(crate::gui::ui::card_fill())
             .padding(1.0)
             .margin(Thickness::new(0.0, 0.0, 0.0, 8.0))
             .content(
@@ -458,14 +459,14 @@ impl DirectorApp {
                             .grid_column(0)
                             .grid_column_span(2)
                             .content(header),
-                        crate::preset_cards_ui::card_icon_button(Button::new())
+                        crate::gui::preset_cards_ui::card_icon_button(Button::new())
                             .grid_column(1)
                             .automation_name(format!("Don't turn off {name} when leaving"))
                             .is_enabled(available)
                             .vertical_alignment(VerticalAlignment::Center)
                             .margin(Thickness::new(0.0, 0.0, 8.0, 0.0))
                             .on_click(cx.message(msg(SceneMessage::TvOffWhenLeaving(false))))
-                            .content(crate::icons::delete_small())
+                            .content(crate::gui::icons::delete_small())
                             .tooltip("Don't turn the TV off when leaving"),
                     )),
             )
@@ -635,7 +636,7 @@ impl DirectorApp {
                             .as_ref()
                             .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
                             .map(|p| {
-                                crate::preset_cards_ui::layout_preview_in_dialog(&p.layout, 124.0)
+                                crate::gui::preset_cards_ui::layout_preview_in_dialog(&p.layout, 124.0)
                             })
                             .unwrap_or_else(View::empty),
                         Button::new()
@@ -680,14 +681,14 @@ impl DirectorApp {
                 ))
             }
             Step::Sound => self.sound_editor(cx, d),
-            Step::Fps => self.fps_controls(cx, crate::fps_ui::Target::Scene),
+            Step::Fps => self.fps_controls(cx, crate::gui::fps_ui::Target::Scene),
         }
     }
 
     /// The Sound step: output (a device or a TV's sound), volume, mute, a separate calls
     /// device and the microphone. Anything left as is stays as it is when the scene runs.
     fn sound_editor(&self, cx: &ViewContext<Self>, d: &Scene) -> View {
-        use crate::scene_ui::{SoundEdit, device_choices, mute_choice, sound_device};
+        use crate::gui::scene_ui::{SoundEdit, device_choices, mute_choice, sound_device};
         let available = !self.busy;
         let edit = |e: SoundEdit| msg(SceneMessage::Sound(e));
         let empty = scenes::Sound::default();
@@ -698,7 +699,7 @@ impl DirectorApp {
                 .iter()
                 .find(|o| o.id == device.id)
                 .map_or(format!("{} — not found", device.name), |o| {
-                    crate::audio_relink_ui::device_label(o)
+                    crate::gui::audio_relink_ui::device_label(o)
                 })
         };
         let outputs = device_choices(&self.outputs, sound_device(sound).as_ref());
@@ -996,15 +997,15 @@ impl DirectorApp {
                                                     .text_trimming(TextTrimming::CharacterEllipsis),
                                                 TextBlock::new()
                                                     .text(folder)
-                                                    .font_size(crate::ui::CAPTION)
-                                                    .opacity(crate::ui::SECONDARY)
+                                                    .font_size(crate::gui::ui::CAPTION)
+                                                    .opacity(crate::gui::ui::SECONDARY)
                                                     .text_trimming(TextTrimming::CharacterEllipsis),
                                             ))
                                     } else {
                                         TextBlock::new()
                                             .grid_column(1)
                                             .text("No app chosen yet")
-                                            .opacity(crate::ui::SECONDARY)
+                                            .opacity(crate::gui::ui::SECONDARY)
                                             .vertical_alignment(VerticalAlignment::Center)
                                             .into()
                                     },
@@ -1042,7 +1043,7 @@ impl DirectorApp {
                                 Border::new()
                                     .padding(Thickness::new(14.0, 2.0, 0.0, 2.0))
                                     .border_thickness(Thickness::new(2.0, 0.0, 0.0, 0.0))
-                                    .border_brush(crate::ui::card_stroke())
+                                    .border_brush(crate::gui::ui::card_stroke())
                                     .content(
                                         StackPanel::new().spacing(10.0).children((
                                             TextBox::new()
@@ -1099,9 +1100,9 @@ impl DirectorApp {
                     format!("action-{i}"),
                     Border::new()
                         .padding(14.0)
-                        .corner_radius(crate::ui::RADIUS_L)
+                        .corner_radius(crate::gui::ui::RADIUS_L)
                         .border_thickness(1.0)
-                        .border_brush(crate::ui::card_stroke())
+                        .border_brush(crate::gui::ui::card_stroke())
                         .content(StackPanel::new().spacing(10.0).children((
                             Grid::new()
                                 .columns([GridLength::Star(1.0), GridLength::Auto])
@@ -1134,7 +1135,7 @@ impl DirectorApp {
                                                 .on_click(cx.callback(move |()| {
                                                     msg(SceneMessage::Remove(list, i))
                                                 }))
-                                                .content(crate::icons::delete()),
+                                                .content(crate::gui::icons::delete()),
                                         )),
                                 )),
                             body,
@@ -1229,8 +1230,8 @@ impl DirectorApp {
         let changed = self.draft_changed(crate::Page::Scenes);
         let can_save =
             self.scene_ready() && problem.is_none() && !d.name.trim().is_empty() && changed;
-        crate::ui::page(
-            crate::ui::header(
+        crate::gui::ui::page(
+            crate::gui::ui::header(
                 if d.name.trim().is_empty() {
                     "New scene"
                 } else {
@@ -1240,16 +1241,16 @@ impl DirectorApp {
                 vec![],
             ),
             column,
-            Some(crate::ui::footer(
+            Some(crate::gui::ui::footer(
                 StackPanel::new()
                     .spacing(2.0)
                     .children((
-                        crate::ui::note(match &problem {
+                        crate::gui::ui::note(match &problem {
                             Some(e) if !d.name.trim().is_empty() => e.clone(),
                             _ if !changed => "No changes to save.".into(),
                             _ => "Saving won’t change your setup.".into(),
                         }),
-                        crate::ui::caption(
+                        crate::gui::ui::caption(
                             "If a step fails, Director restores your previous settings. Change this in Options.",
                         ),
                     )),
@@ -1334,10 +1335,10 @@ mod tests {
         // Shared helpers can hide a tooltip (the display preview did), so the step dialogs
         // may only call helpers checked to be tooltip-free. Check a new one, then add it here.
         let safe = [
-            "crate::icons::delete(",
-            "crate::preset_cards_ui::layout_preview_in_dialog(",
+            "crate::gui::icons::delete(",
+            "crate::gui::preset_cards_ui::layout_preview_in_dialog(",
             // Returns a String label.
-            "crate::audio_relink_ui::device_label(",
+            "crate::gui::audio_relink_ui::device_label(",
         ];
         let steps = region(
             editor,
@@ -1352,10 +1353,10 @@ mod tests {
             let call = &rest[..(path + 1).min(rest.len())];
             // A call to a function in another UI module (not a type or enum path).
             let last = call.trim_end_matches('(').rsplit("::").next().unwrap_or("");
-            // crate::ui is checked whole above, so its helpers are all tooltip-free.
+            // crate::gui::ui is checked whole above, so its helpers are all tooltip-free.
             if call.ends_with('(')
                 && last.starts_with(|c: char| c.is_lowercase())
-                && !call.starts_with("crate::ui::")
+                && !call.starts_with("crate::gui::ui::")
             {
                 assert!(
                     safe.contains(&call),

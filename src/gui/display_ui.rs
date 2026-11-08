@@ -16,7 +16,7 @@ use std::{
 use windows_reactor::*;
 #[derive(Clone)]
 pub(crate) enum DisplayMessage {
-    Setup(crate::display_setup_ui::SetupMessage),
+    Setup(crate::gui::display_setup_ui::SetupMessage),
     Apply(String),
     Countdown(u64, Option<u64>),
     Confirm(u64, ContentDialogResult),
@@ -49,7 +49,7 @@ pub(crate) enum DisplayMessage {
 }
 #[derive(Default)]
 pub(crate) struct DisplayState {
-    pub setup: crate::display_setup_ui::SetupState,
+    pub setup: crate::gui::display_setup_ui::SetupState,
     pub drag_token: u64,
     pub orientation_revision: u64,
     pub drag: Option<director::display::display_editor::Drag>,
@@ -88,7 +88,7 @@ fn monitor_details(layout: &Layout) -> View {
                             .text_wrapping(TextWrapping::Wrap),
                         TextBlock::new()
                             .text(m.summary())
-                            .opacity(crate::ui::SECONDARY)
+                            .opacity(crate::gui::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap),
                     )),
                 )
@@ -372,12 +372,12 @@ impl DirectorApp {
                 self.display.setup = Default::default();
                 #[cfg(test)]
                 let result = if create
-                    && crate::display_setup_ui::DETECTION_PREVIEW
+                    && crate::gui::display_setup_ui::DETECTION_PREVIEW
                         .load(std::sync::atomic::Ordering::Acquire)
                 {
-                    self.tip.tvs = vec![crate::display_setup_ui::preview_tv()];
+                    self.tip.tvs = vec![crate::gui::display_setup_ui::preview_tv()];
                     self.tip.catalog_loaded = true;
-                    Ok(crate::display_setup_ui::preview_editor())
+                    Ok(crate::gui::display_setup_ui::preview_editor())
                 } else {
                     result
                 };
@@ -499,7 +499,7 @@ impl DirectorApp {
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
-                self.library_cancelled(crate::library_flow::Slot::Display, cx);
+                self.library_cancelled(crate::gui::library_flow::Slot::Display, cx);
             }
             DisplayMessage::Save if self.display_ready() && self.display.drag.is_none() => {
                 if let Some(mut preset) = self.display.draft.clone() {
@@ -523,7 +523,7 @@ impl DirectorApp {
             DisplayMessage::Saved(result) => match result {
                 Ok(p) => {
                     self.end();
-                    let added = crate::library_flow::added_id(
+                    let added = crate::gui::library_flow::added_id(
                         self.display.presets.iter().map(|p| p.id.as_str()),
                         p.iter().map(|p| p.id.as_str()),
                     );
@@ -535,7 +535,7 @@ impl DirectorApp {
                     self.status = "Display presets saved. Your screens are unchanged.".into();
                     self.guard_saved(true, cx);
                     self.announce(cx);
-                    self.library_saved(crate::library_flow::Slot::Display, added, cx);
+                    self.library_saved(crate::gui::library_flow::Slot::Display, added, cx);
                 }
                 Err(e) => self.failure(e),
             },
@@ -564,12 +564,12 @@ impl DirectorApp {
         if let Some(d) = &self.display.draft {
             let editing = self.display.presets.iter().any(|p| p.id == d.id);
             let body = StackPanel::new()
-                .spacing(crate::ui::GAP_L)
+                .spacing(crate::gui::ui::GAP_L)
                 .horizontal_alignment(HorizontalAlignment::Stretch)
                 .children((
                     self.tv_setup_tip(cx, editing),
-                    StackPanel::new().spacing(crate::ui::GAP_S).children((
-                        crate::ui::label("Preset name"),
+                    StackPanel::new().spacing(crate::gui::ui::GAP_S).children((
+                        crate::gui::ui::label("Preset name"),
                         TextBox::new()
                             .text(&d.name)
                             .automation_name("Display preset name")
@@ -578,12 +578,12 @@ impl DirectorApp {
                             .placeholder_text("For example, Desk monitors")
                             .is_enabled(!self.busy)
                             .on_text_changed(cx.callback(|name| msg(DisplayMessage::Name(name)))),
-                        crate::ui::caption(d.layout.summary()),
+                        crate::gui::ui::caption(d.layout.summary()),
                     )),
                     if let Some(editor) = &self.display.editor {
                         self.monitor_editor(&d.layout, editor, cx)
                     } else if self.busy {
-                        crate::ui::note("Loading display controls…")
+                        crate::gui::ui::note("Loading display controls…")
                     } else {
                         monitor_details(&d.layout)
                     },
@@ -596,7 +596,7 @@ impl DirectorApp {
                                 cx.callback(|value| msg(DisplayMessage::ConfirmChanges(value))),
                             )
                             .slot(ToggleSwitchSlot::Header, "Ask to keep display changes"),
-                        crate::ui::caption(
+                        crate::gui::ui::caption(
                             "When off, verified changes are kept automatically. Failed changes still revert.",
                         ),
                     )),
@@ -606,8 +606,8 @@ impl DirectorApp {
                 && !d.name.trim().is_empty()
                 && d.name.trim().len() <= 160
                 && self.draft_changed(crate::Page::Displays);
-            return crate::ui::page(
-                crate::ui::header(
+            return crate::gui::ui::page(
+                crate::gui::ui::header(
                     if editing {
                         "Edit display preset"
                     } else {
@@ -617,8 +617,8 @@ impl DirectorApp {
                     vec![],
                 ),
                 body,
-                Some(crate::ui::footer(
-                    crate::ui::note(if self.draft_changed(crate::Page::Displays) {
+                Some(crate::gui::ui::footer(
+                    crate::gui::ui::note(if self.draft_changed(crate::Page::Displays) {
                         "Saving won’t change your screens."
                     } else {
                         "No changes to save."
@@ -642,7 +642,7 @@ impl DirectorApp {
         let list = if rows.is_empty() {
             Border::new()
                 .grid_row(1)
-                .content(crate::ui::empty_state(
+                .content(crate::gui::ui::empty_state(
                     if self.busy {
                         "Reading your layouts…"
                     } else {
@@ -657,16 +657,20 @@ impl DirectorApp {
                     ),
                 ))
         } else {
-            crate::preset_cards_ui::card_grid(1, crate::preset_cards_ui::DISPLAY_CARD_HEIGHT, rows)
+            crate::gui::preset_cards_ui::card_grid(
+                1,
+                crate::gui::preset_cards_ui::DISPLAY_CARD_HEIGHT,
+                rows,
+            )
         };
         Grid::new()
             .rows([GridLength::Auto, GridLength::Star(1.0)])
             .children((
-                crate::ui::header(
+                crate::gui::ui::header(
                     "Displays",
                     "Saved monitor layouts you can use in scenes.",
                     vec![
-                        crate::ui::current(
+                        crate::gui::ui::current(
                             "Current layout",
                             self.display
                                 .current

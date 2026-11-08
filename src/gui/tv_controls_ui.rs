@@ -1,6 +1,6 @@
 //! Native TV controls. Status reads never hold the mutation guard.
-use crate::tv_power_state::{Next, Progress, WakeRetries};
-use crate::{DirectorApp, Message, tv_ui::TvMessage};
+use crate::gui::tv_power_state::{Next, Progress, WakeRetries};
+use crate::{DirectorApp, Message, gui::tv_ui::TvMessage};
 use director::{
     audio::windows_audio::OperationLock,
     tv::tv_control::{self, Effect, PowerAction, PowerState, Report, Snapshot},
@@ -368,7 +368,7 @@ impl DirectorApp {
                     live_details: String::new(),
                 });
                 #[cfg(test)]
-                if crate::samsung_ui::PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
+                if crate::gui::samsung_ui::PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
                     let tv = self
                         .tv
                         .tvs
@@ -660,7 +660,7 @@ impl DirectorApp {
         state.status_details.clear();
         // Mutations retain the shared guard, without leaking modal progress into the page.
         self.busy = true;
-        crate::close_guard::set_busy(true);
+        crate::gui::close_guard::set_busy(true);
         let _ = cx.spawn_background_with_rejection(
             move |_| {
                 let report = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -763,7 +763,9 @@ impl DirectorApp {
                         .columns([GridLength::Star(1.0), GridLength::Auto])
                         .children((
                             StackPanel::new().spacing(4.0).children((
-                                TextBlock::new().text("Power").opacity(crate::ui::SECONDARY),
+                                TextBlock::new()
+                                    .text("Power")
+                                    .opacity(crate::gui::ui::SECONDARY),
                                 TextBlock::new()
                                     .automation_name(format!("Power status: {status}"))
                                     .text(status)
@@ -818,8 +820,8 @@ impl DirectorApp {
                     if action == PowerAction::Wake && !tv.can_wake() {
                         TextBlock::new()
                             .text("No wake address saved. Complete TV setup to enable Wake.")
-                            .font_size(crate::ui::CAPTION)
-                            .opacity(crate::ui::SECONDARY)
+                            .font_size(crate::gui::ui::CAPTION)
+                            .opacity(crate::gui::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap)
                             .into()
                     } else {
@@ -845,7 +847,7 @@ impl DirectorApp {
                                             "Inputs appear when the TV is connected."
                                         })
                                         .text_wrapping(TextWrapping::Wrap)
-                                        .opacity(crate::ui::SECONDARY)
+                                        .opacity(crate::gui::ui::SECONDARY)
                                         .into()
                                 } else {
                                     StackPanel::new().spacing(8.0).children((
@@ -855,7 +857,7 @@ impl DirectorApp {
                                                     "Current TV input: {current}"
                                                 ))
                                                 .text(format!("Current: {current}"))
-                                                .opacity(crate::ui::SECONDARY)
+                                                .opacity(crate::gui::ui::SECONDARY)
                                                 .text_wrapping(TextWrapping::Wrap)
                                                 .into()
                                         } else {
@@ -901,8 +903,8 @@ impl DirectorApp {
                         TextBlock::new()
                             .text(state.notice.clone())
                             .text_wrapping(TextWrapping::Wrap)
-                            .font_size(crate::ui::CAPTION)
-                            .opacity(crate::ui::SECONDARY)
+                            .font_size(crate::gui::ui::CAPTION)
+                            .opacity(crate::gui::ui::SECONDARY)
                             .into()
                     } else {
                         View::empty()
@@ -939,7 +941,7 @@ impl DirectorApp {
                                                     .collect::<Vec<_>>()
                                                     .join("\n\n"),
                                                 )
-                                                .font_size(crate::ui::CAPTION)
+                                                .font_size(crate::gui::ui::CAPTION)
                                                 .text_wrapping(TextWrapping::Wrap),
                                         ),
                                 ),

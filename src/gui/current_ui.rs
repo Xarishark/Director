@@ -3,8 +3,8 @@
 //! reads or writes saved scenes or presets.
 use crate::{
     DirectorApp, Message,
-    display_editor_ui::EditorTarget,
-    display_ui::{DisplayMessage, DisplayState},
+    gui::display_editor_ui::EditorTarget,
+    gui::display_ui::{DisplayMessage, DisplayState},
     work,
 };
 use director::{
@@ -229,7 +229,7 @@ impl DirectorApp {
         let state = &mut self.current;
         state.sound_pending = true;
         state.tokens_at_start = (state.volume_token, state.mic_token);
-        crate::close_guard::set_busy(true);
+        crate::gui::close_guard::set_busy(true);
         work(cx, move || {
             let result = (|| {
                 let _lock = OperationLock::acquire()?;
@@ -261,14 +261,14 @@ impl DirectorApp {
             return;
         }
         #[cfg(test)]
-        if crate::preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
-            self.fps = crate::fps_ui::FpsState::fixture();
+        if crate::gui::preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
+            self.fps = crate::gui::fps_ui::FpsState::fixture();
             self.current.fps_dirty = false;
             return;
         }
         self.fps.live = None;
         self.current.fps_dirty = false;
-        self.update_fps(crate::fps_ui::FpsMessage::Discover, cx);
+        self.update_fps(crate::gui::fps_ui::FpsMessage::Discover, cx);
         self.begin("Reading your current setup…");
         work(cx, || {
             msg(CurrentMessage::Loaded(read_displays(), devices()))
@@ -376,7 +376,7 @@ impl DirectorApp {
                     self.current.fps_after_displays = self.current.fps_dirty;
                     self.update_current(CurrentMessage::ApplyDisplays, cx);
                 } else if self.current.fps_dirty {
-                    self.update_fps(crate::fps_ui::FpsMessage::Apply, cx);
+                    self.update_fps(crate::gui::fps_ui::FpsMessage::Apply, cx);
                 }
             }
             CurrentMessage::DisplaysApplied(report, actual, audio) => {
@@ -408,7 +408,7 @@ Could not read audio outputs: {e}"
                 }
                 // A failed display change leaves the FPS edit staged rather than half-applying.
                 if then_fps && succeeded && !self.error {
-                    self.update_fps(crate::fps_ui::FpsMessage::Apply, cx);
+                    self.update_fps(crate::gui::fps_ui::FpsMessage::Apply, cx);
                 }
             }
             CurrentMessage::Device(input, Some(index)) if !self.busy => {
@@ -509,7 +509,7 @@ Could not read audio outputs: {e}"
             }
             CurrentMessage::SoundDone(result, devices) => {
                 self.current.sound_pending = false;
-                crate::close_guard::set_busy(false);
+                crate::gui::close_guard::set_busy(false);
                 match &result {
                     Ok(message) => {
                         self.error = false;
@@ -630,10 +630,11 @@ Could not read audio outputs: {e}"
                 let Some(output) = self.current.default_device(false) else {
                     return;
                 };
-                let mut scene = director::scene::scenes::Scene::new(crate::scene_ui::new_id(), "");
+                let mut scene =
+                    director::scene::scenes::Scene::new(crate::gui::scene_ui::new_id(), "");
                 scene.sound = Some(self.current.sound_now(output));
                 self.update_library(
-                    crate::library_flow::LibraryMessage::NewScene(Box::new(scene)),
+                    crate::gui::library_flow::LibraryMessage::NewScene(Box::new(scene)),
                     cx,
                 );
             }
@@ -651,7 +652,7 @@ Could not read audio outputs: {e}"
         // off, so turning it on doesn't push anything down the page.
         Grid::new()
             .columns([GridLength::Auto, GridLength::Star(1.0)])
-            .column_spacing(crate::ui::GAP_L)
+            .column_spacing(crate::gui::ui::GAP_L)
             .children((
                 ToggleSwitch::new()
                     .automation_name("Use a different device for calls")
@@ -762,7 +763,7 @@ Could not read audio outputs: {e}"
                     TextBlock::new()
                         .grid_column(2)
                         .text(volume.map_or(String::new(), |v| format!("{}%", v.round())))
-                        .opacity(crate::ui::SECONDARY)
+                        .opacity(crate::gui::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center),
                 )),
         ))
@@ -777,7 +778,7 @@ Could not read audio outputs: {e}"
         }
     }
     pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
-        use crate::ui;
+        use crate::gui::ui;
         let dragging = self.current.display.drag.is_some();
         let dirty = self.current.dirty();
         let can_apply = !self.busy
@@ -857,7 +858,7 @@ Could not read audio outputs: {e}"
         let fps = ui::column(
             ui::FORM_WIDTH,
             0.0,
-            (self.fps_controls(cx, crate::fps_ui::Target::Current),),
+            (self.fps_controls(cx, crate::gui::fps_ui::Target::Current),),
         );
         // No page title: the sidebar already says Now, and the sections explain themselves.
         ui::page(
@@ -888,20 +889,20 @@ impl DirectorApp {
             .is_primary_button_enabled(!self.busy && !name.trim().is_empty())
             .on_closed(cx.callback(|result| msg(CurrentMessage::SaveClosed(result))))
             .content(
-                StackPanel::new().spacing(crate::ui::GAP_M).width(360.0).children((
+                StackPanel::new().spacing(crate::gui::ui::GAP_M).width(360.0).children((
                     TextBox::new()
                         .automation_name("Display preset name")
                         .text(name.clone())
                         .placeholder_text("For example, Desk monitors")
                         .on_text_changed(cx.callback(|v| msg(CurrentMessage::SaveName(v))))
                         .slot(TextBoxSlot::Header, "Name"),
-                    crate::ui::caption(
+                    crate::gui::ui::caption(
                         "Saves the layout shown here, including changes you haven’t applied. Your screens don’t change.",
                     ),
                     match &self.current.save_error {
                         Some(e) => TextBlock::new()
                             .text(e.clone())
-                            .foreground(crate::ui::critical())
+                            .foreground(crate::gui::ui::critical())
                             .text_wrapping(TextWrapping::Wrap)
                             .into(),
                         None => View::empty(),

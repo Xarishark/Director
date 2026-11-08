@@ -1,5 +1,5 @@
 //! Optional TV guidance, without changing a display or contacting a TV.
-use crate::{DirectorApp, Message, Page, tv_ui::TvMessage, work};
+use crate::{DirectorApp, Message, Page, gui::tv_ui::TvMessage, work};
 use director::{
     audio::windows_audio::OperationLock,
     preferences::{self, Preferences},
@@ -140,11 +140,11 @@ impl DirectorApp {
             return View::empty();
         }
         Border::new().padding(Thickness::uniform(14.0))
-            .border_thickness(Thickness::uniform(1.0)).border_brush(crate::ui::card_stroke())
-            .background(crate::ui::card_fill()).corner_radius(crate::ui::RADIUS_L)
+            .border_thickness(Thickness::uniform(1.0)).border_brush(crate::gui::ui::card_stroke())
+            .background(crate::gui::ui::card_fill()).corner_radius(crate::gui::ui::RADIUS_L)
             .automation_name("TV setup tip").content(
             Grid::new().columns([GridLength::Auto,GridLength::Star(1.0),GridLength::Auto]).column_spacing(12.0).children((
-                FontIcon::new().glyph("\u{e946}").opacity(crate::ui::SECONDARY).vertical_alignment(VerticalAlignment::Top).margin(Thickness::new(0.0,3.0,0.0,0.0)),
+                FontIcon::new().glyph("\u{e946}").opacity(crate::gui::ui::SECONDARY).vertical_alignment(VerticalAlignment::Top).margin(Thickness::new(0.0,3.0,0.0,0.0)),
                 StackPanel::new().grid_column(1).spacing(8.0).children((
                     TextBlock::new().text("Setting up a TV?").font_size(16.0).font_weight(FontWeight::SEMI_BOLD),
                     TextBlock::new().text("Add your TV for wake and PC-input controls. You can also turn it on and select its input yourself.")

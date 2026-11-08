@@ -67,7 +67,7 @@ impl FpsState {
 fn msg(m: FpsMessage) -> Message {
     Message::Fps(m)
 }
-use crate::ui::{self, note};
+use crate::gui::ui::{self, note};
 impl DirectorApp {
     fn fps_request(&self, target: Target) -> Option<&Request> {
         match target {
@@ -90,7 +90,9 @@ impl DirectorApp {
         match m {
             FpsMessage::Discover if !self.fps.checking => {
                 #[cfg(test)]
-                if crate::preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
+                if crate::gui::preset_cards_preview::ENABLED
+                    .load(std::sync::atomic::Ordering::Acquire)
+                {
                     self.fps.caps = [Provider::Nvidia, Provider::Rtss]
                         .into_iter()
                         .map(|provider| Capability {
@@ -205,7 +207,7 @@ impl DirectorApp {
                         return;
                     }
                     #[cfg(test)]
-                    if crate::preset_cards_preview::ENABLED
+                    if crate::gui::preset_cards_preview::ENABLED
                         .load(std::sync::atomic::Ordering::Acquire)
                     {
                         for cap in &mut self.fps.caps {
@@ -571,7 +573,7 @@ pub(crate) static PREVIEW: std::sync::atomic::AtomicBool =
 #[ignore = "Owned native FPS UI fixture; no device writes"]
 fn fps_fixture() {
     PREVIEW.store(true, std::sync::atomic::Ordering::Release);
-    crate::preset_cards_preview::ENABLED.store(true, std::sync::atomic::Ordering::Release);
+    crate::gui::preset_cards_preview::ENABLED.store(true, std::sync::atomic::Ordering::Release);
     director::diagnostics::init();
     windows_reactor::App::run_component::<DirectorApp>(()).unwrap();
     director::diagnostics::flush();

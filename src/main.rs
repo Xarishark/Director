@@ -1,32 +1,12 @@
 #![windows_subsystem = "windows"]
-mod audio_relink_ui;
-mod clipboard;
-mod close_guard;
-mod command_ui;
-mod crash_ui;
-mod current_ui;
-mod display_editor_ui;
-mod display_setup_ui;
-mod display_ui;
-mod fps_ui;
-mod icons;
-mod library_flow;
-mod nav_guard;
-mod options_ui;
-#[cfg(test)]
-mod preset_cards_preview;
-mod preset_cards_ui;
-mod samsung_ui;
-mod scene_editor_ui;
-mod scene_ui;
-mod starter_ui;
-mod status_ui;
-mod tv_controls_ui;
-mod tv_power_state;
-mod tv_tip_ui;
-mod tv_ui;
-mod ui;
+mod gui;
 use display_ui::{DisplayMessage, DisplayState};
+use gui::{
+    audio_relink_ui, close_guard, command_ui, crash_ui, current_ui, display_setup_ui, display_ui,
+    fps_ui, library_flow, nav_guard, options_ui, scene_ui, status_ui, tv_tip_ui, tv_ui,
+};
+#[cfg(test)]
+use gui::{preset_cards_preview, tv_controls_ui};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Current,
@@ -164,9 +144,9 @@ impl DirectorApp {
         let selected = self.page == Page::Options;
         // The pill and the selected fill sit outside the button, which clips its content.
         Border::new()
-            .corner_radius(crate::ui::RADIUS_S)
+            .corner_radius(crate::gui::ui::RADIUS_S)
             .background(if selected {
-                Brush::from(crate::ui::SUBTLE_FILL)
+                Brush::from(crate::gui::ui::SUBTLE_FILL)
             } else {
                 Brush::from(Color::transparent())
             })
@@ -427,10 +407,10 @@ impl Component for DirectorApp {
         let status = self.status_view(cx);
         let body = Border::new()
             .padding(Thickness::new(
-                crate::ui::PAGE_PADDING_X,
-                crate::ui::PAGE_PADDING_Y,
-                crate::ui::PAGE_PADDING_X,
-                crate::ui::PAGE_PADDING_Y,
+                crate::gui::ui::PAGE_PADDING_X,
+                crate::gui::ui::PAGE_PADDING_Y,
+                crate::gui::ui::PAGE_PADDING_X,
+                crate::gui::ui::PAGE_PADDING_Y,
             ))
             .content(
                 Grid::new()
@@ -459,7 +439,7 @@ impl Component for DirectorApp {
         let nav = NavigationView::new()
             .grid_row(1)
             .is_pane_toggle_button_visible(false)
-            .open_pane_length(crate::ui::PANE_OPEN)
+            .open_pane_length(crate::gui::ui::PANE_OPEN)
             .pane_display_mode(NavigationViewPaneDisplayMode::Left)
             .is_pane_open(self.pane_open)
             .on_is_pane_open_changed(cx.callback(Message::Pane))

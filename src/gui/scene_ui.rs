@@ -109,11 +109,11 @@ pub(crate) enum SceneMessage {
     /// Open or close an app action's Advanced options.
     ActionAdvanced(ActionList, usize, bool),
     /// Open a step's editor dialog (`None` closes it, keeping the changes).
-    Open(Option<crate::scene_editor_ui::Step>),
+    Open(Option<crate::gui::scene_editor_ui::Step>),
     /// The step dialog closed: Done keeps the changes, anything else restores them.
     StepClosed(ContentDialogResult),
     /// Reset a step to "leave unchanged".
-    ClearStep(crate::scene_editor_ui::Step),
+    ClearStep(crate::gui::scene_editor_ui::Step),
     End,
     Save,
     Saved(Result<Vec<Scene>, String>),
@@ -125,7 +125,7 @@ pub(crate) enum SceneMessage {
     Confirm(ContentDialogResult),
     Finished(u64, Result<scenes::Report, String>),
     /// The first-run card that saves the current setup as a scene.
-    Starter(crate::starter_ui::StarterMessage),
+    Starter(crate::gui::starter_ui::StarterMessage),
 }
 #[derive(Clone)]
 pub(crate) enum Event {
@@ -146,7 +146,7 @@ pub(crate) struct SceneState {
     confirm: Option<mpsc::Sender<director::display::display_apply::Decision>>,
     remaining: Option<u64>,
     /// The step whose editor dialog is open.
-    pub(crate) open: Option<crate::scene_editor_ui::Step>,
+    pub(crate) open: Option<crate::gui::scene_editor_ui::Step>,
     /// The draft as it was when the step dialog opened, for Cancel.
     pub(crate) snapshot: Option<Scene>,
     /// The scene applied last during this Windows session.
@@ -154,12 +154,12 @@ pub(crate) struct SceneState {
     /// App actions whose Advanced options section is open.
     pub(crate) advanced: Vec<(ActionList, usize)>,
     /// The first-run card: what it read and what's ticked.
-    pub(crate) starter: crate::starter_ui::StarterState,
+    pub(crate) starter: crate::gui::starter_ui::StarterState,
 }
 fn msg(m: SceneMessage) -> Message {
     Message::Scene(m)
 }
-use crate::ui::note;
+use crate::gui::ui::note;
 /// The height a scene card needs: its header, the 124 DIP hero panel and its text lines.
 /// Lines are estimated from their length, since a long line wraps in the 312 DIP column.
 /// The height of one summary line, as measured on a card.
@@ -223,7 +223,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                 i.to_string(),
                 TextBlock::new()
                     .text(line)
-                    .font_size(crate::ui::CAPTION)
+                    .font_size(crate::gui::ui::CAPTION)
                     .opacity(0.72)
                     .text_trimming(TextTrimming::CharacterEllipsis),
             )
@@ -232,8 +232,8 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
     Border::new()
         .height(124.0)
         .padding(Thickness::xy(16.0, 12.0))
-        .corner_radius(crate::ui::RADIUS_S)
-        .background(crate::ui::SUBTLE_FILL)
+        .corner_radius(crate::gui::ui::RADIUS_S)
+        .background(crate::gui::ui::SUBTLE_FILL)
         .content(
             Grid::new()
                 .columns([GridLength::Auto, GridLength::Star(1.0)])
@@ -242,7 +242,7 @@ fn hero_panel(glyph: &str, title: String, level: Level, lines: Vec<String>) -> V
                     Viewbox::new()
                         .width(36.0)
                         .height(36.0)
-                        .opacity(crate::ui::SECONDARY)
+                        .opacity(crate::gui::ui::SECONDARY)
                         .vertical_alignment(VerticalAlignment::Center)
                         .slot(ViewboxSlot::Child, FontIcon::new().glyph(glyph)),
                     StackPanel::new()
@@ -277,11 +277,11 @@ impl DirectorApp {
     }
     fn scene_save(&mut self, next: Vec<Scene>, cx: &ComponentContext<Self>) {
         #[cfg(test)]
-        if crate::preset_cards_preview::ENABLED.load(Ordering::Acquire) {
+        if crate::gui::preset_cards_preview::ENABLED.load(Ordering::Acquire) {
             self.scene.scenes = next;
-            if crate::fps_ui::PREVIEW.load(Ordering::Acquire) {
+            if crate::gui::fps_ui::PREVIEW.load(Ordering::Acquire) {
                 std::fs::write(
-                    crate::preset_cards_preview::output("fps-scenes-fixture.json"),
+                    crate::gui::preset_cards_preview::output("fps-scenes-fixture.json"),
                     serde_json::to_vec_pretty(&self.scene.scenes).unwrap(),
                 )
                 .unwrap();
@@ -323,12 +323,12 @@ impl DirectorApp {
     }
     pub(crate) fn update_scene(&mut self, m: SceneMessage, cx: &ComponentContext<Self>) {
         if matches!(&m, SceneMessage::Load) {
-            self.update_fps(crate::fps_ui::FpsMessage::Discover, cx);
+            self.update_fps(crate::gui::fps_ui::FpsMessage::Discover, cx);
         }
         let ready = self.scene_ready();
         // The last item of each section's dropdown creates a new Library item in place.
         if ready && self.scene.draft.is_some() {
-            use crate::library_flow::{LibraryMessage, Slot};
+            use crate::gui::library_flow::{LibraryMessage, Slot};
             let create = match &m {
                 SceneMessage::Display(Some(i)) if *i == self.scene.displays.len() + 1 => {
                     Some(Slot::Display)
@@ -625,7 +625,7 @@ impl DirectorApp {
                 }
             }
             SceneMessage::ClearStep(step) if !self.busy => {
-                use crate::scene_editor_ui::Step;
+                use crate::gui::scene_editor_ui::Step;
                 if let Some(d) = &mut self.scene.draft {
                     match step {
                         Step::Before => d.before.clear(),
@@ -914,7 +914,7 @@ impl DirectorApp {
                     };
                     TextBlock::new()
                         .text("●")
-                        .foreground(crate::ui::SUCCESS)
+                        .foreground(crate::gui::ui::SUCCESS)
                         .horizontal_alignment(HorizontalAlignment::Center)
                         .automation_name(label.as_str())
                         .tooltip(label.as_str())
@@ -927,7 +927,7 @@ impl DirectorApp {
                     if let Err(e) = resolved {
                         TextBlock::new()
                             .text(e)
-                            .foreground(crate::ui::critical())
+                            .foreground(crate::gui::ui::critical())
                             .text_wrapping(TextWrapping::Wrap)
                             .into()
                     } else {
@@ -936,13 +936,13 @@ impl DirectorApp {
                 ));
                 KeyedView::new(
                     s.id.clone(),
-                    crate::preset_cards_ui::card(
+                    crate::gui::preset_cards_ui::card(
                         &name,
                         Some(lead),
-                        crate::command_ui::command_button(
+                        crate::gui::command_ui::command_button(
                             cx,
-                            crate::command_ui::Target {
-                                kind: crate::command_ui::Kind::Scene,
+                            crate::gui::command_ui::Target {
+                                kind: crate::gui::command_ui::Kind::Scene,
                                 name: s.name.clone(),
                                 id: s.id.clone(),
                                 can_end: s.has_leave_work(),
@@ -950,7 +950,7 @@ impl DirectorApp {
                         ),
                         body,
                         vec![
-                            crate::preset_cards_ui::action_button(
+                            crate::gui::preset_cards_ui::action_button(
                                 Button::new()
                                     .automation_name(if returns {
                                         action_label.clone()
@@ -977,15 +977,15 @@ impl DirectorApp {
                                     "Apply scene"
                                 },
                             ),
-                            crate::preset_cards_ui::card_icon_button(Button::new())
+                            crate::gui::preset_cards_ui::card_icon_button(Button::new())
                                 .automation_name(format!("Edit {}", name))
                                 .is_enabled(self.scene_ready())
                                 .on_click(
                                     cx.callback(move |()| msg(SceneMessage::Edit(edit.clone()))),
                                 )
-                                .content(crate::preset_cards_ui::card_edit_icon())
+                                .content(crate::gui::preset_cards_ui::card_edit_icon())
                                 .tooltip("Edit scene"),
-                            crate::preset_cards_ui::card_icon_button(Button::new())
+                            crate::gui::preset_cards_ui::card_icon_button(Button::new())
                                 .automation_name(format!("Delete {}", name))
                                 .is_enabled(self.scene_ready())
                                 .on_click(
@@ -993,7 +993,7 @@ impl DirectorApp {
                                         msg(SceneMessage::Delete(delete.clone()))
                                     }),
                                 )
-                                .content(crate::icons::delete_small())
+                                .content(crate::gui::icons::delete_small())
                                 .tooltip("Delete scene"),
                         ],
                         card_height,
@@ -1009,7 +1009,7 @@ impl DirectorApp {
                 GridLength::Auto,
             ])
             .children((
-                crate::ui::header(
+                crate::gui::ui::header(
                     "Scenes",
                     "Switch your whole setup in one click.",
                     vec![
@@ -1031,7 +1031,7 @@ impl DirectorApp {
                             .content(self.starter_card(cx)),
                     )
                 } else {
-                    crate::preset_cards_ui::card_grid(2, card_height, cards)
+                    crate::gui::preset_cards_ui::card_grid(2, card_height, cards)
                 },
                 if self.scene.cancel.is_some() {
                     Button::new()
@@ -1191,7 +1191,7 @@ impl DirectorApp {
             .as_ref()
             .and_then(|id| self.scene.displays.iter().find(|p| &p.id == id))
         {
-            return crate::preset_cards_ui::layout_preview(&p.layout, 124.0);
+            return crate::gui::preset_cards_ui::layout_preview(&p.layout, 124.0);
         }
         if let Some(sound) = &s.sound {
             let output = match &sound.output {
@@ -1383,7 +1383,7 @@ fn pick_path(folder: bool) -> Result<Option<String>, String> {
                 .map_err(|e| e.to_string())?;
         }
         dialog.SetOptions(options).map_err(|e| e.to_string())?;
-        match dialog.Show(Some(crate::close_guard::window()?)) {
+        match dialog.Show(Some(crate::gui::close_guard::window()?)) {
             Ok(()) => {}
             Err(e) if e.code().0 == 0x800704C7u32 as i32 => return Ok(None),
             Err(e) => return Err(format!("Could not open the file picker: {e}")),

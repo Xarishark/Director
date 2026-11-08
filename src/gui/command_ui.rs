@@ -82,7 +82,7 @@ pub(crate) fn command_button(cx: &ViewContext<DirectorApp>, target: Target) -> V
                 .text(">_")
                 .font_size(13.0)
                 .font_weight(FontWeight::SEMI_BOLD)
-                .opacity(crate::ui::SECONDARY)
+                .opacity(crate::gui::ui::SECONDARY)
                 // Eat into the button's fixed side padding, so the card's name keeps as
                 // much room as it can.
                 .margin(Thickness::new(-6.0, 0.0, -6.0, 0.0)),
@@ -95,7 +95,7 @@ impl DirectorApp {
         match m {
             CommandMessage::Show(target) => self.command = Some(target),
             CommandMessage::Closed => self.command = None,
-            CommandMessage::Copy(text) => match crate::clipboard::copy_text(&text) {
+            CommandMessage::Copy(text) => match crate::gui::clipboard::copy_text(&text) {
                 Ok(()) => {
                     self.error = false;
                     self.status = "Command copied.".into();
@@ -127,8 +127,8 @@ impl DirectorApp {
                             .children((
                                 Border::new()
                                     .padding(Thickness::xy(10.0, 7.0))
-                                    .corner_radius(crate::ui::RADIUS_S)
-                                    .background(crate::ui::CODE_FILL)
+                                    .corner_radius(crate::gui::ui::RADIUS_S)
+                                    .background(crate::gui::ui::CODE_FILL)
                                     .content(
                                         TextBlock::new()
                                             .text(command)
@@ -146,8 +146,8 @@ impl DirectorApp {
                             )),
                         TextBlock::new()
                             .text(subtitle)
-                            .font_size(crate::ui::CAPTION)
-                            .opacity(crate::ui::SECONDARY)
+                            .font_size(crate::gui::ui::CAPTION)
+                            .opacity(crate::gui::ui::SECONDARY)
                             .text_wrapping(TextWrapping::Wrap),
                     )),
                 )

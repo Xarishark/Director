@@ -4,7 +4,7 @@
 //! category from the navigation pane (or Options) with a changed draft opens a dialog:
 //! Save, Discard or Keep editing. Links inside an editor that are meant to come back to
 //! the draft (Manage presets, View TV, New … preset) navigate without asking.
-use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage};
+use crate::{DirectorApp, Message, Page, gui::display_ui::DisplayMessage};
 use director::{display::displays, scene::scenes::Scene, tv::tvs::Tv};
 use windows_reactor::*;
 
@@ -165,8 +165,8 @@ impl DirectorApp {
                 self.nav.saving = true;
                 let save = match self.page {
                     Page::Displays => Message::Display(DisplayMessage::Save),
-                    Page::Tvs => Message::Tv(crate::tv_ui::TvMessage::Save),
-                    _ => Message::Scene(crate::scene_ui::SceneMessage::Save),
+                    Page::Tvs => Message::Tv(crate::gui::tv_ui::TvMessage::Save),
+                    _ => Message::Scene(crate::gui::scene_ui::SceneMessage::Save),
                 };
                 <Self as Component>::update(self, save, cx);
                 // A save that never started (validation failed) leaves the user here.
@@ -180,9 +180,9 @@ impl DirectorApp {
                 self.nav.pending = None;
                 let discard = match self.page {
                     Page::Displays => Message::Display(DisplayMessage::Cancel),
-                    Page::Tvs => Message::Tv(crate::tv_ui::TvMessage::Cancel),
-                    Page::Scenes => Message::Scene(crate::scene_ui::SceneMessage::Cancel),
-                    _ => Message::Current(crate::current_ui::CurrentMessage::Load),
+                    Page::Tvs => Message::Tv(crate::gui::tv_ui::TvMessage::Cancel),
+                    Page::Scenes => Message::Scene(crate::gui::scene_ui::SceneMessage::Cancel),
+                    _ => Message::Current(crate::gui::current_ui::CurrentMessage::Load),
                 };
                 <Self as Component>::update(self, discard, cx);
                 // Discarding Now rereads Windows in the background; navigate right away.

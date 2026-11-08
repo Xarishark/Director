@@ -1,5 +1,5 @@
 //! Native QA fixture with no device setters or persistence.
-use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage};
+use crate::{DirectorApp, Message, Page, gui::display_ui::DisplayMessage};
 use director::{
     audio::Output,
     display::display_editor::{Change, Editor, Mode, Options},
@@ -120,7 +120,8 @@ impl DirectorApp {
         match message {
             // The first scene load seeds every page's preview data.
             Message::Scene(
-                crate::scene_ui::SceneMessage::Load | crate::scene_ui::SceneMessage::Loaded(..),
+                crate::gui::scene_ui::SceneMessage::Load
+                | crate::gui::scene_ui::SceneMessage::Loaded(..),
             ) if !self.scene.ready => {
                 self.end();
                 self.display.store_ready = true;
@@ -229,10 +230,10 @@ impl DirectorApp {
                 });
                 self.scene.scenes = vec![headphones, scene];
                 self.scene.ready = true;
-                self.fps = crate::fps_ui::FpsState::fixture();
+                self.fps = crate::gui::fps_ui::FpsState::fixture();
                 self.tv.tvs = self.scene.tvs.clone();
                 self.tv.ready_for_controls_preview();
-                if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) {
+                if crate::gui::samsung_ui::PREVIEW.load(Ordering::Acquire) {
                     self.page = Page::Tvs;
                     let mut tv = self.tv.tvs[0].clone();
                     tv.id = "samsung-setup-fixture".into();
@@ -280,7 +281,8 @@ impl DirectorApp {
                 true
             }
             Message::Scene(
-                crate::scene_ui::SceneMessage::Load | crate::scene_ui::SceneMessage::Loaded(..),
+                crate::gui::scene_ui::SceneMessage::Load
+                | crate::gui::scene_ui::SceneMessage::Loaded(..),
             ) => {
                 self.end();
                 self.scene.displays = self.display.presets.clone();
@@ -289,17 +291,19 @@ impl DirectorApp {
                 self.status = "Ready.".into();
                 true
             }
-            Message::Scene(crate::scene_ui::SceneMessage::Apply(_)) => {
+            Message::Scene(crate::gui::scene_ui::SceneMessage::Apply(_)) => {
                 self.status = "Preview only. No devices or settings changed.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::Load | crate::tv_ui::TvMessage::Loaded(..)) => {
+            Message::Tv(
+                crate::gui::tv_ui::TvMessage::Load | crate::gui::tv_ui::TvMessage::Loaded(..),
+            ) => {
                 self.end();
                 self.status = "Ready.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::SetupPair)
-                if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
+            Message::Tv(crate::gui::tv_ui::TvMessage::SetupPair)
+                if crate::gui::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
             {
                 if let Some(tv) = &self.tv.draft
                     && tv.address == "192.0.2.98"
@@ -349,8 +353,8 @@ impl DirectorApp {
                 self.status = "Fixture paired. No real network connection.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::TestHdmi)
-                if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
+            Message::Tv(crate::gui::tv_ui::TvMessage::TestHdmi)
+                if crate::gui::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
             {
                 if self.tv.test_ready
                     && let Some(tv) = &mut self.tv.draft
@@ -364,8 +368,8 @@ impl DirectorApp {
                 self.status = "Fixture direct command sent. No real TV was contacted.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::ExportReport)
-                if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
+            Message::Tv(crate::gui::tv_ui::TvMessage::ExportReport)
+                if crate::gui::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
             {
                 if let Some(tv) = &self.tv.draft {
                     let data = director::tv::samsung::report(tv).unwrap();
@@ -382,11 +386,11 @@ impl DirectorApp {
                 self.status = "Fixture redacted report exported.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::Edit(id)) => {
+            Message::Tv(crate::gui::tv_ui::TvMessage::Edit(id)) => {
                 self.tv.draft = self.tv.tvs.iter().find(|t| &t.id == id).cloned();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::Save) => {
+            Message::Tv(crate::gui::tv_ui::TvMessage::Save) => {
                 if let Some(d) = self.tv.draft.take() {
                     if let Some(t) = self.tv.tvs.iter_mut().find(|t| t.id == d.id) {
                         *t = d;
@@ -398,15 +402,15 @@ impl DirectorApp {
                 self.status = "TV link saved in preview memory only.".into();
                 true
             }
-            Message::Tv(crate::tv_ui::TvMessage::Control(
-                crate::tv_controls_ui::ControlMessage::Open(_)
-                | crate::tv_controls_ui::ControlMessage::Close
-                | crate::tv_controls_ui::ControlMessage::Details(_),
-            )) if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) => false,
+            Message::Tv(crate::gui::tv_ui::TvMessage::Control(
+                crate::gui::tv_controls_ui::ControlMessage::Open(_)
+                | crate::gui::tv_controls_ui::ControlMessage::Close
+                | crate::gui::tv_controls_ui::ControlMessage::Details(_),
+            )) if crate::gui::samsung_ui::PREVIEW.load(Ordering::Acquire) => false,
             Message::Tv(
-                crate::tv_ui::TvMessage::ReadDetails
-                | crate::tv_ui::TvMessage::SetupPair
-                | crate::tv_ui::TvMessage::Control(_),
+                crate::gui::tv_ui::TvMessage::ReadDetails
+                | crate::gui::tv_ui::TvMessage::SetupPair
+                | crate::gui::tv_ui::TvMessage::Control(_),
             ) => true,
             Message::Navigate(Some(page))
                 if !["audio", "displays", "scenes", "tvs", "current"].contains(&page.as_str()) =>

@@ -3,7 +3,9 @@
 //! Now can seed a new display preset from what it has staged, and the scene editor can create a
 //! display preset or TV in place and get back to the scene with it selected. Every flow ends in
 //! the normal Library editor, so saving still only saves.
-use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage, scene_ui::SceneMessage, work};
+use crate::{
+    DirectorApp, Message, Page, gui::display_ui::DisplayMessage, gui::scene_ui::SceneMessage, work,
+};
 use director::display::displays::Layout;
 use windows_reactor::*;
 
@@ -135,7 +137,7 @@ impl DirectorApp {
             let sound = scene.sound.is_some();
             self.scene.snapshot = sound.then(|| scene.clone());
             self.scene.draft = Some(scene);
-            self.scene.open = sound.then_some(crate::scene_editor_ui::Step::Sound);
+            self.scene.open = sound.then_some(crate::gui::scene_editor_ui::Step::Sound);
             self.status = "Name this scene to save the sound set in Now.".into();
         }
     }
