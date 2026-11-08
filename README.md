@@ -104,6 +104,19 @@ On a Stream Deck, add a **System → Open** action and paste the whole line into
 | Mute | `conhost.exe --headless cmd.exe /c director audio mute toggle` |
 | TV on / off | `conhost.exe --headless cmd.exe /c director tv toggle living-room-tv` |
 
+### Desktop shortcut
+
+To run a scene by double-clicking an icon on your desktop:
+
+1. Right-click the desktop and choose **New → Shortcut**.
+2. For the location, enter:
+   ```text
+   "C:\Program Files\Director\director.exe" scene apply tv-gaming
+   ```
+3. Name it, for example **TV Gaming**, and choose **Finish**.
+
+Double-clicking it runs the scene and exits, with no window, and the shortcut gets Director's icon. To run it from the keyboard too, open the shortcut's **Properties** and set a **Shortcut key** such as Ctrl+Alt+T.
+
 ### One button to the couch and back
 
 1. Save your everyday setup as a scene: the **Save everyday scene** card on an empty Scenes page saves it as **Default**.
@@ -112,7 +125,7 @@ On a Stream Deck, add a **System → Open** action and paste the whole line into
 4. In the TV Gaming scene, open **Return**, switch it on and choose **Default**. Save.
 5. On your Stream Deck, add a **System → Open** action with `conhost.exe --headless cmd.exe /c director scene apply tv-gaming`.
 
-Now the same button does both:
+Now the same button (or the same desktop shortcut) does both:
 
 - **First press:** TV Gaming becomes active. The TV wakes, the screens and sound switch, and Big Picture opens.
 - **Second press:** because TV Gaming is already active, Director runs its leave steps (Big Picture closes, the TV turns off) and then applies Default.
