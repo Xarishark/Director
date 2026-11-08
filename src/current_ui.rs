@@ -117,8 +117,8 @@ impl CurrentState {
         self.display.editor = Some(Editor::new(&layout, options));
         self.display.drag = None;
         self.display.draft = Some(Preset {
-            id: "current-setup-session".into(),
-            name: "Current setup".into(),
+            id: "now-session".into(),
+            name: "Now".into(),
             captured_at_unix_seconds: 0,
             confirm_changes: false,
             layout,

@@ -240,9 +240,9 @@ mod tests {
         );
         assert_eq!(
             inventory
-                .resolve("old", false, &[endpoint("legacy", None)])
+                .resolve("old", false, &[endpoint("no-stable-id", None)])
                 .as_deref(),
-            Some("legacy")
+            Some("no-stable-id")
         );
     }
 }

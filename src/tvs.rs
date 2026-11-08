@@ -344,7 +344,7 @@ mod tv_file_tests {
     }
     #[test]
     fn brand_change_invalidates_auth_and_tests() {
-        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"legacy","name":"LG","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1,2]})).unwrap();
+        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"lg","name":"LG","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1,2]})).unwrap();
         let old = tv.clone();
         tv.brand = Brand::Samsung;
         tv.samsung.record(2, true);

@@ -1105,8 +1105,10 @@ mod tests {
     }
     #[test]
     fn files_save_as_version_one_and_other_versions_are_refused() {
-        let path =
-            std::env::temp_dir().join(format!("director-scenes-version-{}.json", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "director-scenes-version-{}.json",
+            std::process::id()
+        ));
         let scenes = vec![scene()];
         save(&path, &[], &scenes).unwrap();
         let written: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -1116,7 +1118,10 @@ mod tests {
         other["version"] = 2.into();
         fs::write(&path, serde_json::to_vec(&other).unwrap()).unwrap();
         assert!(load(&path).is_err());
-        assert_eq!(fs::read(&path).unwrap(), serde_json::to_vec(&other).unwrap());
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            serde_json::to_vec(&other).unwrap()
+        );
         let _ = fs::remove_file(path);
     }
     #[test]
