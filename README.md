@@ -1,11 +1,16 @@
 <p align="center"><img src="assets/director.svg" width="96" height="96" alt="Director icon"></p>
 <h1 align="center">Director</h1>
 <p align="center">Switch your monitors, sound, and TV with one scene.</p>
-<p align="center"><strong>Windows x64 · Private preview</strong></p>
+<p align="center"><strong>Windows x64 · Preview</strong></p>
 <p align="center"><a href="https://github.com/Xarishark/Director/releases/latest/download/Director-x64-setup.exe"><img src="https://img.shields.io/badge/Download_for_Windows-x64_setup-0078D4?style=for-the-badge&amp;logo=windows&amp;logoColor=white" alt="Download Director for Windows (x64 setup)"></a></p>
-<p align="center"><sub>Latest release · Requires access to this private repo · <a href="https://github.com/Xarishark/Director/releases">All releases</a></sub></p>
+<p align="center"><sub>Latest release · <a href="https://github.com/Xarishark/Director/releases">All releases</a></sub></p>
 
 Moving from your desk to the living room? A **TV Gaming** scene can wake the TV, switch your picture and sound to HDMI, cap the frame rate, and open Steam Big Picture. Use a **Desk** scene when you come back. For a quick change, open **Now** and adjust the active displays, audio, or FPS limit directly.
+
+<p align="center">
+  <img src="docs/images/scenes.png" width="49%" alt="The Scenes page with a sound-only scene and a TV gaming scene">
+  <img src="docs/images/displays.png" width="49%" alt="The Displays page with saved monitor layouts">
+</p>
 
 ## Presets and scenes
 
@@ -23,13 +28,13 @@ A **scene** is everything you want to switch together: its display preset, its s
 | **TV connection** | A paired TV, its PC input, wake settings, and optional links to its Windows display and HDMI audio. |
 | **Scene** | Any combination of TV preparation, a display preset, sound (an output or the TV's sound, volume, mute, a calls device and a microphone), a global NVIDIA or RTSS FPS limit, and apps, links or "close app" steps to run before, after, or when you leave the scene. Director remembers audio devices it has seen so you can pick them while they’re offline. |
 
-Display preset cards show a preview of the layout. A scene card shows its main change: its screens, or for a sound-only scene its output and volume. Use the checkmark to apply a preset or scene. Saving gives you a chance to review it before applying.
+Display preset cards show a preview of the layout. A scene card shows its main change: its screens, or for a sound-only scene its output and volume. Use **Apply** on a card to apply that preset or scene. Saving gives you a chance to review it before applying.
 
-## Install the preview
+## Install
 
 Director needs **Windows 11, version 24H2 or newer** (x64). Setup checks this and stops on older versions.
 
-1. Use the **Download for Windows** button above to get **Director-x64-setup.exe** from the latest GitHub Release. You can also get it from the **Director-Windows-x64** artifact of a successful **Windows build** run. Both require access to the private repo.
+1. Use the **Download for Windows** button above to get **Director-x64-setup.exe** from the latest GitHub Release. You can also get it from the **Director-Windows-x64** artifact of a successful **Windows build** run.
 2. Run setup and click **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval. If Microsoft Windows App Runtime 2.6 is missing, setup downloads it (about 125 MB) and installs it first. Leave **Create a desktop shortcut** selected if you want one. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
 3. Click **Launch**, or open **Director** from Start or the desktop. Setup adds Director to PATH. Open a new terminal to use the command line.
 
