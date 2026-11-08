@@ -61,7 +61,7 @@ Director talks to Windows, the NVIDIA driver, RTSS and your TV directly, from on
 
 ## Install
 
-Director needs **Windows 11, version 24H2 or newer** (x64), because switching HDR per screen uses display APIs that Windows added in 24H2. Download **Director-x64-setup.exe** with the button above and run it. Setup installs the Windows App Runtime if it's missing and adds `director` to PATH. See [Install](docs/INSTALL.md) for quiet installs, updates and uninstalling.
+Director needs **Windows 11, version 24H2 or newer** (x64), because switching HDR per screen uses display APIs that Windows added in 24H2. Download **Director-x64-setup.exe** with the button above and run it. Setup installs the Windows App Runtime if it's missing and adds `director` to PATH. Director tells you when a new version is out and installs it in a click. See [Install](docs/INSTALL.md) for quiet installs, updates and uninstalling.
 
 ## Quick start
 
