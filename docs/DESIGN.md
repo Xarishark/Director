@@ -4,7 +4,7 @@ Director uses genuine WinUI 3 controls through Microsoft Windows Reactor and fol
 
 ## Design system
 
-Every page is built from `src/ui.rs`, so pages line up and follow the theme:
+Every page is built from `src/gui/ui.rs`, so pages line up and follow the theme:
 
 - **Type ramp** (Fluent): caption 12, body 14, label 14 semibold, section subtitle 20 semibold, page title 28 semibold. Secondary text uses one opacity (0.72).
 - **Spacing** 8/12/16/32 and **radii** 4 (inner panels, controls) and 8 (cards). Page padding and pane widths are constants that width calculations reuse.
@@ -35,7 +35,7 @@ Scene cards show the scene's main change at the top: the layout miniature when i
 
 The scene editor is a vertical flow of fixed-size step cards in run order (Before, Prepare TV, Displays, Sound, FPS limit, After) joined by small arrows, with When leaving and Return set apart below. A card shows an icon, the title and a one-line summary, with a pencil and a bin. The card opens the step's controls in a dialog: Done keeps the changes and Cancel restores the step. Nothing in the flow expands, and the column has a fixed width (720 DIP, less in a narrow window), so the overview never changes size. Empty steps are dashed outlines of the same size with a hint and an Add button. Failure policy and the device wait live in Options, not in the scene. See [Scenes](SCENES.md).
 
-**No tooltips in dialogs.** The pinned Reactor rejects tooltips inside a ContentDialog and closes the window. Controls in dialogs get an automation name instead, and `scene_editor_ui::tests::dialog_content_has_no_tooltips` guards the step dialogs and the shared helpers they use.
+**No tooltips in dialogs.** The pinned Reactor rejects tooltips inside a ContentDialog and closes the window. Controls in dialogs get an automation name instead, and `gui::scene_editor_ui::tests::dialog_content_has_no_tooltips` guards the step dialogs and the shared helpers they use.
 
 ## Now
 

@@ -72,14 +72,14 @@ Back up that folder before running the app against your real settings for testin
 - **Unit tests** use fake backends for audio, displays, FPS and scenes, and cover no-op detection, partial failure and recovery, stale writes, and corrupt or unknown-version files.
 - **TV transport tests** run against loopback WebSocket and TLS servers in the test process, plus DPAPI tampering checks. They never contact a real TV, so they don't prove compatibility with a particular model.
 - **Wake-on-LAN tests** send magic packets only to a loopback receiver.
-- **Ignored tests** (`cargo test -- --ignored <name>`) open preview fixtures with in-memory data for visual checks: `preset_cards_preview::cards_fixture`, `fps_ui::fps_fixture`, `tv_ui::native_preview::guide_fixture` and `tv_controls_ui::native_preview::controls_fixture`. They save nothing and contact no device. Some write their state to `target\preview\` for inspection. Production builds have no fixture entry point.
-- `windows_samsung::samsung_tls_fixture` needs a hand-started local TLS server and is meant for manual runs only.
+- **Ignored tests** (`cargo test -- --ignored <name>`) open preview fixtures with in-memory data for visual checks: `gui::preset_cards_preview::cards_fixture`, `gui::fps_ui::fps_fixture`, `gui::tv_ui::native_preview::guide_fixture` and `gui::tv_controls_ui::native_preview::controls_fixture`. They save nothing and contact no device. Some write their state to `target\preview\` for inspection. Production builds have no fixture entry point.
+- `tv::windows_samsung::samsung_tls_fixture` needs a hand-started local TLS server and is meant for manual runs only.
 
 Real hardware checks (applying layouts, switching audio, waking a TV) can't run in CI. Run them by hand, and keep them separate from what automated tests prove.
 
 ## WinUI rules worth knowing
 
-- **No tooltips inside a ContentDialog.** The pinned Reactor rejects them with `StructureUnsupported` and closes the window. Give controls in dialogs an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the relink button, the crash dialog, the command dialog and a checked list of shared helpers; extend it when a dialog hosts something new. Dialogs use `layout_preview_in_dialog` for the same reason.
+- **No tooltips inside a ContentDialog.** The pinned Reactor rejects them with `StructureUnsupported` and closes the window. Give controls in dialogs an automation name instead. `gui::scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the relink button, the crash dialog, the command dialog and a checked list of shared helpers; extend it when a dialog hosts something new. Dialogs use `layout_preview_in_dialog` for the same reason.
 - WinUI controls fire change events when re-rendered with a new value (sliders, combo boxes). Guard handlers so a re-render isn't treated as an edit.
 - UI automation: query an open ComboBox's own descendants with a name/type condition rather than walking the whole window; an unrestricted `FindAll` against an open dropdown can stall the provider.
 - For screenshots, bring the window to the front and let a frame render first. An occluded window can capture blank.

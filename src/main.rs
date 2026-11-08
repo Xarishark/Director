@@ -1,35 +1,15 @@
 #![windows_subsystem = "windows"]
-mod audio_relink_ui;
-mod clipboard;
-mod close_guard;
-mod command_ui;
-mod crash_ui;
-mod current_ui;
-mod display_editor_ui;
-mod display_setup_ui;
-mod display_ui;
-mod fps_ui;
-mod icons;
-mod library_flow;
-mod nav_guard;
-mod options_ui;
-#[cfg(test)]
-mod preset_cards_preview;
-mod preset_cards_ui;
-mod samsung_ui;
-mod scene_editor_ui;
-mod scene_ui;
-mod starter_ui;
-mod status_ui;
-mod tv_controls_ui;
-mod tv_power_state;
-mod tv_tip_ui;
-mod tv_ui;
-mod ui;
+mod gui;
 use display_ui::{DisplayMessage, DisplayState};
+use gui::{
+    audio_relink_ui, close_guard, command_ui, crash_ui, display_setup_ui, display_ui, editor_flow,
+    fps_ui, nav_guard, now_ui, options_ui, scene_ui, status_ui, tv_tip_ui, tv_ui,
+};
+#[cfg(test)]
+use gui::{preset_cards_preview, tv_controls_ui};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
-    Current,
+    Now,
     Displays,
     Tvs,
     Options,
@@ -48,7 +28,7 @@ enum Message {
     Command(command_ui::CommandMessage),
     Crash(crash_ui::CrashMessage),
     Display(DisplayMessage),
-    Current(current_ui::CurrentMessage),
+    Now(now_ui::NowMessage),
     Fps(fps_ui::FpsMessage),
     Tv(tv_ui::TvMessage),
     Scene(scene_ui::SceneMessage),
@@ -65,12 +45,12 @@ enum Message {
 struct DirectorApp {
     window_width: f64,
     page: Page,
-    current: current_ui::CurrentState,
+    now: now_ui::NowState,
     fps: fps_ui::FpsState,
     display: DisplayState,
     tv: tv_ui::TvState,
     scene: scene_ui::SceneState,
-    flow: library_flow::LibraryFlow,
+    flow: editor_flow::EditorFlow,
     nav: nav_guard::NavGuard,
     /// The scene or preset whose shortcut command is shown.
     command: Option<command_ui::Target>,
@@ -138,7 +118,7 @@ impl DirectorApp {
         self.details.clear();
         if next == Page::Scenes {
             self.update_scene(scene_ui::SceneMessage::Load, context);
-        } else if next == Page::Current && !self.current.dirty() {
+        } else if next == Page::Now && !self.now.dirty() {
             self.load_current(context);
         } else if next == Page::Displays && self.display.draft.is_none() {
             self.update_display(DisplayMessage::Refresh, context);
@@ -164,9 +144,9 @@ impl DirectorApp {
         let selected = self.page == Page::Options;
         // The pill and the selected fill sit outside the button, which clips its content.
         Border::new()
-            .corner_radius(crate::ui::RADIUS_S)
+            .corner_radius(crate::gui::ui::RADIUS_S)
             .background(if selected {
-                Brush::from(crate::ui::SUBTLE_FILL)
+                Brush::from(crate::gui::ui::SUBTLE_FILL)
             } else {
                 Brush::from(Color::transparent())
             })
@@ -219,7 +199,7 @@ impl DirectorApp {
 /// The page a navigation tag names.
 fn page_for(tag: &str) -> Option<Page> {
     Some(match tag {
-        "current" => Page::Current,
+        "current" => Page::Now,
         "displays" => Page::Displays,
         "tvs" => Page::Tvs,
         "options" => Page::Options,
@@ -240,7 +220,7 @@ impl Component for DirectorApp {
                     id.clone(),
                 ))));
         } else {
-            // Scenes is the start page; Library pages reload themselves on entry.
+            // Scenes is the start page; Displays and TVs reload themselves on entry.
             let _ = context
                 .sender()
                 .send(Message::Scene(scene_ui::SceneMessage::Load));
@@ -252,12 +232,12 @@ impl Component for DirectorApp {
             } else {
                 Page::Scenes
             },
-            current: current_ui::CurrentState::default(),
+            now: now_ui::NowState::default(),
             fps: fps_ui::FpsState::default(),
             display: DisplayState::default(),
             tv: tv_ui::TvState::default(),
             scene: scene_ui::SceneState::default(),
-            flow: library_flow::LibraryFlow::default(),
+            flow: editor_flow::EditorFlow::default(),
             nav: nav_guard::NavGuard::default(),
             command: None,
             crash: director::crash::pending(),
@@ -327,7 +307,7 @@ impl Component for DirectorApp {
                 }
                 Message::Display(message) => self.update_display(message, context),
                 Message::Fps(message) => self.update_fps(message, context),
-                Message::Current(message) => self.update_current(message, context),
+                Message::Now(message) => self.update_now(message, context),
                 Message::Scene(message) => self.update_scene(message, context),
                 Message::Status(message) => self.update_status(message),
                 Message::Tv(message) => self.update_tv(message, context),
@@ -402,8 +382,8 @@ impl Component for DirectorApp {
                 None
             },
         );
-        let content = if self.page == Page::Current {
-            self.current_view(cx)
+        let content = if self.page == Page::Now {
+            self.now_view(cx)
         } else if self.page == Page::Displays {
             self.display_view(cx)
         } else if self.page == Page::Tvs {
@@ -416,7 +396,7 @@ impl Component for DirectorApp {
         // Keep each page's native scroll/focus tree separate; drafts remain in state.
         let content = Grid::new().keyed_children([KeyedView::new(
             match self.page {
-                Page::Current => "current-page",
+                Page::Now => "current-page",
                 Page::Displays => "display-page",
                 Page::Tvs => "tv-page",
                 Page::Options => "options-page",
@@ -427,10 +407,10 @@ impl Component for DirectorApp {
         let status = self.status_view(cx);
         let body = Border::new()
             .padding(Thickness::new(
-                crate::ui::PAGE_PADDING_X,
-                crate::ui::PAGE_PADDING_Y,
-                crate::ui::PAGE_PADDING_X,
-                crate::ui::PAGE_PADDING_Y,
+                crate::gui::ui::PAGE_PADDING_X,
+                crate::gui::ui::PAGE_PADDING_Y,
+                crate::gui::ui::PAGE_PADDING_X,
+                crate::gui::ui::PAGE_PADDING_Y,
             ))
             .content(
                 Grid::new()
@@ -459,7 +439,7 @@ impl Component for DirectorApp {
         let nav = NavigationView::new()
             .grid_row(1)
             .is_pane_toggle_button_visible(false)
-            .open_pane_length(crate::ui::PANE_OPEN)
+            .open_pane_length(crate::gui::ui::PANE_OPEN)
             .pane_display_mode(NavigationViewPaneDisplayMode::Left)
             .is_pane_open(self.pane_open)
             .on_is_pane_open_changed(cx.callback(Message::Pane))
@@ -476,7 +456,7 @@ impl Component for DirectorApp {
                         ),
                         KeyedView::new(
                             "current",
-                            self.nav_item(Page::Current, "current", "Now", "\u{e9e9}"),
+                            self.nav_item(Page::Now, "current", "Now", "\u{e9e9}"),
                         ),
                         KeyedView::new(
                             "displays",
