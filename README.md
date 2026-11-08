@@ -38,6 +38,7 @@ Moving from your desk to the living room? A **TV Gaming** scene wakes the TV, sw
 - 🎯 **Frame-rate limits.** Set the global NVIDIA or RTSS limit per scene, including a **VRR-safe cap** worked out from the refresh rate of the screen you just switched to. [FPS →](docs/FPS.md)
 - 🚪 **Leave and come back.** When-leaving steps close what the scene opened (for example `steam://close/bigpicture`), turn the TV off, and **End** returns you to your desk scene.
 - 🖥️ **Sets up screens that are off.** Detects a TV's real resolutions, refresh rates and HDR by turning it on briefly, then restores your layout, so you can build its preset while it's off. [Displays →](docs/DISPLAYS.md)
+- 🪶 **Nothing left running.** No tray icon, background service or startup entry. Open the window, or run a command from a shortcut or Stream Deck; Director makes its changes and exits, so nothing sits in memory between scenes. (A command that uses TV input protection stays only for those few seconds, then exits.)
 
 ## What a scene can change
 
@@ -103,6 +104,19 @@ On a Stream Deck, add a **System → Open** action and paste the whole line into
 | Mute | `conhost.exe --headless cmd.exe /c director audio mute toggle` |
 | TV on / off | `conhost.exe --headless cmd.exe /c director tv toggle living-room-tv` |
 
+### Desktop shortcut
+
+To run a scene by double-clicking an icon on your desktop:
+
+1. Right-click the desktop and choose **New → Shortcut**.
+2. For the location, enter:
+   ```text
+   "C:\Program Files\Director\director.exe" scene apply tv-gaming
+   ```
+3. Name it, for example **TV Gaming**, and choose **Finish**.
+
+Double-clicking it runs the scene and exits, with no window, and the shortcut gets Director's icon. To run it from the keyboard too, open the shortcut's **Properties** and set a **Shortcut key** such as Ctrl+Alt+T.
+
 ### One button to the couch and back
 
 1. Save your everyday setup as a scene: the **Save everyday scene** card on an empty Scenes page saves it as **Default**.
@@ -111,7 +125,7 @@ On a Stream Deck, add a **System → Open** action and paste the whole line into
 4. In the TV Gaming scene, open **Return**, switch it on and choose **Default**. Save.
 5. On your Stream Deck, add a **System → Open** action with `conhost.exe --headless cmd.exe /c director scene apply tv-gaming`.
 
-Now the same button does both:
+Now the same button (or the same desktop shortcut) does both:
 
 - **First press:** TV Gaming becomes active. The TV wakes, the screens and sound switch, and Big Picture opens.
 - **Second press:** because TV Gaming is already active, Director runs its leave steps (Big Picture closes, the TV turns off) and then applies Default.
