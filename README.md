@@ -38,6 +38,7 @@ Moving from your desk to the living room? A **TV Gaming** scene wakes the TV, sw
 - 🎯 **Frame-rate limits.** Set the global NVIDIA or RTSS limit per scene, including a **VRR-safe cap** worked out from the refresh rate of the screen you just switched to. [FPS →](docs/FPS.md)
 - 🚪 **Leave and come back.** When-leaving steps close what the scene opened (for example `steam://close/bigpicture`), turn the TV off, and **End** returns you to your desk scene.
 - 🖥️ **Sets up screens that are off.** Detects a TV's real resolutions, refresh rates and HDR by turning it on briefly, then restores your layout, so you can build its preset while it's off. [Displays →](docs/DISPLAYS.md)
+- 🪶 **Nothing left running.** No tray icon, background service or startup entry. Open the window, or run a command from a shortcut or Stream Deck; Director makes its changes and exits, so nothing sits in memory between scenes. (A command that uses TV input protection stays only for those few seconds, then exits.)
 
 ## What a scene can change
 
