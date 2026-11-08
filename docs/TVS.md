@@ -5,10 +5,10 @@ Director controls TVs over your home network: it pairs once, then can wake the T
 | Platform | Status | Control |
 | --- | --- | --- |
 | LG webOS | Supported | Pairing, wake, power status, turn off, input list and switching with readback, live power updates, TV input protection |
-| Samsung Tizen | Hardware preview | Pairing, wake, power status, turn off, HDMI inputs you've tested and confirmed. See [Samsung guide](SAMSUNG.md). |
-| TCL Android / Google TV | Hardware preview | Code pairing, wake and sleep, power status, HDMI inputs you've tested and confirmed. See [TCL guide](ANDROID_TV.md). |
+| Samsung Tizen | Hardware preview | Pairing, wake, power status, turn off, HDMI inputs you've tested and confirmed |
+| TCL Android / Google TV | Hardware preview | Code pairing, wake and sleep, power status, HDMI inputs you've tested and confirmed |
 
-Other TCL platforms (Roku, Fire TV) and cloud services such as SmartThings aren't supported.
+Other TCL platforms (Roku, Fire TV) and cloud services such as SmartThings aren't supported. Have a Samsung or TCL TV? [Testing it](TV_TESTING.md) and sending a report helps.
 
 ## Add a TV
 
@@ -72,7 +72,7 @@ TVs are named by CLI name (the name in lowercase with dashes) or ID.
 - `wake` only sends the packets: success means they were sent, not that the TV woke.
 - `toggle` reads the power state first: it turns the TV off when it reports on, and wakes it when it reports off or standby or can't be reached.
 - `input` takes an input ID exactly as `status` or `check` lists it.
-- `report` exports a compatibility report for Samsung and TCL (see their guides).
+- `report` exports a compatibility report for Samsung and TCL; see [Test a Samsung or TCL TV](TV_TESTING.md).
 
 ## How it works
 
@@ -80,9 +80,9 @@ TVs are named by CLI name (the name in lowercase with dashes) or ID.
 
 **LG connection.** Director uses the encrypted WebSocket on port 3001 by default and pins the TV's certificate at pairing: the exact certificate is compared before a saved key is sent, and a changed certificate requires pairing again. **Use legacy connection** selects the unencrypted port 3000 for older TVs, only when you choose it.
 
-**Samsung connection.** The encrypted WebSocket on port 8002, with the authorization token sent only after the TLS certificate matches the pinned one. Remote commands have no per-key acknowledgment, so they are reported as sent.
+**Samsung.** Director uses the TV's local remote-control WebSocket on the encrypted port 8002; **Use legacy connection** selects the unencrypted port 8001 only when you choose it. The TV's certificate is pinned at pairing and checked before the authorization token is sent. Power status comes from the TV's local information endpoint, and only a reported On, Standby or Off counts; a timeout stays unknown. **Turn off** needs a fresh On report and sends one power key, never a blind toggle. HDMI inputs use one direct `KEY_HDMI<n>` command each, never menu navigation or key sequences, and each port is offered only after you've tested it and confirmed that the TV switched. A new model or firmware reading clears earlier confirmations. Samsung doesn't acknowledge individual keys, so commands are reported as sent. While the controls are open, Director checks the power state every four seconds.
 
-**Android TV.** Google's Remote v2 protocol over TLS (ports 6466 and 6467), implemented in Rust. Director creates its own client certificate on first pairing and checks the TV's certificate on every connection.
+**Android TV.** Director implements Google's Android TV Remote v2 protocol in Rust, the same service the Google TV phone remote uses: pairing on port 6467 and control on port 6466, both over mutually authenticated TLS with no unencrypted fallback. Pairing creates an RSA client certificate for that TV; the code shown on screen is checked against both certificates, and later connections require the same TV certificate (a changed one needs pairing again). The TV reports On or Standby; a connection alone doesn't count as On. **Wake** sends the protocol's wake command, falling back to Wake-on-LAN with a saved MAC address when the TV can't be reached; **Turn off** sends its sleep command. This protocol can't list inputs or read the current one, so HDMI inputs work like Samsung's: one direct key each, offered only after a confirmed test. Android TV reports a Remote Service version rather than the TV's firmware version.
 
 **Credentials.** Pairing keys, tokens, certificate pins and client keys are encrypted with Windows DPAPI for the current user under `%LOCALAPPDATA%\Director`. They never appear in CLI output, errors, logs, backups or reports, and can't be moved to another PC or Windows account.
 

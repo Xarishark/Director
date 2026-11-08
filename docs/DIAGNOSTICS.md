@@ -31,7 +31,7 @@ Folder opening starts Windows' own explorer.exe from the Windows installation di
 
 ## Samsung compatibility sharing
 
-Samsung setup/Edit TV provides Export report, and CLI provides director tv report <name>. The report in the Local AppData Director/Reports folder is a separate allowlisted JSON document, not a copy of raw application logs. It includes observed model/firmware, paired state, tested direct ports and user confirmations; it omits credentials, certificate bytes, addresses, MACs, aliases, TV/device IDs, raw responses and arbitrary errors. Nothing is uploaded automatically. See [SAMSUNG.md](SAMSUNG.md) for the testing procedure.
+Samsung setup/Edit TV provides Export report, and CLI provides director tv report <name>. The report in the Local AppData Director/Reports folder is a separate allowlisted JSON document, not a copy of raw application logs. It includes observed model/firmware, paired state, tested direct ports and user confirmations; it omits credentials, certificate bytes, addresses, MACs, aliases, TV/device IDs, raw responses and arbitrary errors. Nothing is uploaded automatically. See [SAMSUNG.md](TV_TESTING.md) for the testing procedure.
 
 ## Compatibility reports (format 2)
 

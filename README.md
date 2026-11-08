@@ -81,7 +81,7 @@ director audio mute toggle
 ## Guides
 
 - [Displays](docs/DISPLAYS.md) · [Sound](docs/SOUND.md) · [Scenes](docs/SCENES.md)
-- [TV setup and pairing](docs/TVS.md) · [Samsung test guide](docs/SAMSUNG.md) · [TCL test guide](docs/ANDROID_TV.md)
+- [TV setup and pairing](docs/TVS.md) · [Test a Samsung or TCL TV](docs/TV_TESTING.md)
 - [FPS limits](docs/FPS.md) · [Diagnostics](docs/DIAGNOSTICS.md) · [Build, test, and CLI reference](docs/DEVELOPMENT.md)
 
 ## Contributing
