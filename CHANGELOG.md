@@ -10,7 +10,7 @@ Each release's installer and full notes are on [GitHub Releases](https://github.
 ## 0.11.0 (2026-11-07)
 
 - **Scenes overhaul**: a step-flow editor with Before, When leaving and Close app actions; the active scene and **End**; a first-run "everyday setup" scene; the TV can turn off when you leave a scene.
-- **Sound**: live output, volume and mute controls on Now and in `director audio`; scenes hold their own Sound step, replacing audio presets (older scenes migrate automatically).
+- **Sound**: live output, volume and mute controls on Now and in `director audio`; scenes hold their own Sound step.
 - **CLI names** for every item (`director scene apply tv-gaming`), `director list`, and a `>_` button on cards that copies the command.
 - **TV input protection** keeps an LG TV on the scene's input while a streaming box or console tries to take it; `director tv toggle` turns a TV on or off.
 - A UI pass with a shared design system, a reworked Now page and a Windows-style display editor; preset cards preview their screens.

@@ -54,10 +54,21 @@ TV commands, app launches and URIs can't be undone, so they are reported but not
 - Displays are matched by monitor device path, not by transient display numbers or adapter IDs.
 - TV pairing keys and client identities are encrypted with Windows DPAPI for the current user and never leave the PC: backups and reports exclude them.
 
-## Design references
+## References
 
-- [Rust for Windows](https://learn.microsoft.com/en-us/windows/dev-environment/rust/rust-for-windows)
-- [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) and [SetDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setdisplayconfig)
-- [Audio endpoint Stable ID](https://learn.microsoft.com/en-us/windows/win32/coreaudio/pkey-audioendpoint-stableid)
-- [Windows app notifications](https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/)
-- [Integration references](INTEGRATION_REFERENCES.md) for the TV and FPS projects consulted
+Windows APIs:
+
+- [Rust for Windows](https://learn.microsoft.com/en-us/windows/dev-environment/rust/rust-for-windows) and [windows-reactor](https://github.com/microsoft/windows-rs/blob/master/crates/libs/reactor/readme.md)
+- [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig), [SetDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setdisplayconfig) and [display device-info types](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_device_info_type) (HDR)
+- [Audio device roles](https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-roles) and [endpoint Stable ID](https://learn.microsoft.com/en-us/windows/win32/coreaudio/pkey-audioendpoint-stableid)
+- [Windows app notifications](https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/) and the [WinHTTP status callback](https://learn.microsoft.com/en-us/windows/win32/api/winhttp/nc-winhttp-winhttp_status_callback) (certificate pinning before headers are sent)
+
+Projects consulted for protocols and design. Director doesn't depend on, bundle or run any of them; its implementations are independent Rust code:
+
+| Project | Used as a reference for |
+| --- | --- |
+| [lgtvcli](https://github.com/01dnot/lgtvcli), [PyWebOSTV](https://github.com/supersaiyanmode/PyWebOSTV), [lgtv2](https://github.com/hobbyquaker/lgtv2) | LG webOS pairing, inputs, power and network information |
+| [samsung-tv-control](https://github.com/timdevlet/samsung-tv-control), [ColorControl](https://github.com/Maassoft/ColorControl) | Samsung Tizen pairing, power state and direct HDMI keys |
+| [androidtvremote2](https://github.com/tronikos/androidtvremote2), [Polo pairing protocol](https://android.googlesource.com/platform/external/google-tv-pairing-protocol/) | Android TV Remote v2 pairing and commands |
+| [NVAPI](https://github.com/NVIDIA/nvapi), [rtss-cli](https://github.com/xanderfrangos/rtss-cli) | NVIDIA driver profile settings and RTSS profile interfaces |
+| [DisplayProfileManager](https://github.com/exytral/DisplayProfileManager), [DisplayHotKeys](https://github.com/jon-mil-92/DisplayHotKeys) | Display editor and mode-switching workflows |

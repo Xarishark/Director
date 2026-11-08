@@ -76,7 +76,7 @@ TVs are named by CLI name (the name in lowercase with dashes) or ID.
 
 ## How it works
 
-**Wake-on-LAN.** Director stores the Ethernet and Wi-Fi MAC addresses the TV reports, plus an optional manual one; invalid, zero, broadcast and multicast addresses are rejected, and a failed read never erases known addresses. Wake sends standard magic packets to the local broadcast address (`255.255.255.255:9`), three rounds 100 ms apart, one per saved address. It needs no pairing or open connection. The TV must stay on the network and have its network or mobile power-on setting enabled; Wi-Fi and deep-standby behaviour depends on the model. Multiple network interfaces, routed subnets and finding a TV whose IP changed aren't handled yet.
+**Wake-on-LAN.** Director stores the Ethernet and Wi-Fi MAC addresses the TV reports, plus an optional manual one; invalid, zero, broadcast and multicast addresses are rejected, and a failed read never erases known addresses. Wake sends standard magic packets to the local broadcast address (`255.255.255.255:9`), three rounds 100 ms apart, one per saved address. It needs no pairing or open connection. The TV must stay on the network and have its network or mobile power-on setting enabled; Wi-Fi and deep-standby behaviour depends on the model. Multiple network interfaces, routed subnets and finding a TV whose IP address changed aren't handled.
 
 **LG connection.** Director uses the encrypted WebSocket on port 3001 by default and pins the TV's certificate at pairing: the exact certificate is compared before a saved key is sent, and a changed certificate requires pairing again. **Use legacy connection** selects the unencrypted port 3000 for older TVs, only when you choose it.
 

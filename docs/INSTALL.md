@@ -11,7 +11,7 @@
 2. Run it and choose **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval once. Leave **Create a desktop shortcut** ticked if you want one.
 3. Choose **Launch**, or open **Director** from Start.
 
-Setup and the app aren't code-signed yet, so Windows SmartScreen may warn before setup runs. Choose **More info → Run anyway** if you trust the download.
+Setup and the app aren't code-signed, so Windows SmartScreen may warn before setup runs. Choose **More info → Run anyway** if you trust the download.
 
 What setup does:
 

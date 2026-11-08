@@ -63,13 +63,13 @@ The executable uses the Windows GUI subsystem. To capture CLI output from PowerS
 
 ## Settings and storage
 
-Settings live in `%LOCALAPPDATA%\Director`, resolved through the Windows known-folder API, with no fallback folder. `storage::write_document` validates a document, checks under the operation lock that the file on disk still matches what was read, writes a temporary file and replaces the original with `MoveFileExW` (replace existing, write through). Writers that read an older version must reload. Corrupt or newer-version files are kept and reported. `audio-presets.json` is read only to migrate version 1–2 scenes; remembered audio devices live in `audio-devices.json`.
+Settings live in `%LOCALAPPDATA%\Director`, resolved through the Windows known-folder API, with no fallback folder. `storage::write_document` validates a document, checks under the operation lock that the file on disk still matches what was read, writes a temporary file and replaces the original with `MoveFileExW` (replace existing, write through). If the file changed since it was read, the save is refused and the window reloads. Each file carries a `version`; a corrupt file or one with an unknown version is left untouched and reported, never overwritten. When a format changes incompatibly, raise its version and decide whether to convert or refuse older files.
 
 Back up that folder before running the app against your real settings for testing. Tests never use it.
 
 ## Tests
 
-- **Unit tests** use fake backends for audio, displays, FPS and scenes, and cover no-op detection, partial failure and recovery, migrations, stale writes, and corrupt or future-version files.
+- **Unit tests** use fake backends for audio, displays, FPS and scenes, and cover no-op detection, partial failure and recovery, stale writes, and corrupt or unknown-version files.
 - **TV transport tests** run against loopback WebSocket and TLS servers in the test process, plus DPAPI tampering checks. They never contact a real TV, so they don't prove compatibility with a particular model.
 - **Wake-on-LAN tests** send magic packets only to a loopback receiver.
 - **Ignored tests** (`cargo test -- --ignored <name>`) open preview fixtures with in-memory data for visual checks: `preset_cards_preview::cards_fixture`, `fps_ui::fps_fixture`, `tv_ui::native_preview::guide_fixture` and `tv_controls_ui::native_preview::controls_fixture`. They save nothing and contact no device. Some write their state to `target\preview\` for inspection. Production builds have no fixture entry point.
