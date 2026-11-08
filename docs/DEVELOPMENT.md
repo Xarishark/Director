@@ -90,7 +90,7 @@ Real hardware checks (applying layouts, switching audio, waking a TV) can't run 
 
 ## Artwork
 
-`assets/director.svg` is the only source for the app icon. `build/windows_icon.rs` rasterizes seven sizes with the build-only `resvg` crate, embeds them with `rc.exe` or `windres` (override with `WINDRES`), embeds `build/director.manifest`, and stages `director.ico` beside the executable. The installer's 64 px setup logo is copied from that icon.
+`assets/director.svg` is the only source for the app icon. `packaging/windows_icon.rs` rasterizes seven sizes with the build-only `resvg` crate, embeds them with `rc.exe` or `windres` (override with `WINDRES`), embeds `packaging/director.manifest`, and stages `director.ico` beside the executable. The installer's 64 px setup logo is copied from that icon.
 
 ## GitHub Actions
 
@@ -106,10 +106,10 @@ Set the version in the root [Cargo.toml](../Cargo.toml) under `[package]`, as th
 
 ```powershell
 cargo install cargo-about --locked --features cli
-cargo about generate -c build/about.toml build/about.hbs -o THIRD_PARTY_LICENSES.md
+cargo about generate -c packaging/about.toml packaging/about.hbs -o THIRD_PARTY_LICENSES.md
 ```
 
-`build/about.toml` lists the accepted licenses. Generation fails if a new crate uses one that isn't listed, so review that license before adding it there.
+`packaging/about.toml` lists the accepted licenses. Generation fails if a new crate uses one that isn't listed, so review that license before adding it there.
 
 ## Protecting main
 

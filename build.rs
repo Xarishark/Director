@@ -1,4 +1,4 @@
-#[path = "build/windows_icon.rs"]
+#[path = "packaging/windows_icon.rs"]
 mod windows_icon;
 fn main() {
     println!("cargo:rerun-if-changed=assets/director.svg");

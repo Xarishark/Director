@@ -41,6 +41,6 @@ Some things can't be tested in CI: applying layouts, switching audio, and talkin
 - Use the shared UI vocabulary in `src/ui.rs` (type ramp, spacing, theme brushes, page, section and card builders) instead of raw sizes and colours.
 - Don't put tooltips inside a `ContentDialog`: the pinned Reactor closes the window. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#winui-rules-worth-knowing).
 - Device and settings changes take `windows_audio::OperationLock`, run off the UI thread, verify by reading back, and restore what they changed on failure.
-- Talk to Windows and TVs directly rather than through helper programs. New dependencies need a reason, and their licenses must be accepted in `build/about.toml`; regenerate `THIRD_PARTY_LICENSES.md` when they change.
+- Talk to Windows and TVs directly rather than through helper programs. New dependencies need a reason, and their licenses must be accepted in `packaging/about.toml`; regenerate `THIRD_PARTY_LICENSES.md` when they change.
 
 By contributing, you agree that your contribution is licensed under the [MIT License](LICENSE).

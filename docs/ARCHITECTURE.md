@@ -8,7 +8,7 @@ Director is one Rust executable, `director.exe`. Started without arguments it op
 | --- | --- | --- |
 | Library crate `director` | `src/lib.rs` | Domain models, persistence, the scene and device engines, Windows and TV backends, the CLI |
 | Binary | `src/main.rs` and `src/*_ui.rs` | The `DirectorApp` WinUI component (through `windows-reactor` 0.100), pages and dialogs |
-| Build script | `build.rs`, `build/windows_icon.rs` | Renders `assets/director.svg` into the embedded icon and `director.ico`, embeds `build/director.manifest`, stages SVG assets beside the executable |
+| Build script | `build.rs`, `packaging/windows_icon.rs` | Renders `assets/director.svg` into the embedded icon and `director.ico`, embeds `packaging/director.manifest`, stages SVG assets beside the executable |
 | Installer | `installer/`, `scripts/package-msi.ps1` | WiX MSI plus a `setup.exe` bundle that installs the Windows App Runtime when missing; see [Windows GUI](WINDOWS_GUI.md) |
 
 ## Integration policy
