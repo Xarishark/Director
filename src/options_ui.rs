@@ -331,7 +331,7 @@ impl DirectorApp {
                         seconds(
                             prefs.map(|p| p.tv_input_guard_seconds),
                             0.0,
-                            f64::from(director::tv_input_guard::MAX_SECONDS),
+                            f64::from(director::tv::tv_input_guard::MAX_SECONDS),
                             "TV input protection seconds",
                             |v| Message::Tip(crate::tv_tip_ui::TipMessage::InputGuard(v)),
                         ),

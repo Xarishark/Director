@@ -42,7 +42,7 @@ pub(crate) enum CommandMessage {
 fn commands(t: &Target) -> Vec<(&'static str, String, String)> {
     // The CLI name ("Desk View" is desk-view) never needs quotes. A name made only of
     // symbols has none, so only the ID command is offered.
-    let cli = director::cli_name::cli_name(&t.name);
+    let cli = director::cli::cli_name::cli_name(&t.name);
     let mut rows = Vec::new();
     if !cli.is_empty() {
         rows.push((

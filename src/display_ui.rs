@@ -1,13 +1,13 @@
 //! Native display capture/list/editor; audio state and device changes stay separate.
 use crate::{DirectorApp, Message, work};
 use director::{
-    display_apply::{self, Decision, Outcome, Report},
-    windows_display_apply::WindowsDisplays,
+    audio::windows_audio::OperationLock,
+    display::displays::{self, Layout, Preset},
+    display::windows_displays,
 };
 use director::{
-    displays::{self, Layout, Preset},
-    windows_audio::OperationLock,
-    windows_displays,
+    display::display_apply::{self, Decision, Outcome, Report},
+    display::windows_display_apply::WindowsDisplays,
 };
 use std::{
     sync::{Arc, Mutex, mpsc},
@@ -33,9 +33,9 @@ pub(crate) enum DisplayMessage {
     CancelLostDrag(u64),
     EditorLoaded(
         bool,
-        Result<(Layout, Vec<director::display_editor::Options>), String>,
+        Result<(Layout, Vec<director::display::display_editor::Options>), String>,
     ),
-    Change(usize, director::display_editor::Change),
+    Change(usize, director::display::display_editor::Change),
     Capture,
     Captured(Result<Layout, String>),
     Edit(String),
@@ -52,12 +52,12 @@ pub(crate) struct DisplayState {
     pub setup: crate::display_setup_ui::SetupState,
     pub drag_token: u64,
     pub orientation_revision: u64,
-    pub drag: Option<director::display_editor::Drag>,
+    pub drag: Option<director::display::display_editor::Drag>,
     /// The display selected in the arrangement map.
     pub selected: usize,
     /// A success message to show once the preset list has loaded (loading clears notices).
     pub notice_after_load: Option<String>,
-    pub editor: Option<director::display_editor::Editor>,
+    pub editor: Option<director::display::display_editor::Editor>,
     pub progress: Option<Arc<Mutex<mpsc::Receiver<u64>>>>,
     pub confirmation: Option<(u64, mpsc::Sender<Decision>)>,
     pub remaining: u64,
@@ -124,7 +124,7 @@ impl DirectorApp {
                 let _lock = OperationLock::acquire()?;
                 for old in &expected {
                     if !next.iter().any(|p| p.id == old.id) {
-                        director::scenes::check_delete("display", &old.id)?;
+                        director::scene::scenes::check_delete("display", &old.id)?;
                     }
                 }
                 displays::save(&displays::path()?, &expected, &next)?;
@@ -286,7 +286,8 @@ impl DirectorApp {
                         true,
                         (|| {
                             let layout = windows_displays::capture()?;
-                            let options = director::windows_display_modes::discover(&layout)?;
+                            let options =
+                                director::display::windows_display_modes::discover(&layout)?;
                             Ok((layout, options))
                         })(),
                     ))
@@ -301,12 +302,14 @@ impl DirectorApp {
                 if let Some(d) = &self.display.draft
                     && point.capture_succeeded
                 {
-                    match director::display_editor::Drag::begin(
+                    match director::display::display_editor::Drag::begin(
                         &d.layout,
                         index,
                         point.window_x,
                         point.window_y,
-                        director::display_editor::MapTransform::new(&d.layout, width, height),
+                        director::display::display_editor::MapTransform::new(
+                            &d.layout, width, height,
+                        ),
                     ) {
                         Ok(drag) => {
                             self.display.drag_token = self.display.drag_token.wrapping_add(1);
@@ -385,8 +388,9 @@ impl DirectorApp {
                                 monitor.hdr = option.hdr;
                             }
                         }
-                        self.display.editor =
-                            Some(director::display_editor::Editor::new(&layout, options));
+                        self.display.editor = Some(director::display::display_editor::Editor::new(
+                            &layout, options,
+                        ));
                         if create {
                             let now = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -412,8 +416,10 @@ impl DirectorApp {
                 if let (Some(editor), Some(draft)) =
                     (&mut self.display.editor, &mut self.display.draft)
                 {
-                    let orientation =
-                        matches!(&change, director::display_editor::Change::Rotation(_));
+                    let orientation = matches!(
+                        &change,
+                        director::display::display_editor::Change::Rotation(_)
+                    );
                     match editor.change(&mut draft.layout, index, change) {
                         Ok(()) => {
                             if orientation {
@@ -467,7 +473,8 @@ impl DirectorApp {
                         msg(DisplayMessage::EditorLoaded(
                             false,
                             (|| {
-                                let options = director::windows_display_modes::discover(&layout)?;
+                                let options =
+                                    director::display::windows_display_modes::discover(&layout)?;
                                 Ok((layout, options))
                             })(),
                         ))

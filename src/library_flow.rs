@@ -4,7 +4,7 @@
 //! display preset or TV in place and get back to the scene with it selected. Every flow ends in
 //! the normal Library editor, so saving still only saves.
 use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage, scene_ui::SceneMessage, work};
-use director::displays::Layout;
+use director::display::displays::Layout;
 use windows_reactor::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,7 +19,7 @@ pub(crate) enum LibraryMessage {
     NewDisplay(Option<Layout>),
     NewTv,
     /// Open a new scene draft, for example one whose Sound step holds what's set in Now.
-    NewScene(Box<director::scenes::Scene>),
+    NewScene(Box<director::scene::scenes::Scene>),
     /// Create the item for this scene section, then return to the scene with it selected.
     FromScene(Slot),
 }
@@ -29,7 +29,7 @@ pub(crate) struct LibraryFlow {
     /// A new display preset to open once the Displays page has loaded.
     display_seed: Option<Option<Layout>>,
     /// A new scene draft to open once Scenes has loaded.
-    scene_seed: Option<director::scenes::Scene>,
+    scene_seed: Option<director::scene::scenes::Scene>,
     /// The scene section waiting for the item being created.
     scene_return: Option<Slot>,
     /// The item to select in the scene draft once the scene catalog has reloaded.
@@ -118,7 +118,7 @@ impl DirectorApp {
                     work(cx, move || {
                         Message::Display(DisplayMessage::EditorLoaded(
                             true,
-                            director::windows_display_modes::discover(&layout)
+                            director::display::windows_display_modes::discover(&layout)
                                 .map(|options| (layout, options)),
                         ))
                     });

@@ -2,8 +2,8 @@
 use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage};
 use director::{
     audio::Output,
-    display_editor::{Change, Editor, Mode, Options},
-    displays::{self, DesktopMode, Layout, Monitor, RefreshRate},
+    display::display_editor::{Change, Editor, Mode, Options},
+    display::displays::{self, DesktopMode, Layout, Monitor, RefreshRate},
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -160,7 +160,7 @@ impl DirectorApp {
                 self.display.presets = displays();
                 self.display.current = Some(layout());
                 self.scene.displays = self.display.presets.clone();
-                self.scene.tvs = vec![director::tvs::Tv {
+                self.scene.tvs = vec![director::tv::tvs::Tv {
                     id: "fixture-tv".into(),
                     name: "Living room TV".into(),
                     address: "192.0.2.50".into(),
@@ -168,7 +168,7 @@ impl DirectorApp {
                     samsung: Default::default(),
                     android: Default::default(),
                     connection: Default::default(),
-                    display: Some(director::tvs::DisplayLink {
+                    display: Some(director::tv::tvs::DisplayLink {
                         device_path: "preview-2".into(),
                         name: "Living room TV".into(),
                     }),
@@ -177,46 +177,47 @@ impl DirectorApp {
                         name: "TV HDMI audio".into(),
                     }),
                     credential: Some(vec![1]),
-                    inputs: vec![director::lg_protocol::Input {
+                    inputs: vec![director::tv::lg_protocol::Input {
                         id: "HDMI_1".into(),
                         label: "PC HDMI 1".into(),
                     }],
-                    pc_input: Some(director::lg_protocol::Input {
+                    pc_input: Some(director::tv::lg_protocol::Input {
                         id: "HDMI_1".into(),
                         label: "PC HDMI 1".into(),
                     }),
                     network: Default::default(),
                 }];
-                let mut scene = director::scenes::Scene::new("fixture-scene", "TV gaming scene");
+                let mut scene =
+                    director::scene::scenes::Scene::new("fixture-scene", "TV gaming scene");
                 scene.display = Some("fixture-display-1".into());
-                scene.sound = Some(director::scenes::Sound {
-                    output: Some(director::scenes::SoundOutput::Tv {
+                scene.sound = Some(director::scene::scenes::Sound {
+                    output: Some(director::scene::scenes::SoundOutput::Tv {
                         id: "fixture-tv".into(),
                     }),
                     volume: Some(35),
                     ..Default::default()
                 });
-                scene.tv = Some(director::scenes::TvPreparation {
+                scene.tv = Some(director::scene::scenes::TvPreparation {
                     off_when_leaving: false,
                     id: "fixture-tv".into(),
                     wake: true,
                     input: Some("HDMI_1".into()),
                 });
-                scene.actions = vec![director::scenes::Action::Uri {
+                scene.actions = vec![director::scene::scenes::Action::Uri {
                     target: "steam://open/bigpicture".into(),
                 }];
-                scene.leave = vec![director::scenes::Action::Uri {
+                scene.leave = vec![director::scene::scenes::Action::Uri {
                     target: "steam://close/bigpicture".into(),
                 }];
                 let mut headphones =
-                    director::scenes::Scene::new("fixture-headphones", "Headphones");
-                headphones.sound = Some(director::scenes::Sound {
-                    output: Some(director::scenes::SoundOutput::Device {
+                    director::scene::scenes::Scene::new("fixture-headphones", "Headphones");
+                headphones.sound = Some(director::scene::scenes::Sound {
+                    output: Some(director::scene::scenes::SoundOutput::Device {
                         id: "fixture-chat".into(),
                         name: "Chat headset".into(),
                     }),
                     volume: Some(30),
-                    mic: Some(director::scenes::Mic {
+                    mic: Some(director::scene::scenes::Mic {
                         device: director::audio::DeviceSelection {
                             id: "fixture-mic".into(),
                             name: "Desk microphone".into(),
@@ -244,7 +245,7 @@ impl DirectorApp {
                     tv.display = None;
                     tv.samsung = Default::default();
                     self.tv.draft = Some(tv);
-                    self.tv.setup = Some(director::tv_setup::Setup::default());
+                    self.tv.setup = Some(director::tv::tv_setup::Setup::default());
                     self.tv.test_port = 2;
                 }
                 self.status = "Ready.".into();
@@ -305,9 +306,9 @@ impl DirectorApp {
                 {
                     let result: Result<(), String> =
                         Err("fixture timeout (0x80072EE2), secret=do-not-export 192.0.2.98".into());
-                    director::tv_report::record(
+                    director::tv::tv_report::record(
                         &tv.id,
-                        director::tv_report::Action::Pair,
+                        director::tv::tv_report::Action::Pair,
                         std::time::Instant::now(),
                         &result,
                         None,
@@ -319,12 +320,12 @@ impl DirectorApp {
                     .tv
                     .draft
                     .as_ref()
-                    .is_some_and(|t| t.brand == director::tvs::Brand::TclAndroid);
+                    .is_some_and(|t| t.brand == director::tv::tvs::Brand::TclAndroid);
                 if android && !self.tv.android_fixture_waiting {
                     self.tv.android_fixture_waiting = true;
                     return true;
                 }
-                if android && director::android_tv::code(&self.tv.android_code).is_err() {
+                if android && director::tv::android_tv::code(&self.tv.android_code).is_err() {
                     return true;
                 }
                 self.tv.android_fixture_waiting = false;
@@ -343,7 +344,7 @@ impl DirectorApp {
                 if let Some(setup) = &mut self.tv.setup {
                     setup.inputs_loaded = true;
                     setup.input_chosen = true;
-                    setup.step = director::tv_setup::Step::Input;
+                    setup.step = director::tv::tv_setup::Step::Input;
                 }
                 self.status = "Fixture paired. No real network connection.".into();
                 true
@@ -367,9 +368,9 @@ impl DirectorApp {
                 if crate::samsung_ui::PREVIEW.load(Ordering::Acquire) =>
             {
                 if let Some(tv) = &self.tv.draft {
-                    let data = director::samsung::report(tv).unwrap();
+                    let data = director::tv::samsung::report(tv).unwrap();
                     std::fs::write(
-                        output(if tv.brand == director::tvs::Brand::TclAndroid {
+                        output(if tv.brand == director::tv::tvs::Brand::TclAndroid {
                             "android-fixture-report.json"
                         } else {
                             "samsung-fixture-report.json"

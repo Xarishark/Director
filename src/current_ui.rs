@@ -8,14 +8,15 @@ use crate::{
     work,
 };
 use director::{
+    audio::audio_control::{self, Level, MuteChange},
+    audio::windows_audio::{OperationLock, WindowsAudio},
     audio::{AudioBackend, Output, Role},
-    audio_control::{self, Level, MuteChange},
-    display_apply,
-    display_editor::{Editor, Options},
-    displays::{Layout, Preset},
-    windows_audio::{OperationLock, WindowsAudio},
-    windows_display_apply::WindowsDisplays,
-    windows_display_modes, windows_displays,
+    display::display_apply,
+    display::display_editor::{Editor, Options},
+    display::displays::{Layout, Preset},
+    display::windows_display_apply::WindowsDisplays,
+    display::windows_display_modes,
+    display::windows_displays,
 };
 use windows_reactor::*;
 type Displays = Result<(Layout, Vec<Options>), String>;
@@ -157,13 +158,13 @@ impl CurrentState {
     }
     /// A scene Sound step holding what Now shows: the output and microphone with their volume
     /// (the slider, which leads the device while a change settles) and mute state.
-    fn sound_now(&self, output: &Output) -> director::scenes::Sound {
+    fn sound_now(&self, output: &Output) -> director::scene::scenes::Sound {
         let percent = |v: Option<f64>| {
             v.filter(|v| v.is_finite())
                 .map(|v| v.round().clamp(0.0, 100.0) as u8)
         };
-        director::scenes::Sound {
-            output: Some(director::scenes::SoundOutput::Device {
+        director::scene::scenes::Sound {
+            output: Some(director::scene::scenes::SoundOutput::Device {
                 id: output.id.clone(),
                 name: output.name.clone(),
             }),
@@ -176,14 +177,16 @@ impl CurrentState {
                     id: c.id.clone(),
                     name: c.name.clone(),
                 }),
-            mic: self.default_device(true).map(|mic| director::scenes::Mic {
-                device: director::audio::DeviceSelection {
-                    id: mic.id.clone(),
-                    name: mic.name.clone(),
-                },
-                volume: percent(self.mic_volume),
-                mute: mic.muted,
-            }),
+            mic: self
+                .default_device(true)
+                .map(|mic| director::scene::scenes::Mic {
+                    device: director::audio::DeviceSelection {
+                        id: mic.id.clone(),
+                        name: mic.name.clone(),
+                    },
+                    volume: percent(self.mic_volume),
+                    mute: mic.muted,
+                }),
         }
     }
     /// Take fresh device lists; the sliders follow the devices again.
@@ -583,8 +586,8 @@ Could not read audio outputs: {e}"
                 work(cx, move || {
                     msg(CurrentMessage::DisplaysSaved((|| {
                         let _lock = OperationLock::acquire()?;
-                        let path = director::displays::path()?;
-                        let existing = director::displays::load(&path)?;
+                        let path = director::display::displays::path()?;
+                        let existing = director::display::displays::load(&path)?;
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default();
@@ -598,7 +601,7 @@ Could not read audio outputs: {e}"
                         });
                         next.sort_by_key(|p| p.name.to_lowercase());
                         // Refuses a name whose command name another preset already uses.
-                        director::displays::save(&path, &existing, &next)?;
+                        director::display::displays::save(&path, &existing, &next)?;
                         Ok(name)
                     })()))
                 });
@@ -627,7 +630,7 @@ Could not read audio outputs: {e}"
                 let Some(output) = self.current.default_device(false) else {
                     return;
                 };
-                let mut scene = director::scenes::Scene::new(crate::scene_ui::new_id(), "");
+                let mut scene = director::scene::scenes::Scene::new(crate::scene_ui::new_id(), "");
                 scene.sound = Some(self.current.sound_now(output));
                 self.update_library(
                     crate::library_flow::LibraryMessage::NewScene(Box::new(scene)),
@@ -916,7 +919,7 @@ impl DirectorApp {
 mod tests {
     use super::*;
     fn layout() -> Layout {
-        use director::displays::{DesktopMode, Monitor, RefreshRate};
+        use director::display::displays::{DesktopMode, Monitor, RefreshRate};
         Layout {
             monitors: vec![Monitor {
                 adapter_luid: 1,
@@ -979,7 +982,7 @@ mod tests {
             .change(
                 &mut draft.layout,
                 0,
-                director::display_editor::Change::Hdr(true),
+                director::display::display_editor::Change::Hdr(true),
             )
             .unwrap();
         assert!(state.dirty());
@@ -1002,7 +1005,7 @@ mod tests {
         let sound = state.sound_now(state.default_device(false).unwrap());
         assert_eq!(
             sound.output,
-            Some(director::scenes::SoundOutput::Device {
+            Some(director::scene::scenes::SoundOutput::Device {
                 id: "speakers".into(),
                 name: "speakers".into(),
             })

@@ -27,7 +27,7 @@ fn default_wait() -> u16 {
     30
 }
 fn default_input_guard() -> u16 {
-    crate::tv_input_guard::DEFAULT_SECONDS
+    crate::tv::tv_input_guard::DEFAULT_SECONDS
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -42,13 +42,13 @@ impl Default for Preferences {
     }
 }
 impl Preferences {
-    pub fn scene_policy(&self) -> crate::scenes::ScenePolicy {
-        crate::scenes::ScenePolicy {
+    pub fn scene_policy(&self) -> crate::scene::scenes::ScenePolicy {
+        crate::scene::scenes::ScenePolicy {
             keep_completed: self.keep_completed_changes,
             wait_seconds: self.device_wait_seconds.clamp(1, 120),
             input_guard_seconds: self
                 .tv_input_guard_seconds
-                .min(crate::tv_input_guard::MAX_SECONDS),
+                .min(crate::tv::tv_input_guard::MAX_SECONDS),
         }
     }
     pub fn audio_policy(&self) -> crate::audio::FailurePolicy {

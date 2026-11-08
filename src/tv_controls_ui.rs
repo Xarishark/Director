@@ -2,10 +2,10 @@
 use crate::tv_power_state::{Next, Progress, WakeRetries};
 use crate::{DirectorApp, Message, tv_ui::TvMessage};
 use director::{
-    tv_control::{self, Effect, PowerAction, PowerState, Report, Snapshot},
-    tvs::{self, Tv},
-    windows_audio::OperationLock,
-    windows_tv::WindowsTvControls,
+    audio::windows_audio::OperationLock,
+    tv::tv_control::{self, Effect, PowerAction, PowerState, Report, Snapshot},
+    tv::tvs::{self, Tv},
+    tv::windows_tv::WindowsTvControls,
 };
 use windows_reactor::*;
 #[derive(Clone)]
@@ -15,7 +15,7 @@ pub(crate) enum ControlMessage {
     Refresh,
     Loaded(u64, u64, Result<Snapshot, String>),
     Poll(u64, u64),
-    Watch(u64, Option<director::windows_lg::PowerUpdate>),
+    Watch(u64, Option<director::tv::windows_lg::PowerUpdate>),
     Details(bool),
     Input(Option<usize>),
     Power(PowerAction),
@@ -35,7 +35,7 @@ pub(crate) struct Controls {
     show_details: bool,
     progress: Progress,
     retries: WakeRetries,
-    watch: Option<director::windows_lg::PowerWatch>,
+    watch: Option<director::tv::windows_lg::PowerWatch>,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     wake_cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ignore_before: std::time::Instant,
@@ -50,8 +50,8 @@ impl Drop for Controls {
     }
 }
 impl Controls {
-    fn live_update(&mut self, update: director::windows_lg::PowerUpdate) -> bool {
-        use director::windows_lg::PowerEvent;
+    fn live_update(&mut self, update: director::tv::windows_lg::PowerUpdate) -> bool {
+        use director::tv::windows_lg::PowerEvent;
         if update.at < self.ignore_before {
             return false;
         }
@@ -196,7 +196,7 @@ impl DirectorApp {
         let Some(tv) = self.tv.tvs.iter().find(|t| t.id == state.tv_id).cloned() else {
             return;
         };
-        let watch = director::windows_tv::watch_power(tv);
+        let watch = director::tv::windows_tv::watch_power(tv);
         state.cancel = watch.cancel.clone();
         state.watch = Some(watch);
         self.queue_power_watch(cx);
@@ -270,7 +270,7 @@ impl DirectorApp {
                         if wake_deadline.is_some_and(|d| std::time::Instant::now() >= d) {
                             return Err("The wake readiness deadline expired.".into());
                         }
-                        use director::tv_control::Backend;
+                        use director::tv::tv_control::Backend;
                         director::diagnostics::measure(
                             "tv.wake.retry",
                             "bounded retransmission",
@@ -393,11 +393,11 @@ impl DirectorApp {
                         state.snapshot = Some(Snapshot {
                             power: PowerState::On,
                             inputs: vec![
-                                director::lg_protocol::Input {
+                                director::tv::lg_protocol::Input {
                                     id: "HDMI_1".into(),
                                     label: "PC".into(),
                                 },
-                                director::lg_protocol::Input {
+                                director::tv::lg_protocol::Input {
                                     id: "HDMI_2".into(),
                                     label: "Console".into(),
                                 },
@@ -825,7 +825,7 @@ impl DirectorApp {
                     } else {
                         View::empty()
                     },
-                    if tv.brand != director::tvs::Brand::Lg && tv.control_inputs().is_empty() {
+                    if tv.brand != director::tv::tvs::Brand::Lg && tv.control_inputs().is_empty() {
                         View::empty()
                     } else {
                         StackPanel::new().spacing(8.0).children((
@@ -849,7 +849,7 @@ impl DirectorApp {
                                         .into()
                                 } else {
                                     StackPanel::new().spacing(8.0).children((
-                                        if tv.brand == director::tvs::Brand::Lg {
+                                        if tv.brand == director::tv::tvs::Brand::Lg {
                                             TextBlock::new()
                                                 .automation_name(format!(
                                                     "Current TV input: {current}"
@@ -959,7 +959,7 @@ pub(crate) static CONTROL_PREVIEW: std::sync::atomic::AtomicBool =
 #[cfg(test)]
 impl DirectorApp {
     fn start_live_preview(&mut self, cx: &ComponentContext<Self>) {
-        use director::windows_lg::{PowerEvent, PowerUpdate, PowerWatch};
+        use director::tv::windows_lg::{PowerEvent, PowerUpdate, PowerWatch};
         use std::sync::{Arc, Mutex, atomic::Ordering, mpsc};
         let Some(state) = &mut self.tv.controls else {
             return;
@@ -1015,7 +1015,7 @@ impl DirectorApp {
             credential: Some(vec![1]),
             inputs: vec![],
             pc_input: None,
-            network: director::tv_network::NetworkAddresses {
+            network: director::tv::tv_network::NetworkAddresses {
                 wired: Some("00:11:22:33:44:55".parse().unwrap()),
                 ..Default::default()
             },
@@ -1071,7 +1071,7 @@ mod read_tests {
     }
     #[test]
     fn live_events_update_remote_changes_without_turning_disconnect_into_off() {
-        use director::windows_lg::{PowerEvent, PowerUpdate};
+        use director::tv::windows_lg::{PowerEvent, PowerUpdate};
         use std::time::Duration;
         let mut s = state();
         let at = s.ignore_before + Duration::from_secs(1);
@@ -1107,7 +1107,7 @@ mod read_tests {
     }
     #[test]
     fn old_events_cannot_replace_actions_and_closing_cancels_wake_and_listener() {
-        use director::windows_lg::{PowerEvent, PowerUpdate};
+        use director::tv::windows_lg::{PowerEvent, PowerUpdate};
         let mut s = state();
         let old = s.ignore_before;
         s.ignore_before += std::time::Duration::from_secs(1);
@@ -1153,7 +1153,7 @@ fn preview_snapshot(waking: bool) -> Snapshot {
     if LIVE_PREVIEW.load(std::sync::atomic::Ordering::Acquire) {
         return Snapshot {
             power: PowerState::On,
-            inputs: vec![director::lg_protocol::Input {
+            inputs: vec![director::tv::lg_protocol::Input {
                 id: "HDMI_1".into(),
                 label: "PC".into(),
             }],
@@ -1171,11 +1171,11 @@ fn preview_snapshot(waking: bool) -> Snapshot {
             return Snapshot {
                 power: PowerState::On,
                 inputs: vec![
-                    director::lg_protocol::Input {
+                    director::tv::lg_protocol::Input {
                         id: "HDMI_1".into(),
                         label: "PC".into(),
                     },
-                    director::lg_protocol::Input {
+                    director::tv::lg_protocol::Input {
                         id: "HDMI_2".into(),
                         label: "Console".into(),
                     },

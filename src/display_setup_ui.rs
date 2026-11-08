@@ -1,9 +1,9 @@
 //! Inline discovery progress. Native work and recovery stay on workers.
 use crate::{DirectorApp, Message, display_ui::DisplayMessage};
 use director::{
-    display_detection::{self, Report, Stage},
-    windows_audio::OperationLock,
-    windows_display_apply::Snapshot,
+    audio::windows_audio::OperationLock,
+    display::display_detection::{self, Report, Stage},
+    display::windows_display_apply::Snapshot,
 };
 use std::sync::{
     Arc,
@@ -21,7 +21,7 @@ pub(crate) struct SetupState {
     pub cancel: Option<Arc<AtomicBool>>,
     pub note: String,
     pub details: String,
-    pub recovery: Option<(director::displays::Layout, Snapshot)>,
+    pub recovery: Option<(director::display::displays::Layout, Snapshot)>,
 }
 #[derive(Clone)]
 pub(crate) enum SetupMessage {
@@ -133,15 +133,15 @@ impl DirectorApp {
                         if DETECTION_PREVIEW.load(Ordering::Acquire){return Ok(preview_run(&sender,&cancel,wake));}
                         let _lock=OperationLock::acquire()?;
                         if let Some(tv)=&tv {
-                            let saved=director::tvs::load(&director::tvs::path()?)?;
+                            let saved=director::tv::tvs::load(&director::tv::tvs::path()?)?;
                             if saved.iter().find(|t|t.id==tv.id)!=Some(tv) {return Err("The linked TV changed. Reopen this preset before detecting.".into());}
                         }
-                        let mut backend=director::windows_display_detection::WindowsDetection::new(tv);
+                        let mut backend=director::display::windows_display_detection::WindowsDetection::new(tv);
                         let mut report=display_detection::detect(&mut backend,&path,&cancel,|stage|{
                             director::diagnostics::event("display.detect.stage","progress",stage.label());
                             if sender.send(stage).is_err(){cancel.store(true,Ordering::Release);}
                         });
-                        if let Some(learned)=&report.learned && let Err(e)=director::display_capabilities::path().and_then(|p|director::display_capabilities::remember(&p,learned)){
+                        if let Some(learned)=&report.learned && let Err(e)=director::display::display_capabilities::path().and_then(|p|director::display::display_capabilities::remember(&p,learned)){
                             report.details.push(format!("Options are available in this window but could not be remembered: {e}"));
                         }
                         Ok::<_,String>(report)
@@ -189,7 +189,7 @@ impl DirectorApp {
                     && let (Some(draft), Some(editor)) =
                         (&mut self.display.draft, &mut self.display.editor)
                 {
-                    match director::display_capabilities::apply_to_editor(&mut draft.layout,editor,&learned) {
+                    match director::display::display_capabilities::apply_to_editor(&mut draft.layout,editor,&learned) {
                         Ok(())=>self.display.setup.note="Options detected · original layout restored. Choose your preset settings below.".into(),
                         Err(e)=>self.display.setup.details.push_str(&format!("\n{e}")),
                     }
@@ -214,7 +214,7 @@ impl DirectorApp {
                     move |_| {
                         let report = match OperationLock::acquire() {
                             Ok(_lock) => display_detection::restore(
-                                &mut director::windows_display_detection::WindowsDetection::default(
+                                &mut director::display::windows_display_detection::WindowsDetection::default(
                                 ),
                                 before,
                                 snapshot,
@@ -386,12 +386,12 @@ impl DirectorApp {
 pub(crate) static DETECTION_PREVIEW: AtomicBool = AtomicBool::new(false);
 #[cfg(test)]
 pub(crate) fn preview_editor() -> (
-    director::displays::Layout,
-    Vec<director::display_editor::Options>,
+    director::display::displays::Layout,
+    Vec<director::display::display_editor::Options>,
 ) {
     use director::{
-        display_editor::{Mode, Options},
-        displays::{DesktopMode, Layout, Monitor, RefreshRate},
+        display::display_editor::{Mode, Options},
+        display::displays::{DesktopMode, Layout, Monitor, RefreshRate},
     };
     let rate = RefreshRate {
         numerator: 60,
@@ -458,8 +458,8 @@ pub(crate) fn preview_editor() -> (
     )
 }
 #[cfg(test)]
-pub(crate) fn preview_tv() -> director::tvs::Tv {
-    director::tvs::Tv {
+pub(crate) fn preview_tv() -> director::tv::tvs::Tv {
+    director::tv::tvs::Tv {
         id: "fixture-tv".into(),
         name: "Linked TV (test fixture)".into(),
         address: "192.0.2.80".into(),
@@ -467,18 +467,18 @@ pub(crate) fn preview_tv() -> director::tvs::Tv {
         samsung: Default::default(),
         android: Default::default(),
         connection: Default::default(),
-        display: Some(director::tvs::DisplayLink {
+        display: Some(director::tv::tvs::DisplayLink {
             device_path: "fixture-tv".into(),
             name: "LG C1 (test fixture)".into(),
         }),
         audio: None,
         credential: Some(vec![0]),
         inputs: vec![],
-        pc_input: Some(director::lg_protocol::Input {
+        pc_input: Some(director::tv::lg_protocol::Input {
             id: "HDMI_1".into(),
             label: "PC".into(),
         }),
-        network: director::tv_network::NetworkAddresses {
+        network: director::tv::tv_network::NetworkAddresses {
             wired: Some("00:11:22:33:44:55".parse().unwrap()),
             ..Default::default()
         },
@@ -513,24 +513,24 @@ fn preview_run(
         let _ = sender.send(stage);
         std::thread::sleep(Duration::from_millis(700));
     }
-    let rate = director::displays::RefreshRate {
+    let rate = director::display::displays::RefreshRate {
         numerator: 120,
         denominator: 1,
     };
-    let learned = director::display_detection::Learned {
+    let learned = director::display::display_detection::Learned {
         device_path: "fixture-tv".into(),
         name: "LG C1 (test fixture)".into(),
-        options: director::display_editor::Options {
+        options: director::display::display_editor::Options {
             modes: vec![
-                director::display_editor::Mode {
+                director::display::display_editor::Mode {
                     width: 3840,
                     height: 2160,
                     refresh: rate.clone(),
                 },
-                director::display_editor::Mode {
+                director::display::display_editor::Mode {
                     width: 3840,
                     height: 2160,
-                    refresh: director::displays::RefreshRate {
+                    refresh: director::display::displays::RefreshRate {
                         numerator: 60,
                         denominator: 1,
                     },
@@ -539,7 +539,7 @@ fn preview_run(
             warning: None,
             hdr: Some(false),
         },
-        desktop: director::displays::DesktopMode {
+        desktop: director::display::displays::DesktopMode {
             source_adapter_luid: 1,
             source_id: 1,
             source_name: "fixture".into(),

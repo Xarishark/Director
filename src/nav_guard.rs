@@ -5,7 +5,7 @@
 //! Save, Discard or Keep editing. Links inside an editor that are meant to come back to
 //! the draft (Manage presets, View TV, New … preset) navigate without asking.
 use crate::{DirectorApp, Message, Page, display_ui::DisplayMessage};
-use director::{displays, scenes::Scene, tvs::Tv};
+use director::{display::displays, scene::scenes::Scene, tv::tvs::Tv};
 use windows_reactor::*;
 
 #[derive(Clone)]
@@ -115,8 +115,12 @@ impl DirectorApp {
                 self.scene_ready()
                     && self.scene.draft.as_ref().is_some_and(|d| {
                         !d.name.trim().is_empty()
-                            && director::scenes::resolve(d, &self.scene.displays, &self.scene.tvs)
-                                .is_ok()
+                            && director::scene::scenes::resolve(
+                                d,
+                                &self.scene.displays,
+                                &self.scene.tvs,
+                            )
+                            .is_ok()
                     })
             }
             // Now applies changes rather than saving them.

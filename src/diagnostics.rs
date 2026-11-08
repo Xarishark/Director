@@ -300,7 +300,7 @@ pub struct LastRun {
 }
 
 impl LastRun {
-    pub fn new(name: &str, stage: &str, report: &crate::scenes::Report) -> Self {
+    pub fn new(name: &str, stage: &str, report: &crate::scene::scenes::Report) -> Self {
         Self {
             name: bounded(name),
             completed_at: timestamp_utc(),

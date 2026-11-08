@@ -1,5 +1,5 @@
 //! Ephemeral GUI power transitions, independent of reported device state.
-use director::tv_control::{Effect, PowerAction, PowerState};
+use director::tv::tv_control::{Effect, PowerAction, PowerState};
 use std::time::{Duration, Instant};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Progress {

@@ -2,10 +2,10 @@
 //! pairing keys stay on the PC.
 use crate::{
     audio::AudioBackend as _,
-    displays,
-    scenes::{self, SoundOutput},
-    windows_audio::{OperationLock, WindowsAudio},
-    windows_scenes,
+    audio::windows_audio::{OperationLock, WindowsAudio},
+    display::displays,
+    scene::scenes::{self, SoundOutput},
+    scene::windows_scenes,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -145,7 +145,7 @@ pub fn preview(path: &Path) -> Result<Import, String> {
             issues.push(format!("{}{} · {error}", scene.name, context));
         }
     }
-    if let Ok(live) = crate::windows_displays::capture() {
+    if let Ok(live) = crate::display::windows_displays::capture() {
         for preset in &backup.displays {
             for monitor in preset
                 .layout
@@ -261,7 +261,7 @@ mod tests {
             name: "Desk".into(),
             captured_at_unix_seconds: 0,
             confirm_changes: false,
-            layout: crate::display_apply::tests::layout(0),
+            layout: crate::display::display_apply::tests::layout(0),
         };
         displays::save(&display_path, &[], std::slice::from_ref(&original)).unwrap();
 

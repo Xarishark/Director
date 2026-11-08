@@ -1,8 +1,8 @@
 //! Saved-state previews. Rendering never queries or changes a device.
 use crate::{DirectorApp, Message, display_ui::DisplayMessage};
 use director::{
-    display_mirroring,
-    displays::{Layout, Monitor},
+    display::display_mirroring,
+    display::displays::{Layout, Monitor},
 };
 use windows_reactor::*;
 /// Sized to the content so short cards don't end in empty space.
@@ -409,7 +409,7 @@ impl DirectorApp {
 #[cfg(test)]
 mod tests {
     use super::{off_summary, screen_lines};
-    use director::displays::{DesktopMode, Layout, Monitor, RefreshRate};
+    use director::display::displays::{DesktopMode, Layout, Monitor, RefreshRate};
     fn monitor(name: &str, mode: Option<(i32, u32, u32, u32)>, hdr: Option<bool>) -> Monitor {
         Monitor {
             adapter_luid: 1,

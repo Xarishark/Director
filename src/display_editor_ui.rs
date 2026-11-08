@@ -1,8 +1,8 @@
 //! Native per-monitor draft controls. All changes remain in memory until Save.
 use crate::{DirectorApp, Message, display_ui::DisplayMessage};
 use director::{
-    display_editor::{Change, Editor},
-    displays::{DesktopMode, Layout},
+    display::display_editor::{Change, Editor},
+    display::displays::{DesktopMode, Layout},
 };
 use windows_reactor::*;
 #[derive(Clone, Copy)]
@@ -74,7 +74,7 @@ fn preview(
     };
     let (width, height) = app.map_size();
     let map = drag.map_or_else(
-        || director::display_editor::MapTransform::new(layout, width, height),
+        || director::display::display_editor::MapTransform::new(layout, width, height),
         |d| d.map,
     );
     let selected = match target {
@@ -87,7 +87,7 @@ fn preview(
         .enumerate()
         .filter_map(|(i, m)| {
             let d = m.desktop.as_ref()?;
-            let group = director::display_mirroring::members(layout, i);
+            let group = director::display::display_mirroring::members(layout, i);
             if group.first() != Some(&i) {
                 return None;
             }
@@ -370,8 +370,8 @@ impl DirectorApp {
             EditorTarget::Current => self.current.display.orientation_revision,
         };
         let m = &layout.monitors[i];
-        let options = director::display_mirroring::common_options(editor, layout, i);
-        let group = director::display_mirroring::members(layout, i);
+        let options = director::display::display_mirroring::common_options(editor, layout, i);
+        let group = director::display::display_mirroring::members(layout, i);
         let d = m.desktop.as_ref();
         let primary = d.is_some_and(DesktopMode::primary);
         let detecting = matches!(target, EditorTarget::Preset)

@@ -4,7 +4,7 @@
 //! are muted "+ Add" slots. When leaving runs at a different time, so it sits apart from the
 //! line.
 use crate::{DirectorApp, Message, scene_ui::SceneMessage};
-use director::scenes::{self, Action, ActionList, Scene};
+use director::scene::scenes::{self, Action, ActionList, Scene};
 use windows_reactor::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -554,7 +554,7 @@ impl DirectorApp {
                                     } else {
                                         View::empty()
                                     },
-                                    if tv.brand == director::tvs::Brand::Lg
+                                    if tv.brand == director::tv::tvs::Brand::Lg
                                         || !tv.control_inputs().is_empty()
                                     {
                                         ComboBox::new()

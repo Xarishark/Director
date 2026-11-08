@@ -1,12 +1,13 @@
 //! TV definitions, guided addition, and explicit device actions.
 use crate::{DirectorApp, Message, work};
 use director::{
-    lg_protocol::Input,
-    tv_network,
-    tv_setup::{Setup, Step},
-    tvs::{self, Connection, DisplayLink, Tv},
-    windows_audio::OperationLock,
-    windows_displays, windows_tv,
+    audio::windows_audio::OperationLock,
+    display::windows_displays,
+    tv::lg_protocol::Input,
+    tv::tv_network,
+    tv::tv_setup::{Setup, Step},
+    tv::tvs::{self, Connection, DisplayLink, Tv},
+    tv::windows_tv,
 };
 use windows_reactor::*;
 #[derive(Clone)]
@@ -40,7 +41,7 @@ pub(crate) enum TvMessage {
     AndroidCode(String),
     AndroidStarted(
         Result<
-            std::sync::Arc<std::sync::Mutex<Option<director::windows_android_tv::Pairing>>>,
+            std::sync::Arc<std::sync::Mutex<Option<director::tv::windows_android_tv::Pairing>>>,
             String,
         >,
     ),
@@ -74,7 +75,7 @@ pub(crate) struct TvState {
     pub(crate) test_confirmation: Option<usize>,
     pending_delete: Option<String>,
     pub(crate) android_pairing:
-        Option<std::sync::Arc<std::sync::Mutex<Option<director::windows_android_tv::Pairing>>>>,
+        Option<std::sync::Arc<std::sync::Mutex<Option<director::tv::windows_android_tv::Pairing>>>>,
     pub(crate) android_code: String,
     #[cfg(test)]
     pub(crate) android_fixture_waiting: bool,
@@ -244,9 +245,9 @@ impl DirectorApp {
                             (|| {
                                 let _lock = OperationLock::acquire()?;
                                 if tv.brand == tvs::Brand::TclAndroid {
-                                    director::windows_android_tv::test_hdmi(&tv, port)
+                                    director::tv::windows_android_tv::test_hdmi(&tv, port)
                                 } else {
-                                    director::windows_samsung::test_hdmi(&tv, port)
+                                    director::tv::windows_samsung::test_hdmi(&tv, port)
                                 }
                             })(),
                         ))
@@ -322,13 +323,13 @@ impl DirectorApp {
             TvMessage::ReportNetwork(Some(i)) if !self.busy => {
                 if let Some(tv) = &mut self.tv.draft {
                     tv.compatibility_mut().feedback.network =
-                        director::tv_report::Network::from_index(i);
+                        director::tv::tv_report::Network::from_index(i);
                 }
             }
             TvMessage::ReportAnswer(which, Some(i)) if !self.busy => {
                 if let Some(tv) = &mut self.tv.draft {
                     let f = &mut tv.compatibility_mut().feedback;
-                    let a = director::tv_report::Answer::from_index(i);
+                    let a = director::tv::tv_report::Answer::from_index(i);
                     match which {
                         0 => f.power_status_correct = a,
                         1 => f.turn_off_worked = a,
@@ -343,7 +344,7 @@ impl DirectorApp {
                     self.begin("Saving a redacted TV compatibility report…");
                     work(cx, move || {
                         msg(TvMessage::ReportExported((|| {
-                            let path = director::samsung::export(&tv)?;
+                            let path = director::tv::samsung::export(&tv)?;
                             let folder = path.parent().ok_or("Report folder was unavailable.")?;
                             let opened = crate::options_ui::open_folder(folder);
                             Ok(format!(
@@ -383,7 +384,7 @@ impl DirectorApp {
             TvMessage::Load if !self.busy => {
                 work(cx, || {
                     msg(TvMessage::AudioLinks(
-                        director::windows_audio::WindowsAudio::new()
+                        director::audio::windows_audio::WindowsAudio::new()
                             .and_then(|mut a| a.picker_devices(false)),
                     ))
                 });
@@ -648,7 +649,7 @@ impl DirectorApp {
                             work(cx, move || {
                                 msg(TvMessage::AndroidStarted((|| {
                                     let _lock = OperationLock::acquire()?;
-                                    let p = director::windows_android_tv::Pairing::start(&tv)?;
+                                    let p = director::tv::windows_android_tv::Pairing::start(&tv)?;
                                     Ok(std::sync::Arc::new(std::sync::Mutex::new(Some(p))))
                                 })(
                                 )))
@@ -855,7 +856,7 @@ impl DirectorApp {
                             let _lock = OperationLock::acquire()?;
                             for old in &expected {
                                 if !next.iter().any(|t| t.id == old.id) {
-                                    director::scenes::check_delete("tv", &old.id)?;
+                                    director::scene::scenes::check_delete("tv", &old.id)?;
                                 }
                             }
                             tvs::save(&tvs::path()?, &expected, &next)?;
@@ -1316,7 +1317,7 @@ impl DirectorApp {
             && (tv.brand != tvs::Brand::TclAndroid
                 || !pair
                 || !self.tv.android_waiting()
-                || director::android_tv::code(&self.tv.android_code).is_ok());
+                || director::tv::android_tv::code(&self.tv.android_code).is_ok());
         crate::ui::page(
             crate::ui::header(
                 s.step.title(),

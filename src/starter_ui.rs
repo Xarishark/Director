@@ -1,10 +1,10 @@
 //! The Scenes page's first run: one card that saves how the PC is set up right now as the
-//! everyday scene, and afterwards a tip about making the next one. See `director::starter`.
+//! everyday scene, and afterwards a tip about making the next one. See `director::scene::starter`.
 use crate::{DirectorApp, Message, scene_ui::SceneMessage, work};
 use director::{
     audio::{AudioBackend, Output},
-    displays::Layout,
-    starter,
+    display::displays::Layout,
+    scene::starter,
 };
 use windows_reactor::*;
 
@@ -110,8 +110,8 @@ impl DirectorApp {
             StarterMessage::Probe if !self.scene.starter.probing => {
                 self.scene.starter.probing = true;
                 work(cx, || {
-                    let layout = director::windows_displays::capture();
-                    let output = director::windows_audio::WindowsAudio::new()
+                    let layout = director::display::windows_displays::capture();
+                    let output = director::audio::windows_audio::WindowsAudio::new()
                         .and_then(|mut a| a.outputs())
                         .map(|list| starter::default_output(&list).cloned());
                     msg(StarterMessage::Probed(layout, output))
@@ -134,7 +134,7 @@ impl DirectorApp {
                 self.begin("Saving your scene…");
                 work(cx, move || {
                     msg(StarterMessage::Saved(
-                        director::starter::save(&choice).map(|scene| scene.name),
+                        director::scene::starter::save(&choice).map(|scene| scene.name),
                     ))
                 });
             }

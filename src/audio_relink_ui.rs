@@ -1,8 +1,9 @@
 use crate::{DirectorApp, Message, work};
 use director::{
     audio::Output,
-    scenes, tvs,
-    windows_audio::{OperationLock, WindowsAudio},
+    audio::windows_audio::{OperationLock, WindowsAudio},
+    scene::scenes,
+    tv::tvs,
 };
 use windows_reactor::*;
 

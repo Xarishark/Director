@@ -1,9 +1,9 @@
 //! Optional TV guidance, without changing a display or contacting a TV.
 use crate::{DirectorApp, Message, Page, tv_ui::TvMessage, work};
 use director::{
+    audio::windows_audio::OperationLock,
     preferences::{self, Preferences},
-    tvs::{self, Tv},
-    windows_audio::OperationLock,
+    tv::tvs::{self, Tv},
 };
 use windows_reactor::*;
 #[derive(Default)]
@@ -89,7 +89,7 @@ impl DirectorApp {
                     TipMessage::InputGuard(Some(seconds)) => {
                         next.tv_input_guard_seconds = seconds
                             .round()
-                            .clamp(0.0, f64::from(director::tv_input_guard::MAX_SECONDS))
+                            .clamp(0.0, f64::from(director::tv::tv_input_guard::MAX_SECONDS))
                             as u16
                     }
                     _ => {}

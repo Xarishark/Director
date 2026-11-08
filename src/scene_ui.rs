@@ -1,9 +1,9 @@
 //! Native scene cards and editor; device work stays on the shared worker runner.
 use crate::{DirectorApp, Message, work};
 use director::{
+    audio::windows_audio::OperationLock,
     audio::{DeviceSelection, Output},
-    scenes::{self, Action, ActionList, Scene, Sound, SoundOutput, TvPreparation},
-    windows_audio::OperationLock,
+    scene::scenes::{self, Action, ActionList, Scene, Sound, SoundOutput, TvPreparation},
 };
 use std::sync::{
     Arc, Mutex,
@@ -14,8 +14,8 @@ use windows_reactor::*;
 /// Scenes, display presets, TVs, and the audio outputs and inputs the Sound step can pick.
 type Catalog = (
     Vec<Scene>,
-    Vec<director::displays::Preset>,
-    Vec<director::tvs::Tv>,
+    Vec<director::display::displays::Preset>,
+    Vec<director::tv::tvs::Tv>,
     Vec<Output>,
     Vec<Output>,
 );
@@ -135,15 +135,15 @@ pub(crate) enum Event {
 #[derive(Default)]
 pub(crate) struct SceneState {
     pub(crate) scenes: Vec<Scene>,
-    pub(crate) displays: Vec<director::displays::Preset>,
-    pub(crate) tvs: Vec<director::tvs::Tv>,
+    pub(crate) displays: Vec<director::display::displays::Preset>,
+    pub(crate) tvs: Vec<director::tv::tvs::Tv>,
     pub(crate) draft: Option<Scene>,
     pub(crate) ready: bool,
     delete: Option<String>,
     token: u64,
     cancel: Option<Arc<AtomicBool>>,
     events: Option<Arc<Mutex<mpsc::Receiver<Event>>>>,
-    confirm: Option<mpsc::Sender<director::display_apply::Decision>>,
+    confirm: Option<mpsc::Sender<director::display::display_apply::Decision>>,
     remaining: Option<u64>,
     /// The step whose editor dialog is open.
     pub(crate) open: Option<crate::scene_editor_ui::Step>,
@@ -297,7 +297,7 @@ impl DirectorApp {
         work(cx, move || {
             msg(SceneMessage::Saved((|| {
                 let _lock = OperationLock::acquire()?;
-                let (_, displays, tvs) = director::windows_scenes::catalog()?;
+                let (_, displays, tvs) = director::scene::windows_scenes::catalog()?;
                 for scene in &next {
                     if !expected.iter().any(|old| old == scene) {
                         scenes::resolve(scene, &displays, &tvs)?;
@@ -346,16 +346,18 @@ impl DirectorApp {
                 self.begin("Reading scenes and presets…");
                 work(cx, || {
                     msg(SceneMessage::Loaded(Box::new(
-                        director::windows_scenes::catalog().map(|(scenes, displays, tvs)| {
-                            // Device lists only feed the Sound step's pickers; a failure
-                            // leaves them empty rather than blocking Scenes.
-                            let devices = |input| {
-                                director::windows_audio::WindowsAudio::new()
-                                    .and_then(|mut a| a.picker_devices(input))
-                                    .unwrap_or_default()
-                            };
-                            (scenes, displays, tvs, devices(false), devices(true))
-                        }),
+                        director::scene::windows_scenes::catalog().map(
+                            |(scenes, displays, tvs)| {
+                                // Device lists only feed the Sound step's pickers; a failure
+                                // leaves them empty rather than blocking Scenes.
+                                let devices = |input| {
+                                    director::audio::windows_audio::WindowsAudio::new()
+                                        .and_then(|mut a| a.picker_devices(input))
+                                        .unwrap_or_default()
+                                };
+                                (scenes, displays, tvs, devices(false), devices(true))
+                            },
+                        ),
                     )))
                 });
             }
@@ -369,7 +371,7 @@ impl DirectorApp {
                         self.outputs = outputs;
                         self.inputs = inputs;
                         self.scene.ready = true;
-                        self.scene.active = director::scene_session::active();
+                        self.scene.active = director::scene::scene_session::active();
                         self.status = "Ready.".into();
                         self.library_select_in_scene(cx);
                         self.library_resume(cx);
@@ -720,9 +722,9 @@ impl DirectorApp {
                         let _lock = OperationLock::acquire()?;
                         let confirmation_tx = tx.clone();
                         let confirm_cancel = cancel.clone();
-                        let mut backend = director::windows_scenes::WindowsScene::new(
-                            move |_: &director::displays::Preset| {
-                                director::display_apply::wait_for_confirmation(
+                        let mut backend = director::scene::windows_scenes::WindowsScene::new(
+                            move |_: &director::display::displays::Preset| {
+                                director::display::display_apply::wait_for_confirmation(
                                     &cr,
                                     std::time::Duration::from_secs(15),
                                     |seconds| {
@@ -737,9 +739,10 @@ impl DirectorApp {
                         };
                         match requested {
                             Some(id) => {
-                                let plan =
-                                    director::windows_scenes::load_run_plan(&id, &name, false)?;
-                                Ok(director::windows_scenes::run(
+                                let plan = director::scene::windows_scenes::load_run_plan(
+                                    &id, &name, false,
+                                )?;
+                                Ok(director::scene::windows_scenes::run(
                                     &mut backend,
                                     &plan,
                                     &cancel,
@@ -747,7 +750,7 @@ impl DirectorApp {
                                     progress,
                                 ))
                             }
-                            None => Ok(director::windows_scenes::end(
+                            None => Ok(director::scene::windows_scenes::end(
                                 &mut backend,
                                 &cancel,
                                 false,
@@ -785,9 +788,9 @@ impl DirectorApp {
             SceneMessage::Confirm(result) => {
                 if let Some(tx) = &self.scene.confirm {
                     let _ = tx.send(if result == ContentDialogResult::Primary {
-                        director::display_apply::Decision::Keep
+                        director::display::display_apply::Decision::Keep
                     } else {
-                        director::display_apply::Decision::Revert
+                        director::display::display_apply::Decision::Revert
                     });
                 }
                 self.scene.remaining = None;
@@ -798,7 +801,7 @@ impl DirectorApp {
                 self.scene.cancel = None;
                 self.scene.confirm = None;
                 self.scene.remaining = None;
-                self.scene.active = director::scene_session::active();
+                self.scene.active = director::scene::scene_session::active();
                 match result {
                     Ok(r) => {
                         self.error = !r.success;

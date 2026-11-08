@@ -123,7 +123,7 @@ impl DirectorApp {
                 work(cx, move || {
                     msg(FpsMessage::Discovered(
                         revision,
-                        director::windows_fps::survey(),
+                        director::fps::windows_fps::survey(),
                     ))
                 });
             }
@@ -232,15 +232,18 @@ impl DirectorApp {
                     self.begin("Applying FPS limit…");
                     work(cx, move || {
                         let result = (|| {
-                            let _lock = director::windows_audio::OperationLock::acquire()?;
+                            let _lock = director::audio::windows_audio::OperationLock::acquire()?;
                             let refresh = if request.vrr_safe {
-                                director::windows_displays::capture()?.primary_refresh_hz()
+                                director::display::windows_displays::capture()?.primary_refresh_hz()
                             } else {
                                 None
                             };
-                            director::windows_fps::apply(&request.resolved(refresh)?, false)
+                            director::fps::windows_fps::apply(&request.resolved(refresh)?, false)
                         })();
-                        msg(FpsMessage::Applied(result, director::windows_fps::survey()))
+                        msg(FpsMessage::Applied(
+                            result,
+                            director::fps::windows_fps::survey(),
+                        ))
                     });
                 }
             }
