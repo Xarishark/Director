@@ -6,6 +6,8 @@ rust-version = "1.95"
 publish = false
 description = "Switch displays, audio, and TVs with reusable scenes on Windows."
 authors = ["Xarishark • Zacharias Xenakis"]
+license = "MIT"
+repository = "https://github.com/Xarishark/Director"
 
 [dependencies]
 windows-reactor = "=0.100.0"
