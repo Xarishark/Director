@@ -14,6 +14,10 @@ pub(crate) fn output(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir.join(name)
 }
+/// The demo screens and their modes, for the Now page in the preview.
+pub(crate) fn now_displays() -> (Layout, Vec<Options>) {
+    (layout(), options())
+}
 fn layout() -> Layout {
     let mut monitors = vec![];
     for (i, name) in ["Desk monitor", "Portrait monitor", "Living room TV"]
