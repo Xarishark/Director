@@ -51,7 +51,7 @@ The arrangement map follows Windows Settings › Display: centred, up to 1000 DI
 
 Every display has a card: its name with Primary or Make primary and the On switch, then Resolution beside Refresh rate, Desktop mode (extend or mirror) beside Orientation, and HDR when the display supports it. Mirrored outputs share one map tile. The primary display's On switch is greyed out, with the reason on a hover layer above it. Orientation choices show a monitor SVG rotated to that orientation (the stand marks which way is down) beside Landscape, Portrait, Landscape flipped or Portrait flipped.
 
-Each card offers **Detect options** when Windows hasn't exposed a display's modes yet. The card explains the temporary change first, then shows progress, the current phase and Cancel inline, with no popup. Failures stay in the card and offer Restore previous layout when needed. See [Display setup](DISPLAY_SETUP.md).
+Each card offers **Detect options** when Windows hasn't exposed a display's modes yet. The card explains the temporary change first, then shows progress, the current phase and Cancel inline, with no popup. Failures stay in the card and offer Restore previous layout when needed. See [Display setup](DISPLAYS.md#screens-that-are-off-or-not-detected-yet).
 
 Display preset cards show a miniature of the saved layout with grouped mirror numbers and a legend (resolution, refresh rate, HDR); disabled screens are listed as Display off. Selecting a card never applies it.
 

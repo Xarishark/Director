@@ -49,7 +49,7 @@ A scene's **Prepare TV** step can wake the TV and switch it to the saved PC inpu
 
 **TV input protection.** Streaming boxes and consoles on HDMI-CEC often grab the TV's input while it wakes. For TVs that report their current input (LG), Director keeps switching back to the scene's input for the first seconds after it reports it (Options, default 10 seconds, 0 turns it off) while the rest of the scene carries on. Any other TV command from the app or the CLI, a new scene or a restore stops the guard first.
 
-**Display detection.** A linked, paired TV with a saved PC input offers **Wake and detect** in its monitor card, so Director can wake it, select the input and read its display modes. See [Display setup](DISPLAY_SETUP.md).
+**Display detection.** A linked, paired TV with a saved PC input offers **Wake and detect** in its monitor card, so Director can wake it, select the input and read its display modes. See [Display setup](DISPLAYS.md#screens-that-are-off-or-not-detected-yet).
 
 ## Command line
 

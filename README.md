@@ -80,7 +80,7 @@ director audio mute toggle
 
 ## Guides
 
-- [Display setup and detection](docs/DISPLAY_SETUP.md) · [Audio devices and relinking](docs/AUDIO.md) · [Scenes](docs/SCENES.md)
+- [Displays](docs/DISPLAYS.md) · [Sound](docs/SOUND.md) · [Scenes](docs/SCENES.md)
 - [TV setup and pairing](docs/TVS.md) · [Samsung test guide](docs/SAMSUNG.md) · [TCL test guide](docs/ANDROID_TV.md)
 - [FPS limits](docs/FPS.md) · [Diagnostics](docs/DIAGNOSTICS.md) · [Build, test, and CLI reference](docs/DEVELOPMENT.md)
 

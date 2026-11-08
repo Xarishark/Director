@@ -1,88 +1,69 @@
 # Scenes
 
-Scenes are saved in the Windows Local AppData Director folder as versioned scenes.json. They reference display presets and remembered TVs by ID, and hold their sound settings inline (the Sound step); display layouts and pairing credentials are not copied into scenes. Unique names are case insensitive. Stale writers and malformed/future-version files are rejected without overwriting them. Removal of a referenced preset or TV is blocked with the scene names; edit those scenes first. Missing references from external file edits remain visible and must be relinked explicitly.
+A scene is everything you want to switch together: a display layout, sound, a TV, an FPS limit, and apps or links to open. Applying it changes everything in one go, checks that each change took effect, and puts things back if a step fails.
 
-## Native editor
+## Your first scene
 
-Scenes uses the existing + button and rectangular preview-card vocabulary, with Apply/Edit/Delete in the same position as presets. The editor has optional TV preparation, Displays, Audio, and ordered After setup sections. Wide windows show an execution summary beside the form; narrow windows stack it. Manage preset buttons preserve the scene draft across navigation and reload available presets on return. Save only saves. Sound-only, display-only and action-only scenes are supported.
+With no scenes yet, the Scenes page shows **Start with your everyday setup**. It reads your current screens, default output and volume, and global FPS limit; untick anything you don't want, name it (Default unless you change it) and choose **Save everyday scene**. Saving doesn't change anything on your PC. If one of your saved display presets has the same layout, the scene uses it; otherwise Director saves the layout as a new preset too. **Build a scene from scratch instead** opens an empty editor.
 
-TV preparation selects one saved TV, wake-if-needed and optionally a reported input (initially its saved PC input). The Sound step can use a TV's linked output ("TV's sound"); it does not implicitly wake or switch the TV: TV preparation is a separate explicit choice. See the Sound step section below.
+## Steps
 
-App actions use the native executable/folder pickers, separate arguments (one per line, spaces preserved) and an optional working directory. URI actions dispatch through the Windows registered handler. Add, edit, reorder and remove final actions. No scripts or shell command parsing are involved. Dispatch is reported honestly; app readiness, process exit and URI completion are not tracked. Disabled per-action drafts and per-action icons remain follow-up polish.
+The editor shows a scene's steps as cards in the order they run. Choose a card (or its pencil) to edit that step in a dialog: **Done** keeps the changes and **Cancel** puts the step back as it was. The bin clears a step. Empty steps show an **Add** button.
 
-## Shared execution
+| Step | What it does |
+| --- | --- |
+| **Before** | Runs apps or opens links first. An app can wait until it finishes; the scene stops if it fails or runs longer than the device wait in Options. |
+| **Prepare TV** | Wakes a saved TV if needed and switches it to an input, usually your PC's. Optionally turns the TV off when you leave the scene. See [TVs](TVS.md). |
+| **Displays** | Applies a saved display preset. See [Displays](DISPLAYS.md). |
+| **Sound** | Sets the output, volume, mute, a separate calls device and a microphone. See [Sound](SOUND.md). |
+| **FPS limit** | Sets or removes the global NVIDIA or RTSS frame rate limit. See [FPS](FPS.md). |
+| **After** | Runs apps or opens links once everything else has succeeded. |
+| **When leaving** | Runs when you switch to another scene or end this one, for example `steam://close/bigpicture`. |
+| **Return** | Optional: the scene to go back to when you end this one. |
 
-GUI and CLI resolve fresh catalogs under the existing cross-process operation lock. They use the same runner. All scene I/O runs away from the UI thread. Progress and final results use structured rotating logs; raw TV credentials are excluded. The runner validates references and app paths before any device changes, then snapshots the actual relevant Windows state, not a previous preset.
+Every step is optional, so a scene can be sound only, displays only, or just a set of apps. Actions are **Run app**, **Open link** and **Close app**. Close app asks every running copy of the program to close, waits up to 10 seconds, and ends it only if you turned that on; a program that isn't running counts as closed. App arguments go one per line, and nothing passes through a shell.
 
-Order is fixed: TV readiness/input → Displays → Sound readiness/apply → final apps/URIs. Omitted stages are skipped. TV and audio readiness waits are individually bounded by the scene timeout (default 30 seconds, 1–120 allowed); individual transport calls still have their own existing timeout and cancellation is checked between them. Wake dispatch is capped at five attempts, spaced at least five seconds apart, and only occurs when an awake state has not been reported. Input selection must be read back before display application continues; while waiting, the input is requested again (at most every 1.5 seconds) if the TV reports another one. Once it is read back, TV input protection (Options, default 10 seconds, 0–60, 0 off) keeps the TV on that input on a background thread while the scene continues: it polls every 0.5 seconds and switches back when a TV box or console has taken the input over (another input or an app in front). Only TVs that report their current input (LG) get it. Any other TV power or input request, a new scene and a scene that stops and restores end the guard first, from any Director process: the guard keeps its token in `tv-input-guard.txt` in the settings folder, every TV power or input request deletes that file, and a guard whose token is gone stops at its next poll. A CLI run waits for its guard before exiting. No display detection probe runs automatically: a scene uses a previously configured/verified display preset.
+The last entry in the display preset and TV lists (**New display preset…**, **Add TV…**) opens that editor and brings you back to the scene with the new item selected.
 
-After displays, enumerate fresh audio devices until every selected output/communications output/input is active and resolves exactly by endpoint ID. A timeout never substitutes another device. Apply the shared audio request, including optional microphone and volume semantics. Display presets retain their saved Keep/Revert preference; the GUI uses a native 15-second dialog and CLI accepts an explicit override.
+## Applying a scene
 
-On failure/cancel, stop subsequent stages and final actions. Default recovery restores requested device levels while newly enabled endpoints are still available, then restores the Windows display snapshot and original render/capture role IDs. It verifies restoration and reports incomplete recovery if needed. TV preparation is included in Windows snapshots because waking a TV can itself change Windows topology/defaults; an unchanged display snapshot needs no restoration write. Audio role snapshots precede TV/display preparation; a newly appearing device’s volume can only be captured once it becomes available, immediately before its audio writes. Input roles are never read or written unless the Sound step picks a microphone. A display-only scene also snapshots render defaults for failed-display recovery. Display application retains its own safety recovery even when the scene keeps earlier completed stages. TV power/input and dispatched app/URI effects are explicitly not rolled back. No screen blanking is implemented or planned.
+Choose **Apply** on a scene card, or run `director scene apply <scene>`. Steps run in a fixed order: **Before → Prepare TV → Displays → Sound → FPS limit → After.**
 
-## Headless commands
+- Before anything changes, Director checks the scene's references and app paths and records the current Windows settings it might change.
+- The TV step waits until the TV reports it's awake and on the right input. With [TV input protection](TVS.md#tvs-in-scenes) on, Director keeps it there for the first seconds while the rest of the scene carries on.
+- After the displays change, the Sound step waits for the chosen devices to appear (a TV's HDMI audio often appears only now), up to the device wait in Options. It never picks a different device instead.
+- A display preset that asks to keep changes shows the Keep/Revert prompt as usual.
 
-- director scene list
-- director scene check tv-gaming
-- director scene apply tv-gaming [--yes | --confirm]
+**If a step fails** or you cancel, the remaining steps and the After actions don't run, and Director restores the displays, default devices, volumes, mute and FPS limit it changed, then checks the restore worked. To keep the steps that already finished instead, turn on **Keep changes that finished if a later step fails** in Options. TV commands and apps you launched can't be undone, so they're never part of the restore.
 
-CLI names (the scene name in lowercase with dashes, as `director scene list` shows) or IDs are accepted; a quoted name such as "TV gaming" still works. Check validates saved references and executable paths only, without device mutation or live readiness claims. Apply does not start the GUI or require Director to remain resident. --yes skips display confirmation; --confirm requires it. Exit code is zero only on complete success.
+## The active scene, End and Return
 
-## Validation and remaining work
+The scene you applied last stays active until you apply another or restart the PC, in the window and the CLI alike. Its card shows a dot before the name.
 
-Model/runner tests cover stable reference resolution, direct TV audio, stage order, early failure gating, cancellation, both recovery policies, stale/corrupt storage and legacy TV compatibility. Native fixture tests cover creation/editing/deletion, action reordering, draft navigation and remembered links at wide/narrow sizes without real settings writes, audio/display mutations, TV commands or launches. Physical end-to-end HDMI arrival and restoration still need a hardware run. See [Audio](AUDIO.md) for the shared remembered-device inventory and relinking. Automatic TV-to-audio correlation, notifications, app-exit tracking and import/export are outside this slice.
+- **Applying a different scene** first runs the active scene's **When leaving** steps, then turns its TV off if the scene says so. A leave step that fails is reported as a warning and never blocks the next scene.
+- **End <scene name>**, next to the **+** button, appears when the active scene has something to do on exit. It runs the leave steps and then applies the **Return** scene, if one is set. `director scene end` does the same.
+- **Running the active scene again** also ends it and goes to its Return scene, when it has one.
 
-## FPS stage
+Before running any leave steps, Director checks that the Return scene still exists and is valid; if not, it keeps the current scene active and runs nothing. End doesn't restore any settings by itself; use a Return scene such as your Default for that.
 
-A scene may optionally set a global NVIDIA/RTSS FPS limit. Order is TV → displays → sound → FPS → final launches. Unsupported providers fail preflight before device changes; default failure/cancel recovery includes the selected FPS configuration. FPS-only scenes are supported. Off means unchanged; Disable global limit is an explicit operation. See FPS.md.
+## Shortcuts and the command line
 
-## Before, After and When leaving — version 2
+The **>\_** button after a scene's name shows the commands for it, each with **Copy**: by CLI name (`director scene apply tv-gaming`, easy to read) and by ID (keeps working after a rename). Paste either into a Stream Deck action, a shortcut or a script. Setup adds `director` to PATH.
 
-Scenes are stored as `version: 2`. Version 1 files still load; their per-scene `keep_on_failure` and `wait_seconds` are read and dropped, and are no longer written. Older Director builds refuse a version 2 file instead of rewriting it.
+```text
+director scene list
+director scene check tv-gaming
+director scene apply tv-gaming [--yes | --confirm]
+director scene end
+```
 
-Each scene has three action lists. **Before** runs first, after the settings snapshot and before any device change. **After** (the old final actions) runs once every device step has succeeded. **When leaving** runs when a different scene is applied, from the window or the CLI, or when the active scene is ended. Order is Before → TV → Displays → Sound → FPS → After.
+- A scene's CLI name is its name in lowercase with dashes ("TV Gaming" is `tv-gaming`). Two scenes can't share one.
+- `check` validates references and app paths without changing anything.
+- `apply` runs without opening the window. `--yes` keeps verified display changes without asking; `--confirm` asks in the terminal.
+- The exit code is 0 only when the whole scene succeeded. With **Notify when CLI scenes fail** on in Options, a failed run shows a Windows notification that opens its result in Director.
 
-Actions are Run app, Open link (URI) and Close app. An app can **wait until it finishes**: it then fails the step on a non-zero exit code or when it runs longer than the device wait from Options, and the process is left running on timeout. New Before apps wait by default; After and leave apps don't. Close app asks every running copy of a program (by `name.exe` or full path) to close through its windows, waits up to 10 seconds, and ends it only when "End it if it doesn't close" is on. A program that isn't running counts as closed. Steam Big Picture is best closed with the link `steam://close/bigpicture`.
+## How it works
 
-The active scene is stored in `active-scene.json` with the time Windows started, so it survives closing Director and is shared with the CLI, but is forgotten after a restart. A successful apply records the scene; a failed apply clears it. Leave actions never block the next scene: each failure is reported as a warning and the remaining actions still run. End runs the leave actions and forgets the active scene; it doesn't restore any settings. `director scene list` marks the active scene and `director scene end` ends it.
+Scenes are stored in `scenes.json` in `%LOCALAPPDATA%\Director`. A scene refers to display presets and TVs by ID, so editing a preset changes every scene that uses it; sound settings live in the scene itself. Deleting a preset or TV that a scene still uses is refused and names those scenes. The active scene is kept in `active-scene.json` together with the time Windows started.
 
-## Sound step — version 3
-
-Scenes are stored as `version: 3`. The Sound step (`sound`) replaces the audio preset reference (`audio`) and the linked TV audio fields (`tv_audio`, `tv_audio_volume`). It holds:
-
-- `output`: a device (`{"kind":"device","id","name"}`) or a TV's sound (`{"kind":"tv","id"}`, the output linked to that TV); absent leaves the default output as is.
-- `volume` (0–100) and `mute` (true or false); absent leaves them as they are. With no output, they apply to whichever output is the default when the scene runs.
-- `calls`: an optional separate Communications output.
-- `mic`: an optional microphone with its own `volume` and `mute`; it takes all three input roles.
-
-Version 1 and 2 files still load. A scene that referred to an audio preset gets that preset's output, volume, calls device and microphone, read once from `audio-presets.json`; a scene that used a TV's linked audio gets `output: tv` with its volume. A preset that can't be found leaves an empty Sound step, which the scene card reports so the scene can be edited. The next save writes version 3 and Director no longer reads or writes `audio-presets.json` otherwise.
-
-The runner snapshots volume and mute for every endpoint the step changes (a device that appears late is snapshotted just before its writes) and restores them, with the default roles, on failure. A scene card shows the scene's main change at the top: its display layout, else a sound panel (output, volume bar or Muted, calls and mic), else its TV, FPS limit or actions.
-
-## Turning the TV off when leaving
-
-The Prepare TV step has **Turn off the TV when you leave this scene** (`off_when_leaving` on the scene's TV preparation). When it's on, a locked "Turn off C1" card sits under When leaving; its pencil opens Prepare TV and its bin turns the setting off. Removing the TV step clears it, and choosing another TV keeps it. Leaving runs the leave actions first and then turns the TV off through the same path as `director tv off`. A TV that doesn't answer is reported as a warning and never blocks the next scene.
-
-**End** appears next to the Scenes page's **+** only while the active scene has leave actions or turns its TV off; its tooltip lists what will run. The active card shows a green dot before its name (tooltip "Active", or where Return goes); every scene card reserves that slot, so names never shift. A scene with Return lists "Return: <scene>" last in its card summary.
-
-## Return
-
-Return is an optional final step. In its dialog, turn the switch on and choose another saved scene. End and running the active scene again check the destination before running any leave steps, then apply it once. Selecting a different scene always goes there after the usual leave steps. End is also available when Return is the only exit action.
-
-If the destination was removed or its settings fail validation, Director keeps the current scene active and runs nothing. Scene file version 4 stores the optional destination by ID, so renaming it works. Older scenes load with Return off.
-
-## Commands for shortcuts
-
-The **>\_** button next to a scene's or preset's name opens "Run … from a shortcut" with two commands, each with a Copy button: by CLI name (`director scene apply console`, readable, but copy it again after a rename) and by ID (keeps working after a rename). A scene with leave work also shows `director scene end`. Display presets accept their ID in `director display apply`, as scenes do. The by-name command uses the CLI name, unquoted (`director scene apply console`). Setup puts `director` on PATH, so the commands don't include a full path.
-
-## First scene
-
-An empty Scenes page offers to save the current setup as the everyday scene (named "Default" unless changed). It reads the layout with the display capture, the console default output (else any active one) with its volume, and the global FPS limit from the FPS survey: a provider with a limit wins, RTSS wins when both have one, and a zero value saves "no global limit". Each part can be unticked; a part that couldn't be read is disabled. Saving holds the operation lock, reuses a display preset with an identical layout, otherwise adds "Default screens" (made unique), and puts the output and volume in the scene's Sound step. The display preset is saved before the scene, so a scene never points at a preset that wasn't saved. No device changes. The logic is `director::starter`.
-
-## Global failure policy
-
-"Keep changes that finished if a later step fails" and the device wait (1–120 seconds, default 30) are Options settings in `preferences.json`, shared by scenes and waited apps. Live sound changes (Now and `director audio`) change one thing at a time and always put it back when Windows does not confirm it.
-
-## Step-flow editor
-
-The editor is one fixed-width column of step cards in run order, joined by down arrows, with When leaving set apart below. A card shows its title and a one-line summary, with edit and remove buttons; remove resets that step. Editing opens the step's controls in a Done/Cancel dialog, and Cancel restores the step as it was when the dialog opened. Empty steps are dashed outlines with a hint and an Add button that open the same dialog. App actions show Choose app and the chosen app's name; arguments, working folder and the editable path are under Advanced options. The former right-hand summary panel and the per-scene "Readiness and recovery" section were removed. This supersedes the editor layout described under "Native editor" above.
+The window and the CLI share one runner and one cross-process lock, so two scenes never change devices at the same time. While Director waits for a TV, it resends wake at most five times and the input request at most every 1.5 seconds, within the device wait.
