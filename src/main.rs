@@ -3,7 +3,7 @@ mod gui;
 use display_ui::{DisplayMessage, DisplayState};
 use gui::{
     audio_relink_ui, close_guard, command_ui, crash_ui, display_setup_ui, display_ui, editor_flow,
-    fps_ui, nav_guard, now_ui, options_ui, scene_ui, status_ui, tv_tip_ui, tv_ui,
+    fps_ui, nav_guard, now_ui, options_ui, scene_ui, status_ui, tv_tip_ui, tv_ui, update_ui,
 };
 #[cfg(test)]
 use gui::{preset_cards_preview, tv_controls_ui};
@@ -37,6 +37,7 @@ enum Message {
     AudioRelink(audio_relink_ui::RelinkMessage),
     OpenLogs,
     Options(options_ui::OptionsMessage),
+    Update(update_ui::UpdateMessage),
     LogsOpened(Result<String, String>),
     GuardReady(Result<(), String>),
     Pane(bool),
@@ -58,6 +59,7 @@ struct DirectorApp {
     crash: Option<director::crash::Report>,
     notices: status_ui::StatusState,
     tip: tv_tip_ui::TipState,
+    update: update_ui::UpdateState,
     /// Windows audio devices, for TV audio links and relinking.
     outputs: Vec<Output>,
     inputs: Vec<Output>,
@@ -226,6 +228,9 @@ impl Component for DirectorApp {
                 .send(Message::Scene(scene_ui::SceneMessage::Load));
         }
         work(context, tv_tip_ui::load);
+        // Tests and preview fixtures never contact GitHub.
+        #[cfg(not(test))]
+        work(context, update_ui::startup);
         let app = Self {
             page: if NOTIFIED_RUN.get().is_some() {
                 Page::Options
@@ -243,6 +248,7 @@ impl Component for DirectorApp {
             crash: director::crash::pending(),
             notices: status_ui::StatusState::default(),
             tip: tv_tip_ui::TipState::default(),
+            update: update_ui::UpdateState::default(),
             outputs: vec![],
             inputs: vec![],
             window_width: 1000.0,
@@ -289,6 +295,7 @@ impl Component for DirectorApp {
                 Message::AudioRelink(message) => self.update_audio_relink(message, context),
                 Message::OpenLogs => self.open_logs(context),
                 Message::Options(message) => self.update_options(message, context),
+                Message::Update(message) => self.update_update(message, context),
                 Message::LogsOpened(result) => {
                     director::diagnostics::result("app.logs.open", &result);
                     match result {
@@ -405,6 +412,7 @@ impl Component for DirectorApp {
             content,
         )]);
         let status = self.status_view(cx);
+        let banner = self.update.available.is_some() && !self.update.dismissed;
         let body = Border::new()
             .padding(Thickness::new(
                 crate::gui::ui::PAGE_PADDING_X,
@@ -414,15 +422,24 @@ impl Component for DirectorApp {
             ))
             .content(
                 Grid::new()
-                    .rows([GridLength::Star(1.0), GridLength::Auto])
-                    .row_spacing(if self.status_visible() { 16.0 } else { 0.0 })
+                    .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
                     .children((
-                        Border::new().grid_row(0).content(content),
+                        Border::new()
+                            .grid_row(0)
+                            .margin(Thickness::new(
+                                0.0,
+                                0.0,
+                                0.0,
+                                if banner { 16.0 } else { 0.0 },
+                            ))
+                            .content(self.update_banner(cx)),
+                        Border::new().grid_row(1).content(content),
                         // Only while something needs attention: an empty ScrollViewer still
                         // takes height and shortens the page above it.
                         if self.status_visible() {
                             Border::new()
-                                .grid_row(1)
+                                .grid_row(2)
+                                .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
                                 .content(ScrollViewer::new().max_height(160.0).content(status))
                         } else {
                             View::empty()

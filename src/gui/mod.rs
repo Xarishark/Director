@@ -26,3 +26,4 @@ pub(crate) mod tv_power_state;
 pub(crate) mod tv_tip_ui;
 pub(crate) mod tv_ui;
 pub(crate) mod ui;
+pub(crate) mod update_ui;
