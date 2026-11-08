@@ -2,6 +2,13 @@
 
 Each release's installer and full notes are on [GitHub Releases](https://github.com/Xarishark/Director/releases).
 
+## 0.13.0 (2026-11-08)
+
+- Director is open source under the **MIT License**. The installer adds `LICENSE.txt` and the third-party notices beside the app.
+- Every settings file starts at format version 1. Files from earlier previews (scenes version 2 to 4, version 2 backups) aren't read; recreate them or ask in an issue.
+- `display presets` and `display current` are gone; use `director display list` and `director display screens`.
+- New README with highlights, a screenshot slideshow and Stream Deck examples; the guides are merged into fewer pages.
+
 ## 0.12.0 (2026-11-07)
 
 - Scenes can **Return** to another saved scene when you end them or run them again.
