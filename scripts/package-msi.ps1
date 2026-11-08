@@ -50,11 +50,11 @@ $setup = Join-Path $outputDir "Director-$version-x64-setup.exe"
 New-Item -ItemType Directory -Force $outputDir | Out-Null
 
 Invoke-Wix @('build', '-arch', 'x64', '-d', "Version=$version", '-d', "ReleaseDir=$release",
-             '-d', "Publisher=$publisher", '-d', "Description=$description",
+             '-d', "Publisher=$publisher", '-d', "Description=$description", '-d', "SourceDir=$root",
              '-o', $msi, (Join-Path $installerDir 'Director.wxs'))
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not build the Director MSI.' }
 
-# The setup window shows a 64 px logo. build/windows_icon.rs stores every icon frame as a PNG, so copy that frame.
+# The setup window shows a 64 px logo. packaging/windows_icon.rs stores every icon frame as a PNG, so copy that frame.
 $ico = [IO.File]::ReadAllBytes((Join-Path $release 'director.ico'))
 $logoBytes = $null
 for ($entry = 0; $entry -lt [BitConverter]::ToUInt16($ico, 4); $entry++) {

@@ -127,11 +127,16 @@ impl Backend for Controls<'_> {
 
 #[cfg(test)]
 #[test]
-#[ignore = "Synthetic loopback TLS test driven by local owned .NET server; no real TV or settings"]
+#[ignore = "Manual: needs a hand-started local TLS server that writes target/preview/samsung-tls-case.json; no real TV or settings"]
 fn samsung_tls_fixture() {
-    let value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(".localonly/samsung-tls-case.json").unwrap())
-            .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/target/preview/samsung-tls-case.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
     let port = value["port"].as_u64().unwrap() as u16;
     let certificate = serde_json::from_value::<Vec<u8>>(value["certificate"].clone()).unwrap();
     let result = Socket::open_path(

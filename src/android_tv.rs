@@ -1,4 +1,4 @@
-//! Android TV Remote v2 wire subset. Protocol references: docs/ANDROID_TV.md.
+//! Android TV Remote v2 wire subset. See docs/TVS.md for the protocol scope and references.
 //! Deliberately excludes generic keys, text injection and menu sequences.
 use std::io::{Read, Write};
 pub const LIMIT: usize = 65536;

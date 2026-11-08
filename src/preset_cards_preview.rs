@@ -7,6 +7,13 @@ use director::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) static ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Where preview fixtures write state for inspection: `target/preview/<name>`.
+pub(crate) fn output(name: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/preview");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join(name)
+}
 fn layout() -> Layout {
     let mut monitors = vec![];
     for (i, name) in ["Desk monitor", "Portrait monitor", "Living room TV"]
@@ -362,11 +369,11 @@ impl DirectorApp {
                 if let Some(tv) = &self.tv.draft {
                     let data = director::samsung::report(tv).unwrap();
                     std::fs::write(
-                        if tv.brand == director::tvs::Brand::TclAndroid {
-                            ".localonly/android-fixture-report.json"
+                        output(if tv.brand == director::tvs::Brand::TclAndroid {
+                            "android-fixture-report.json"
                         } else {
-                            ".localonly/samsung-fixture-report.json"
-                        },
+                            "samsung-fixture-report.json"
+                        }),
                         serde_json::to_vec_pretty(&data).unwrap(),
                     )
                     .unwrap();

@@ -1,0 +1,34 @@
+name: Crash report
+description: Director closed unexpectedly
+labels: [bug, crash]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Director saves crash reports in `%LOCALAPPDATA%\Director\Logs\Crashes`. Its **Report on GitHub** button opens a pre-filled issue with the summary and backtrace; this form is for reports you file by hand.
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you doing?
+      description: The page you were on and the last thing you clicked or ran.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Crash report
+      description: Paste the contents of the newest crash-….txt file, or attach it.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Director version
+      placeholder: "0.12.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true

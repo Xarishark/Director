@@ -1,52 +1,51 @@
 # FPS limits
 
-Director can change the global FPS setting through the NVIDIA driver or an installed, running RTSS. Both work directly from the app; no rtss-cli, Profile Inspector or helper executable is required. Director does not need to stay open after applying. RTSS must stay running when its limiter is selected.
+Director sets the global frame rate limit in the NVIDIA driver or in RivaTuner Statistics Server (RTSS). It talks to both directly, so no extra tools are needed, and Director doesn't need to stay open afterwards. RTSS must be installed and running to use its limit.
 
 ## Use it
 
-- In **Now → FPS limit**, turn on **Change FPS limit**, choose NVIDIA or RTSS, choose **Set a frame rate limit** (a number, or **VRR-safe cap**) or **Remove the global limit**, and click **Apply changes** at the bottom of the page.
-- In a **scene**, use the same controls. Saving does not apply anything. The scene applies TV preparation → displays → audio → FPS → final apps/URIs. A scene containing only FPS is supported.
-- **Change FPS limit off means leave all FPS settings unchanged.** To remove the selected provider’s global cap, turn the switch on and choose **Disable global limit**.
-- Only available methods appear in the dropdown. Open RTSS first if using it. Check available methods can rediscover unavailable providers. Unavailable saved methods remain saved but fail preflight before scene device changes; there is no automatic provider fallback.
+On **Now** or in a scene's **FPS limit** step:
 
-Headless commands:
+1. Turn on **Change FPS limit**. With it off, Director leaves all FPS settings as they are.
+2. Choose the method: NVIDIA or RTSS. Only methods available on this PC are listed; open RTSS first, then use **Check available methods**.
+3. Choose **Set a frame rate limit** with a number or **VRR-safe cap**, or **Remove the global limit**.
 
-    director fps status
-    director fps set nvidia 117
-    director fps set nvidia off
-    director fps set rtss 120
-    director fps set rtss off
+On Now, the change waits for **Apply changes** on the display map. In a scene, it runs after the Sound step and before the After actions. A scene can contain only an FPS step. If a scene's method isn't available when it runs, the scene fails before changing anything; Director never switches to the other method.
 
-Existing director scene apply commands use the saved FPS choice without opening the window.
+```text
+director fps status
+director fps set nvidia 117
+director fps set rtss vrr
+director fps set nvidia off
+```
 
 ## VRR-safe cap
 
-Turn on **VRR-safe cap** under Set a frame rate limit to cap a little below the primary display's refresh rate, so a VRR display stays in its variable-refresh range. Director uses the curve NVIDIA Reflex uses, refresh − refresh²/3600 (rounded down): 240 Hz → 224 FPS, 165 Hz → 157, 144 Hz → 138, 120 Hz → 116, 60 Hz → 59.
+**VRR-safe cap** limits frames a little below the primary display's refresh rate, so a variable refresh rate display stays in its VRR range. Director uses the curve NVIDIA Reflex uses, refresh − refresh²/3600, rounded down:
 
-The refresh rate is read when the cap is applied, not when it's saved. A scene reads it after its Displays step, so switching to a 120 Hz TV gives 116. Now and the CLI (`director fps set rtss vrr`) read the current primary display. If the refresh rate can't be read, the step fails before anything changes. The dialog previews the value from the scene's display preset, or the current layout.
+| Refresh rate | Cap |
+| --- | --- |
+| 240 Hz | 224 FPS |
+| 165 Hz | 157 FPS |
+| 144 Hz | 138 FPS |
+| 120 Hz | 116 FPS |
+| 60 Hz | 59 FPS |
 
-The editor shows the current value of the selected method only. "Remove the global limit" turns off a cap that's already set; turning off **Change FPS limit** leaves the current setting alone.
+The refresh rate is read when the cap is applied. In a scene that's after its Displays step, so switching to a 120 Hz TV gives 116. If the refresh rate can't be read, the step fails before changing anything. The step's dialog previews the value from the scene's display preset or your current layout.
 
-## What the setting means
+## What the limit affects
 
-NVIDIA changes FRL_FPS in the driver’s global/base profile, not a particular monitor/GPU or a game-specific profile. RTSS changes its global profile. Game-specific overrides, in-game limits, other limiters, V-Sync and frame generation can affect the FPS you actually see. Selecting one method leaves the other unchanged. A running game may need restarting, particularly for driver settings. Readback verifies configuration, not measured game frame rate.
+- **NVIDIA** sets the frame rate limit in the driver's global profile, for every GPU and display. Game-specific profiles override it.
+- **RTSS** sets its global profile's limit. Per-game RTSS profiles override it.
+- Setting one method leaves the other alone. In-game limits, V-Sync and frame generation also affect the frame rate you see. A running game may need a restart to pick up a driver change.
+- Limits: NVIDIA 1–1023 FPS; RTSS 1–1000 FPS. RTSS fractional and frame-time limits are left untouched.
 
-The first implementation supports NVIDIA integer caps 1–1023 through the documented setting domain (the installed driver can still reject values), and a conservative Director RTSS range of 1–1000. RTSS fractional or time-based global modes are rejected and left unchanged. Per-game targets, AMD/Intel providers and automatic refresh-rate offsets are outside this slice.
+Director reads the setting back after writing it, which confirms the configuration, not the frame rate a game reaches. If a later scene step fails, the previous limit is restored.
 
-## Verification and recovery
+## How it works
 
-The GUI and CLI share the same Rust providers and execution policy. FPS calls run on workers under the existing mutation guard. Provider discovery is read-only and serialized with SDK calls. A scene snapshots the selected provider before any TV/display/audio changes and validates availability up front. It writes and reads back FPS after audio, before any launches. Default failure/cancel recovery restores the original cap; NVIDIA predefined/inherited state and RTSS limiter-disable state are preserved. Stop and keep completed changes honors the existing scene policy.
+NVIDIA uses the driver settings API (`nvapi64.dll` from System32) to change the global profile's frame rate limiter. RTSS is found through its installation registry entry and controlled through `RTSSHooks64.dll` from that folder; DLLs load only from the install folder and System32. Removing the RTSS limit writes 0 without disabling per-game limits. If RTSS runs elevated and Director doesn't, RTSS may refuse the change; Director reports that instead of elevating.
 
-RTSS has separate saved-cap and limiter-disabled states. Applying a cap clears only the limiter-disable bit when necessary; unrelated flags are preserved. Disabling its global cap writes zero without disabling game-specific limits globally. Save/reload and a separate disk check verify persistence. RTSS and Director may need matching privileges for settings notifications; Director reports blocked operations and never silently elevates or changes ACLs.
+Per-game limits and AMD or Intel drivers aren't supported.
 
-NVIDIA uses installed System32 nvapi64.dll and versioned DRS structures. RTSS is discovered from its machine installation registry entry and loads RTSSHooks64.dll from that installation. DLL dependency lookup is restricted to the installed directory and System32. Native interfaces are serialized; no resident Director service or automatic RTSS launch is added.
-
-## Manual trial
-
-Apply a cap such as 60 in Now, then check the saved setting in NVIDIA Control Panel / RTSS and test a game that can normally exceed 60. Try Disable global limit, then restore your preferred cap. Repeat through an FPS-only scene and CLI. Check that selecting a method or saving a scene alone changes nothing. A configured game profile can override a global limit, so choose a game without such an override for the first test.
-
-## References
-
-- [NVIDIA driver settings API](https://docs.nvidia.com/nvapi/group__drsapi.html), [setting definitions](https://github.com/NVIDIA/nvapi/blob/main/NvApiDriverSettings.h), [interface IDs / ABI](https://github.com/NVIDIA/nvapi).
-- [rtss-cli source](https://github.com/xanderfrangos/rtss-cli), used as a protocol/interface reference. Implementation is independent Rust code; the CLI is not bundled or invoked.
-- Installed RTSS SDK RTSSProfileInterface.h and RTSSHooksInterface.h are the local interface reference. RTSS itself is not redistributed.
+References: [NVIDIA driver settings API](https://docs.nvidia.com/nvapi/group__drsapi.html), [NVAPI headers](https://github.com/NVIDIA/nvapi), [rtss-cli](https://github.com/xanderfrangos/rtss-cli) (protocol reference; not bundled or run).

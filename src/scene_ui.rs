@@ -281,7 +281,7 @@ impl DirectorApp {
             self.scene.scenes = next;
             if crate::fps_ui::PREVIEW.load(Ordering::Acquire) {
                 std::fs::write(
-                    ".localonly/fps-scenes-fixture.json",
+                    crate::preset_cards_preview::output("fps-scenes-fixture.json"),
                     serde_json::to_vec_pretty(&self.scene.scenes).unwrap(),
                 )
                 .unwrap();

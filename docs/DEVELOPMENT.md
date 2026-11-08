@@ -1,118 +1,135 @@
 # Development and testing
 
-## Build and run
+## Requirements
 
-Director is one Rust application with a native WinUI 3 window through Microsoft Windows Reactor 0.100.0. Running without arguments opens the window; CLI commands use the same backend and return before GUI initialization.
+- Windows 11 24H2 or newer, x64.
+- [Rust](https://rustup.rs) 1.95 or newer with the MSVC toolchain (`x86_64-pc-windows-msvc`), plus the Visual Studio C++ Build Tools ("Desktop development with C++"). CI uses exactly this setup.
+- The [Windows App Runtime 2.6](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads) to run the window. Installing Director once also installs it.
 
-Develop on Windows x64 with Rust 1.95 or newer, a Windows linker/resource compiler, and a compatible Windows App Runtime. The validated local setup uses Rust 1.99.1, x86_64-pc-windows-gnullvm, LLVM-MinGW 20261020 (UCRT), Windows build 26300, and the already installed Windows App Runtime 2.6.4. Other Windows toolchains/builds remain unvalidated. See [runtime and interface notes](WINDOWS_GUI.md).
+The `x86_64-pc-windows-gnullvm` target with LLVM-MinGW also works. `.cargo/config.toml` links its CRT statically, so the executable doesn't need the toolchain's `libunwind.dll`.
+
+## Build, run and check
+
+Run these from the repository root:
 
 ```powershell
-.\scripts\dev.ps1 check --locked
-.\scripts\dev.ps1 test --locked
-.\scripts\dev.ps1 build --locked --release
-.\scripts\dev.ps1 run --locked
-.\scripts\dev.ps1 -Command clippy -CargoArguments @('--locked', '--all-targets', '--', '-D', 'warnings')
-.\scripts\dev.ps1 -Command fmt -CargoArguments @('--all', '--', '--check')
+cargo build                     # debug build: target\debug\director.exe
+cargo run                       # open the window
+cargo run -- list               # run a CLI command
+cargo build --locked --release  # optimized build: target\release\director.exe
 ```
 
-The script detects existing project-local Rust/Cargo and LLVM tools in .localonly/tools, or uses a suitable toolchain already on PATH. It explicitly sets target as the build output and changes environment variables only for its process. The GNULLVM configuration requests static CRT linking to avoid a toolchain libunwind.dll dependency. The script does not install a runtime or change system PATH.
+Before opening a pull request, run the same checks as CI:
 
-Open target/release/director.exe after a release build. Keep the generated director.ico beside the executable for the window icon. The executable also has an embedded icon resource. Cargo.lock is part of the application source; target and globally ignored .localonly are machine-local. No bootstrap or installer is provided yet.
+```powershell
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked -- --test-threads=1
+```
+
+The build script stages `director.ico`, `icons\` and `orientations\` beside the executable. Keep them there if you copy the executable somewhere else. `Cargo.lock` is committed and every CI build is `--locked`.
+
+`scripts/dev.ps1` is an optional wrapper. It finds a project-local Rust and LLVM-MinGW toolchain in `.localonly\tools` (machine-local; keep it out of commits) or falls back to the one on PATH, and changes environment variables only for its own process:
+
+```powershell
+.\scripts\dev.ps1 test --locked
+.\scripts\dev.ps1 -Command clippy -CargoArguments @('--locked', '--all-targets', '--', '-D', 'warnings')
+```
 
 ## Command-line usage
 
+`director --help` lists every command. The main ones:
+
 ```text
-director --help
 director list
+director scene apply tv-gaming
+director scene end
+director display apply desk-monitors
 director audio status
-director audio list --json
-director audio check
 director audio use soundbar-stage-v2
 director audio volume +5
 director audio volume --mic 80
 director audio mute toggle
+director tv input living-room-tv HDMI_2
+director tv toggle living-room-tv
 ```
 
-- list, outputs, inputs, status and check read Windows audio and change nothing; check also checks the default-device policy interface.
-- use, volume and mute change one thing at once: the device named by CLI name or endpoint ID, or the current default when the device is left out. `--mic` targets the microphone. Each change is verified and put back when Windows does not confirm it.
-- Exit 0 means success, including a change that was already in place; 2 means an argument, access or device error.
+- Items are found by CLI name (the name in lowercase with dashes) or by ID. Add `--json` to list commands for scripts.
+- `audio list`, `outputs`, `inputs`, `status` and `check` change nothing. `use`, `volume` and `mute` change one thing, verify it, and put it back when Windows doesn't confirm it. Leaving out the device means the current default.
+- Display Apply follows each preset's **Ask to keep display changes** setting. `--yes` keeps verified changes without asking, and `--confirm` asks in the terminal.
+- Exit code 0 means success, including a change that was already in place. 2 means an argument, access or device error.
 
-Readback verifies Windows settings, not audible playback. Applications explicitly bound to a device can retain it. Director does not change per-application routing. Saved sound belongs to a scene's Sound step; see [Sound](AUDIO.md).
-## Backend, worker, and storage
+The executable uses the Windows GUI subsystem. To capture CLI output from PowerShell reliably, use `Start-Process director -ArgumentList … -Wait -NoNewWindow -RedirectStandardOutput out.txt`.
 
-Core Audio enumeration/default reads and endpoint volume use direct Windows APIs. Default switching uses the undocumented PolicyConfig interface isolated in src/windows_audio.rs. Interface failure is reported without invoking a helper executable.
+## Settings and storage
 
-Reactor background jobs perform storage and audio work. COM objects are created and released in their worker context; only plain Rust data crosses into UI messages. The UI does not synchronously wait or poll hardware. GUI requests are serialized; a local-session named mutex also protects Apply and preset-file writes across processes. A native window subclass defers normal closure while work is pending. Native calls cannot safely be forcibly canceled; forced-termination recovery is not implemented. Settings files are located and written atomically by `src/storage.rs`.
+Settings live in `%LOCALAPPDATA%\Director`, resolved through the Windows known-folder API, with no fallback folder. `storage::write_document` validates a document, checks under the operation lock that the file on disk still matches what was read, writes a temporary file and replaces the original with `MoveFileExW` (replace existing, write through). If the file changed since it was read, the save is refused and the window reloads. Each file carries a `version`; a corrupt file or one with an unknown version is left untouched and reported, never overwritten. When a format changes incompatibly, raise its version and decide whether to convert or refuse older files.
 
-Settings live in %LOCALAPPDATA%\Director. SHGetKnownFolderPath resolves the real Windows Local AppData folder, including redirection; errors do not fall back to arbitrary folders. Audio presets (`audio-presets.json`) are retired: Director reads that file only to migrate version 1–2 scenes. Director remembers the audio devices it has seen in `audio-devices.json`. See [Audio](AUDIO.md) for identity matching and relinking.
+Back up that folder before running the app against your real settings for testing. Tests never use it.
 
-Saving validates the document, checks the current on-disk list matches the window snapshot under the mutex, flushes a temporary file, and replaces the original with MoveFileExW replace-existing/write-through. Stale writers must refresh. Corrupt/unsupported files are preserved and reported. Atomic replacement is not a permanent recovery journal or a power-loss guarantee. Saving, cancellation, and deletion never change a device.
+## Tests
 
-## Artwork and validation
+- **Unit tests** use fake backends for audio, displays, FPS and scenes, and cover no-op detection, partial failure and recovery, stale writes, and corrupt or unknown-version files.
+- **TV transport tests** run against loopback WebSocket and TLS servers in the test process, plus DPAPI tampering checks. They never contact a real TV, so they don't prove compatibility with a particular model.
+- **Wake-on-LAN tests** send magic packets only to a loopback receiver.
+- **Ignored tests** (`cargo test -- --ignored <name>`) open preview fixtures with in-memory data for visual checks: `preset_cards_preview::cards_fixture`, `fps_ui::fps_fixture`, `tv_ui::native_preview::guide_fixture` and `tv_controls_ui::native_preview::controls_fixture`. They save nothing and contact no device. Some write their state to `target\preview\` for inspection. Production builds have no fixture entry point.
+- `windows_samsung::samsung_tls_fixture` needs a hand-started local TLS server and is meant for manual runs only.
 
-assets/director.svg is the editable source for the README and native icons. build/windows_icon.rs rasterizes seven sizes with build-only resvg and embeds the resource using windres (WINDRES override) or rc.exe. The build stages director.ico beside the binary. MSVC builds remain unvalidated.
+Real hardware checks (applying layouts, switching audio, waking a TV) can't run in CI. Run them by hand, and keep them separate from what automated tests prove.
 
-Automated audio tests use a fake backend and cover no-op behavior, optional volume, partial failures, prior role assignments, and recovery. Persistence tests cover round trips, duplicate names, stale writes, and corrupt/future files. A hidden native window test checks busy-close protection.
+## WinUI rules worth knowing
 
-Private UI checks use uniquely named fixtures and remove them afterward while preserving original presets. Audio UI checks only Apply a guaranteed nonexistent endpoint, exercising preflight without Windows audio writes. Capture only the owned application window. Real mouse/keyboard behavior and physical switching require separate validation; record observed results in [implementation status](IMPLEMENTATION.md).
-
-Manual acceptance: create/save a preset without applying; reopen; edit/cancel; edit/save; confirm the CLI lists it; apply without volume, then with optional volume; inspect actual defaults/volume; delete without changing audio; restore your preferred output. Keep read-only/UI evidence distinct from real routing and hardware recovery checks.
-## Display capture
-
-See [display presets](DISPLAY_PRESETS.md) for native capture, schema, identities, CLI commands, and limits. Display Apply is implemented separately through direct SetDisplayConfig validation, temporary application, native/CLI confirmation, persistence, and restoration. See [the Apply contract](DISPLAY_APPLY.md). Audio and display drafts, names, and settings files remain independent.
-
-Display Apply follows the saved **Ask to keep display changes** preference. Override it for one invocation with --yes (keep verified changes automatically) or --confirm (require the terminal confirmation). New presets default to keeping verified changes automatically. Existing preferences are preserved; legacy presets without the field still ask. Both paths retain readback and failure recovery.
-
-Native UI Automation: query an open ComboBox's own descendants with a name/type condition rather than recursively enumerating the entire window. An unrestricted FindAll against the open live-audio dropdown stalled the provider during testing; the scoped query and selection completed normally. This does not establish full screen-reader compatibility.
-
-## TV setup checks
-
-See [TVs](TVS.md) for the setup flow and `director tv list`, `director tv pair <tv>`, and `director tv check <tv>`. TV commands are dispatched before Windows audio initialization and do not create the WinUI window. Add/edit/remove definitions in the native TVs view. Pairing is explicit, prompts on the TV, and stores only DPAPI-protected credentials. Connection checking is read-only on the TV. No persistent control process is required.
-
-Offline tests include a loopback WebSocket mock using native WinHTTP, a silent-peer deadline test, and DPAPI tampering checks. They do not contact physical TVs. Firmware/TLS/permissions must still be validated against an on, reachable LG TV with user approval on its screen. There is no discovery or MAC/address migration yet; avoid treating mock success as a hardware compatibility claim.
-
-## Guided TV and wake validation
-
-See TVS.md for the new guide and tv learn/wake. Existing TVs can use Edit → Read TV details → Save TV without recreation. Normal tests send wake packets only to a loopback receiver; the headless missing-MAC path rejects before UDP dispatch. A successful wake command means packet dispatch, not verified panel wake.
-
-The ignored tv_ui::native_preview::guide_fixture application test provides test-only in-memory data for native input/wake/display/review checks. A private owned-window script launches it explicitly, never saves it, and never contacts a TV. Production exposes no fixture flag. Physical validation must separately check firmware network-information permissions, MAC reads, the full on-TV pairing guide, and wake with the TV’s network power-on setting enabled.
-
-## TV control validation notes
-
-TV status/off/input CLI commands use the shared control engine; see TVS.md. Ordinary tests exercise the actual native WebSocket power-off/input payloads against a loopback mock, never a physical TV. Power-off acknowledgment is distinct from physical panel state, and foreground input readback is distinct from HDMI/Windows readiness.
-
-The ignored tv_controls_ui::native_preview::controls_fixture test opens the modal after startup with in-memory data. It verifies one power action, pending selection, Unknown handling, Close, and layout; its fake definition fails preflight before any network operation. Production has no fixture entrypoint. Read-only live checks separately exercise fresh status/input reads without pressing Power or Switch.
-
-The pinned Reactor version rejects the tooltip wrapper on Refresh inside ContentDialog with StructureUnsupported. The refresh button retains its accessible name without that wrapper. No dependency/cache modification was made. Keep this native regression check when changing dialog content.
-
-The same rule applies to everything a dialog hosts: the scene step dialogs once had tooltips on their action rows (Move up, Move down, Remove) and on the chosen app's name, and opening a step with actions closed the window. Give those controls an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the relink button used by the Sound step, the crash dialog and the command dialog; extend it when a new dialog hosts shared controls. Shared helpers can hide a tooltip too: the display preview put one on each screen and crashed the Displays step dialog, so dialogs use `layout_preview_in_dialog`, and the test only lets the step dialogs call helpers on its checked list.
+- **No tooltips inside a ContentDialog.** The pinned Reactor rejects them with `StructureUnsupported` and closes the window. Give controls in dialogs an automation name instead. `scene_editor_ui::tests::dialog_content_has_no_tooltips` scans the step dialogs, the FPS controls, the relink button, the crash dialog, the command dialog and a checked list of shared helpers; extend it when a dialog hosts something new. Dialogs use `layout_preview_in_dialog` for the same reason.
+- WinUI controls fire change events when re-rendered with a new value (sliders, combo boxes). Guard handlers so a re-render isn't treated as an edit.
+- UI automation: query an open ComboBox's own descendants with a name/type condition rather than walking the whole window; an unrestricted `FindAll` against an open dropdown can stall the provider.
+- For screenshots, bring the window to the front and let a frame render first. An occluded window can capture blank.
 
 ## Crash reports
 
-`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, backtrace for panics and the newest 40 log records. On the next start the newest unoffered report is shown once; dismissing it renames it to `.seen.txt`. Report on GitHub opens `issues/new` with only the summary, version and backtrace in the URL: the log lines stay in the file for the user to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well, since each one is a bug. Native faults that bypass the panic hook (fail-fast, access violations) still appear only in Windows' Application event log.
+`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, a backtrace for panics and the newest 40 log records. On the next start the newest unseen report is offered once; dismissing it renames it to `.seen.txt`. **Report on GitHub** opens `issues/new` with only the summary, version and backtrace in the URL; the log lines stay in the file for the reporter to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well. Native faults that bypass the panic hook (fail-fast, access violations) appear only in Windows' Application event log. See [Diagnostics](TROUBLESHOOTING.md) for the logs.
 
+## Artwork
 
-## Action SVG assets
+`assets/director.svg` is the only source for the app icon. `packaging/windows_icon.rs` rasterizes seven sizes with the build-only `resvg` crate, embeds them with `rc.exe` or `windres` (override with `WINDRES`), embeds `packaging/director.manifest`, and stages `director.ico` beside the executable. The installer's 64 px setup logo is copied from that icon.
 
-Build stages assets/icons/remote.svg and delete.svg into each Cargo profile’s icons directory. Keep that directory beside director.exe when copying the preview, alongside the existing icon/orientation assets. The shared icons module uses the profile folder for test executables in deps. No image-generation dependency or helper executable was added. Native checks should retain accessible action labels, verify SVG rendering, and confirm Apply is unchanged.
+## Installer
 
-For visual captures, foreground the owned test window and allow a frame to render. An occluded-window run produced a blank captured client despite valid native accessibility controls; foreground recapture verified the actual UI.
+`scripts/package-msi.ps1` builds both installer files with WiX 6.0.2 into `target\installer`:
 
+```powershell
+.\scripts\package-msi.ps1                      # release build, then package
+.\scripts\package-msi.ps1 -UseExistingRelease  # package the existing release build
+.\scripts\package-msi.ps1 -Wix C:\tools\wix.exe
+```
 
-## Runtime diagnostics
+It adds the pinned WiX Util and bootstrapper extensions to the global WiX cache when missing.
 
-Use **Options → Open logs folder** to inspect the automatically rotating local logs. [Diagnostics](DIAGNOSTICS.md) describes file retention, operation correlation, covered stages, excluded secrets, and best-effort/queue limits. Reproduce a failure with the current build before reading its log; older attempts made before logging existed cannot be reconstructed.
+- `Director-<version>-x64.msi` comes from [installer/Director.wxs](../installer/Director.wxs): a per-machine package with no dialogs of its own. It installs to `%ProgramFiles%\Director`, adds shortcuts, the `director-run:` handler and the PATH entry, and refuses Windows builds below 26100 through a launch condition.
+- `Director-<version>-x64-setup.exe` is a WiX Burn bundle from [installer/DirectorSetup.wxs](../installer/DirectorSetup.wxs) with the [Director theme](../installer/theme). It embeds the MSI, checks the Windows build, and installs the Windows App Runtime first when the pinned package isn't registered. Releases publish only this file.
 
+The runtime is pinned in two places. To move to a newer one, update the version, download URL, SHA-512 hash and size in `DirectorSetup.wxs` (`wix burn remotepayload` generates them), and `$runtimeVersion` and `$runtimePackage` in the packaging script. Users see what setup does in [Install](INSTALL.md).
+
+`windows-reactor` is a preview crate, pinned to `=0.100.0` with `Cargo.lock`; its published API differs from current upstream examples, so check the matching source before using a new API. It needs the framework-dependent Windows App Runtime 2.4 or newer and shows a download prompt when it's missing; the CLI doesn't need the runtime. The executable embeds `packaging/director.manifest` (Windows 10/11 supported OS, `maxversiontested` 10.0.26100.0, per-monitor v2 DPI). Raise `maxversiontested` after testing on a newer Windows release.
 
 ## GitHub Actions
 
-The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to main. You can also run it manually from the Actions tab. It uses the hosted Windows runner and the MSVC Rust toolchain, runs formatting, Clippy and tests, then builds the x64 MSI and the setup.exe that embeds it, and uploads the setup.exe. Find the unsigned installer under the run’s **Director-Windows-x64** artifact. GitHub zips Actions artifacts; release assets download as the plain file. A version increase merged into main publishes a GitHub Release with the verified setup.exe after the build succeeds. See [setup and MSI](WINDOWS_GUI.md#setup-and-msi). A manual main-branch run can also publish the current version by enabling publish_release. GUI and physical-device checks remain separate from CI.
+The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to `main`, and can be run by hand from the Actions tab. On the hosted Windows runner with the MSVC toolchain it checks formatting, runs Clippy and the tests, builds the release executable, packages the MSI and the `setup.exe` that embeds it, and uploads the setup as the **Director-Windows-x64** artifact (GitHub zips artifacts; release assets download as the plain file). When a merge into `main` raises the version, the workflow publishes a GitHub Release with that setup. A manual run on `main` with `publish_release` enabled publishes the current version. See [Setup and MSI](#installer).
+
 ## Versioning
 
-Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. Keep it in three-part numeric form, such as `0.9.1`, for MSI packaging. After changing it, refresh the root package entry in `Cargo.lock` with a normal Cargo check before running the locked build. The [MSI packaging script](../scripts/package-msi.ps1) reads the version from Cargo.toml and uses it for the MSI and setup.exe versions and filenames.
+Set the version in the root [Cargo.toml](../Cargo.toml) under `[package]`, as three numbers such as `0.12.1`, which the MSI needs. Run `cargo check` afterwards to update the root package entry in `Cargo.lock` before a `--locked` build. The [packaging script](../scripts/package-msi.ps1) reads the version for the MSI and setup versions and file names. Add a line to [CHANGELOG.md](../CHANGELOG.md) for each release.
+
+## Third-party notices
+
+`THIRD_PARTY_LICENSES.md` lists the license of every crate compiled into `director.exe`, and the installer copies it beside the executable with `LICENSE.txt`. Regenerate it after adding or updating a dependency:
+
+```powershell
+cargo install cargo-about --locked --features cli
+cargo about generate -c packaging/about.toml packaging/about.hbs -o THIRD_PARTY_LICENSES.md
+```
+
+`packaging/about.toml` lists the accepted licenses. Generation fails if a new crate uses one that isn't listed, so review that license before adding it there.
 
 ## Protecting main
 
-The build check is named **Windows x64 build**. Configure it as a required check with an up-to-date branch and require pull requests for main, including administrators. Private repository branch protection requires GitHub Pro or an eligible paid organization plan. GitHub rejected protection on the repository’s current plan.
-
-For local protection, run git config --local core.hooksPath .githooks after cloning. This checkout has the same guard installed in its local Git hooks directory so it survives switching branches. The pre-push hook blocks updates and deletion of main. GitHub-side rules are needed to enforce PR-only changes and required checks for all clients.
+`main` only changes through pull requests that pass the **Windows x64 build** check. Locally, run `git config --local core.hooksPath .githooks` after cloning: the pre-push hook refuses direct pushes to `main`.
