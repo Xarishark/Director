@@ -1006,7 +1006,7 @@ impl DirectorApp {
         self.tv.ready_for_controls_preview();
         self.tv.tvs = vec![Tv {
             id: "test-controls-preview-missing-record".into(),
-            name: "TV controls preview (test fixture)".into(),
+            name: "Living room TV".into(),
             address: "192.0.2.50".into(),
             brand: Default::default(),
             samsung: Default::default(),

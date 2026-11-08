@@ -1403,11 +1403,11 @@ impl DirectorApp {
         self.tv.ready = true;
         self.tv.displays = vec![DisplayLink {
             device_path: "test-preview-display".into(),
-            name: "Preview Windows display (test fixture)".into(),
+            name: "LG TV".into(),
         }];
         self.tv.draft = Some(Tv {
             id: "test-guide-preview".into(),
-            name: "TV guide preview (test fixture)".into(),
+            name: "Living room TV".into(),
             address: "192.0.2.50".into(),
             brand: Default::default(),
             samsung: Default::default(),
