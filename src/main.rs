@@ -412,7 +412,9 @@ impl Component for DirectorApp {
             content,
         )]);
         let status = self.status_view(cx);
-        let banner = self.update.available.is_some() && !self.update.dismissed;
+        // The update bar sits under the status area, and steps aside while work runs (its own
+        // download shows progress in the status area instead).
+        let banner = self.update.available.is_some() && !self.update.dismissed && !self.busy;
         let body = Border::new()
             .padding(Thickness::new(
                 crate::gui::ui::PAGE_PADDING_X,
@@ -422,25 +424,24 @@ impl Component for DirectorApp {
             ))
             .content(
                 Grid::new()
-                    .rows([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+                    .rows([GridLength::Star(1.0), GridLength::Auto, GridLength::Auto])
                     .children((
-                        Border::new()
-                            .grid_row(0)
-                            .margin(Thickness::new(
-                                0.0,
-                                0.0,
-                                0.0,
-                                if banner { 16.0 } else { 0.0 },
-                            ))
-                            .content(self.update_banner(cx)),
-                        Border::new().grid_row(1).content(content),
+                        Border::new().grid_row(0).content(content),
                         // Only while something needs attention: an empty ScrollViewer still
                         // takes height and shortens the page above it.
                         if self.status_visible() {
                             Border::new()
-                                .grid_row(2)
+                                .grid_row(1)
                                 .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
                                 .content(ScrollViewer::new().max_height(160.0).content(status))
+                        } else {
+                            View::empty()
+                        },
+                        if banner {
+                            Border::new()
+                                .grid_row(2)
+                                .margin(Thickness::new(0.0, 16.0, 0.0, 0.0))
+                                .content(self.update_banner(cx))
                         } else {
                             View::empty()
                         },

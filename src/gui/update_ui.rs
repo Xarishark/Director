@@ -175,7 +175,7 @@ impl DirectorApp {
         }
     }
 
-    /// Above every page while a newer version is available, until closed.
+    /// A bar at the bottom of every page while a newer version is available, until closed.
     pub(crate) fn update_banner(&self, cx: &ViewContext<Self>) -> View {
         use crate::gui::ui;
         let Some(release) = &self.update.available else {
@@ -185,7 +185,7 @@ impl DirectorApp {
             return View::empty();
         }
         Border::new()
-            .padding(Thickness::xy(14.0, 10.0))
+            .padding(Thickness::xy(12.0, 6.0))
             .border_thickness(Thickness::uniform(1.0))
             .border_brush(ui::card_stroke())
             .background(ui::card_fill())
