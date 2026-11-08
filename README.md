@@ -32,7 +32,7 @@ Moving from your desk to the living room? A **TV Gaming** scene wakes the TV, sw
 
 ## Highlights
 
-- 📺 **TV control built in.** Pair **LG webOS**, **Samsung Tizen** and **TCL Android / Google TV** TVs directly over your network to wake them, switch inputs and turn them off. You don't need Python or Node scripts, TV command-line tools or a companion app. [TVs →](docs/TVS.md)
+- 📺 **TV control built in.** Pair **LG webOS**, **Samsung Tizen** and **TCL Android / Google TV** TVs directly over your network to wake them, switch inputs and turn them off. You don't need Python or Node scripts, TV command-line tools or a companion app. LG is fully supported; Samsung and TCL support is an early trial that still needs testing on real TVs, and [test reports](docs/TV_TESTING.md) are very welcome. [TVs →](docs/TVS.md)
 - 🎬 **Scenes run as one flow.** Before → TV → Displays → Sound → FPS limit → After, in that order, with each change checked. If a step fails, Director restores your displays, default devices, volumes and FPS limit together. [Scenes →](docs/SCENES.md)
 - ⏳ **Waits for your hardware.** A scene waits for the TV to wake and report the right input, then for its HDMI audio to appear after the screens switch. It never quietly picks a different device. **TV input protection** takes the input back when a console or streaming box grabs it at power-on.
 - 🎯 **Frame-rate limits.** Set the global NVIDIA or RTSS limit per scene, including a **VRR-safe cap** worked out from the refresh rate of the screen you just switched to. [FPS →](docs/FPS.md)
@@ -48,6 +48,7 @@ Moving from your desk to the living room? A **TV Gaming** scene wakes the TV, sw
 | **TV** | Wake it, switch to your PC's input, keep that input, turn it off when you leave |
 | **FPS limit** | Global NVIDIA or RTSS limit, a VRR-safe cap, or no limit |
 | **Apps and links** | Run apps (optionally waiting for them), open links or URIs, close apps, before, after or when leaving |
+| **Return** | The scene to go back to when you end this one: **End** (or running the scene again) runs its leave steps and then applies, say, your Desk scene |
 
 **Now** changes the same things live without saving anything, and every command is also available from the [command line](#command-line).
 
@@ -59,7 +60,7 @@ Director talks to Windows, the NVIDIA driver, RTSS and your TV directly, from on
 
 ## Install
 
-Director needs **Windows 11, version 24H2 or newer** (x64). Download **Director-x64-setup.exe** with the button above and run it. Setup installs the Windows App Runtime if it's missing and adds `director` to PATH. See [Install](docs/INSTALL.md) for quiet installs, updates and uninstalling.
+Director needs **Windows 11, version 24H2 or newer** (x64), because switching HDR per screen uses display APIs that Windows added in 24H2. Download **Director-x64-setup.exe** with the button above and run it. Setup installs the Windows App Runtime if it's missing and adds `director` to PATH. See [Install](docs/INSTALL.md) for quiet installs, updates and uninstalling.
 
 ## Quick start
 
