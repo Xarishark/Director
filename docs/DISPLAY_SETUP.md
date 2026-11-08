@@ -28,7 +28,7 @@ Windows selects the target timing using documented [unspecified refresh/scan-lin
 
 ## Validation boundary
 
-79 regular tests plus native in-memory UI checks cover success, partial writes, read failure, panic, cancellation, failed TV preparation, recovery retry, original-screen preservation, cache precision/corruption, explanation/progress and learned 4K/120 Hz/HDR controls. The UI fixture never activates a physical display, sends a TV command or writes a fake capability cache. Original settings/cache hashes and live display topology remain unchanged. Actual LG/driver activation and restoration require hardware validation; the simulated 4K/120 Hz/HDR inventory does not establish the capabilities of the user's live connection.
+79 regular tests plus native in-memory UI checks cover success, partial writes, read failure, panic, cancellation, failed TV preparation, recovery retry, original-screen preservation, cache precision/corruption, explanation/progress and learned 4K/120 Hz/HDR controls. The UI fixture never activates a physical display, sends a TV command or writes a fake capability cache. Actual TV and driver activation and restoration need checking on real hardware.
 
 
 Detection selects Windows' preferred resolution and the highest freshly reported refresh rate at that resolution in the draft. It does not guess native resolution from the largest driver mode (which could be virtual/supersampled). If Windows does not report a preferred resolution present in the inventory, the observed mode is retained. Explicit detection replaces even a supported fallback draft mode, preserving arrangement and orientation; it does not apply the chosen mode to the live desktop.

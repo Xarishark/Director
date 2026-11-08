@@ -48,4 +48,4 @@ Native validate-only and same-layout Apply left the desktop unchanged. A control
 
 This is validation on the local desktop configuration, not every TV, GPU, refresh/resolution change, or hot-plug failure. Forced-termination recovery, full physical failure injection, and clean-PC distribution remain unverified.
 
-HDR now participates in explicit preset verification and restoration when requested and readable. See [HDR application and limits](HDR.md). Legacy presets without an HDR field leave it unchanged. The same transaction also drives the independent [Current setup](CURRENT_SETUP.md) display Apply operation.
+HDR now participates in explicit preset verification and restoration when requested and readable. See [HDR application and limits](HDR.md). Legacy presets without an HDR field leave it unchanged. The same transaction also drives the independent [Now](CURRENT_SETUP.md) display Apply operation.

@@ -27,14 +27,12 @@ Unit tests exercise rotation limits, complete concurrent records, Unicode-safe d
 
 Folder opening starts Windows' own explorer.exe from the Windows installation directory and passes the log folder as a separate argument. This avoids the folder-association handoff that returned success without opening a visible window. The status reports a completed request rather than asserting that a window appeared, and includes the runtime log location and writer state.
 
-Final checks: the release CLI writes and flushes startup/operation/exit records without opening a window. Native TV fixtures verify that the original preflight failure and later timeout notes both remain visible and have correlated diagnostic records. The test environment exposes no Explorer windows to UI Automation and denies Shell window enumeration, so it cannot independently verify a visible Explorer folder. The user confirmed that the final direct Explorer invocation visibly opened Logs after the button was invoked through UI Automation. Process-start success alone is not treated as proof that a folder is displayed.
-
 
 
 ## Samsung compatibility sharing
 
-Samsung setup/Edit TV provides Export report, and CLI provides director tv report <name>. The report in the Local AppData Director/Reports folder is a separate allowlisted JSON document, not a copy of raw application logs. It includes observed model/firmware, paired state, tested direct ports and user confirmations; it omits credentials, certificate bytes, addresses, MACs, aliases, TV/device IDs, raw responses and arbitrary errors. Nothing is uploaded automatically. See SAMSUNG.md for the friend-testing procedure and current physical-validation limit.
+Samsung setup/Edit TV provides Export report, and CLI provides director tv report <name>. The report in the Local AppData Director/Reports folder is a separate allowlisted JSON document, not a copy of raw application logs. It includes observed model/firmware, paired state, tested direct ports and user confirmations; it omits credentials, certificate bytes, addresses, MACs, aliases, TV/device IDs, raw responses and arbitrary errors. Nothing is uploaded automatically. See [SAMSUNG.md](SAMSUNG.md) for the testing procedure.
 
-## Friend reports (format 2)
+## Compatibility reports (format 2)
 
 Samsung/TCL reports now include explicit Not tested/Yes/No feedback for displayed status, physical turn-off and physical wake; optional TV model/software and Wi-Fi/Ethernet information; export timestamp, Windows version/build, architecture, executable SHA-256, and wake-address-presence/count flags. Selected-TV structured history is read from bounded rotated logs, with action, outcome, timing, reported power, coarse failure category and an optional numeric system code. No raw error strings or full log records are exported. Missing/unreadable history is reported explicitly. Only actions run with this build are captured; reproduce the failure before exporting. Pairing steps expose the same export action even before authorization succeeds. User observations are distinct from command send results.

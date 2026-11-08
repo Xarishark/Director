@@ -10,7 +10,7 @@ Display Apply validates topology, snapshots the actual configuration and known H
 
 The adapter uses HDR-specific device-info types GET_ADVANCED_COLOR_INFO_2 (15) and SET_HDR_STATE (16), with checked WinSDK-compatible C layouts. It does not use the generic Advanced Color/WCG setter. Unsupported API versions or devices remain unavailable; there is no guessed fallback that could toggle WCG instead of HDR. See [Windows device-info types](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_device_info_type).
 
-The captured value/readback concerns Windows' user HDR setting, not a measurement of emitted light or game HDR rendering. Changing HDR can affect available mode combinations; strict post-apply readback and recovery still apply. No durable process-crash recovery is added by this slice.
+The captured value/readback concerns Windows' user HDR setting, not a measurement of emitted light or game HDR rendering. Changing HDR can affect available mode combinations; strict post-apply readback and recovery still apply. Recovery after a crash or forced kill mid-change is not provided.
 
 ## Validation scope
 

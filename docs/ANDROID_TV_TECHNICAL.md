@@ -2,7 +2,7 @@
 
 Director uses Android TV Remote v2 directly inside the Rust app. No ADB, Python, developer mode, cloud account or companion CLI is needed. This preview targets TCL sets running Android TV or Google TV with Android TV Remote Service. TCL Roku and Fire TV models are not covered. Physical TCL validation is pending.
 
-## Friend test guide
+## Test guide
 
 1. Keep the TV on, with the PC on the same trusted local network. Make sure the Google TV mobile remote works first; it uses the same service.
 2. Open TVs → + → TCL — Android / Google TV. Name the TV and enter its IPv4 address (a DHCP reservation is recommended).
@@ -36,6 +36,6 @@ The report allowlists brand, Director/report version, model/service version, pai
 - [Google Polo pairing protocol](https://android.googlesource.com/platform/external/google-tv-pairing-protocol/): certificate/code exchange.
 - [Home Assistant Android TV Remote](https://www.home-assistant.io/integrations/androidtv_remote/): documented TCL standby limitations.
 
-Rustls, ring, rcgen, rsa, sha2 and x509-parser provide in-process cryptography and certificate handling. Framing is bounded and only the small required protobuf subset is implemented. Existing Windows App Runtime and adjacent app-icon requirements still apply when copying the preview to another PC; this change does not add an installer.
+Rustls, ring, rcgen, rsa, sha2 and x509-parser provide in-process cryptography and certificate handling. Framing is bounded and only the small required protobuf subset is implemented.
 
-For the current format-2 report contents, tester result fields and sanitized action history, see DIAGNOSTICS.md. Use ANDROID_TV.md for the short friend instructions.
+For the current format-2 report contents, tester result fields and sanitized action history, see [Diagnostics](DIAGNOSTICS.md). Use [ANDROID_TV.md](ANDROID_TV.md) for the short tester instructions.

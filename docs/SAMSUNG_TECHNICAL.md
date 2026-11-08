@@ -1,6 +1,6 @@
 # Samsung Tizen preview
 
-Director now has a native local Samsung provider. No Samsung account, SmartThings cloud, external CLI or custom remote sequence is required. Physical Samsung compatibility remains unvalidated: this is ready for a friend’s controlled hardware test, not a promise for every model.
+Director has a native local Samsung provider. No Samsung account, SmartThings cloud, external CLI or custom remote sequence is required. Physical Samsung compatibility remains unvalidated: it is a preview for hardware testing, not a promise for every model.
 
 ## Setup and compatibility test
 
@@ -13,9 +13,9 @@ Director now has a native local Samsung provider. No Samsung account, SmartThing
 
 Testing changes the TV input only after the explicit test action. Saving/canceling does not undo a sent command. Cancel discards the TV draft and its unsaved tests; export first if those results should be retained separately. Editing a saved Samsung TV exposes the same test/export form. Changing its connection requires pairing again before a test can send saved authorization to it. Explicit CLI re-pairing clears prior test confirmations.
 
-## Send us the report
+## Share the report
 
-Choose Export report in the compatibility section of setup or Edit TV. Director saves JSON in the Windows Local AppData Director/Reports folder and opens that folder. The report captures the current draft, including tests before Save. Your friend can attach that JSON to the chat. Nothing is uploaded automatically.
+Choose Export report in the compatibility section of setup or Edit TV. Director saves JSON in the Windows Local AppData Director/Reports folder and opens that folder. The report captures the current draft, including tests before Save. Attach that JSON to a GitHub issue to share it. Nothing is uploaded automatically.
 
 Reports contain Director/report versions, Samsung brand, model/firmware when reported, paired status, connection mode, reported token-auth capability, timestamps, port test send outcomes and explicit confirmations. They omit pairing tokens, certificates, IP/MAC addresses, names/aliases, TV IDs, display/audio links, raw responses and arbitrary error messages. They are built from an allowlist, rather than redacting a full catalog or application log. A successful user-confirmed test applies only to that saved entry and observed model/firmware; it does not establish universal Samsung support.
 
@@ -31,7 +31,7 @@ Headless export: director tv report "TV name". For logs of general app operation
 - A modal-scoped four-second polling interval plus bounded requests updates Samsung power; LG retains its scoped subscription. Poll results are timestamped before the request so pre-command reads cannot overwrite newer state. No resident daemon is required.
 - Scenes and temporary display preparation use the same provider dispatcher as the GUI/CLI. A scene waits for reported awake state, sends an optional confirmed direct input command, then uses existing display/audio verification. Samsung input readback is not invented or waited on forever. Models that do not report usable power state cannot complete automatic TV readiness yet; omit TV preparation and turn the TV on manually for those models until validated support is added.
 
-Older non-Tizen Samsung protocols, automatic discovery, volume/remote panels, screen blanking and SmartThings are outside this slice. Unsupported buttons are hidden. Supported controls may still be temporarily busy or disconnected, with truthful progress/error feedback.
+Older non-Tizen Samsung protocols, automatic discovery, volume/remote panels, screen blanking and SmartThings are not supported. Unsupported buttons are hidden. Supported controls may still be temporarily busy or disconnected, with truthful progress/error feedback.
 
 ## Transport and validation
 
@@ -39,6 +39,6 @@ Native WinHTTP is shared with the existing LG integration. First-pairing TLS cer
 
 Validation covers legacy LG loading, brand-change invalidation, strict command generation, token/tokenless handshakes and denial, state parsing, latest-confirmation/firmware gating, redacted reports and truthful unacknowledged outcomes. Native loopback tests exercise Samsung WebSocket frames. Owned TLS fixtures verify matching-pin command success and zero HTTP headers reaching a mismatched-certificate server. Native UI Automation covers brand/setup/pairing, test preconditions, No/Yes results, saved PC input, report content and hidden modal/scene controls at wide/narrow sizes without moving the mouse or changing real devices. Physical Samsung pairing/wake/off/HDMI testing remains pending.
 
-Protocol references: [samsung-tv-control](https://github.com/timdevlet/samsung-tv-control/blob/main/src/api/local-tv.ts), [ColorControl SamsungDevice](https://github.com/Maassoft/ColorControl/blob/master/ColorControl/Services/Samsung/SamsungDevice.cs), and [Microsoft WinHTTP callback documentation](https://learn.microsoft.com/en-us/windows/win32/api/winhttp/nc-winhttp-winhttp_status_callback). These are references, not runtime dependencies. To copy the preview to another PC, keep its icons folder and director.ico beside director.exe; the compatible Windows App Runtime requirement in WINDOWS_GUI.md still applies. No installer/runtime bootstrap is provided by this change.
+Protocol references: [samsung-tv-control](https://github.com/timdevlet/samsung-tv-control/blob/main/src/api/local-tv.ts), [ColorControl SamsungDevice](https://github.com/Maassoft/ColorControl/blob/master/ColorControl/Services/Samsung/SamsungDevice.cs), and [Microsoft WinHTTP callback documentation](https://learn.microsoft.com/en-us/windows/win32/api/winhttp/nc-winhttp-winhttp_status_callback). These are references, not runtime dependencies.
 
-For the current format-2 report contents, tester result fields and sanitized action history, see DIAGNOSTICS.md. Use SAMSUNG.md for the short friend instructions.
+For the current format-2 report contents, tester result fields and sanitized action history, see [Diagnostics](DIAGNOSTICS.md). Use [SAMSUNG.md](SAMSUNG.md) for the short tester instructions.

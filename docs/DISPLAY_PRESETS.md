@@ -60,4 +60,4 @@ current reads the live layout; presets reads saved layouts; capture saves a new 
 
 Windows Advanced display can show rates with an asterisk that require changing the selected resolution. Director's refresh dropdown currently filters to the selected resolution, so a starred Windows alternative need not appear in that specific list. Do not insert such a rate into the native-resolution pair unless Windows actually reports that pair. [Microsoft explains the asterisk](https://support.microsoft.com/en-us/windows/hardware/display-graphics/change-the-refresh-rate-on-your-monitor-in-windows).
 
-The user's P27 screenshot shows 59.95 Hz and 50 Hz*. The earlier explanation that the monitor had only one refresh option was too broad: it referred only to the selected-resolution list and omitted the cross-resolution distinction.
+For example, a monitor can list 59.95 Hz for its native resolution while Windows also offers 50 Hz* at another resolution; Director's list for the native resolution shows only 59.95 Hz.

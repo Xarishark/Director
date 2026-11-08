@@ -1,6 +1,6 @@
 # Now
 
-Now (formerly Current setup) is an alternative workspace for adjusting the active Windows configuration without creating or editing presets. It shares the display editor and backend with saved presets, rather than maintaining a second implementation of monitor controls.
+Now adjusts the active Windows configuration without creating or editing presets. It shares the display editor and backend with saved presets, rather than maintaining a second implementation of monitor controls.
 
 ## Using the view
 
@@ -21,6 +21,6 @@ Pending live edits survive page navigation independently of preset drafts. Openi
 
 Display Apply and each sound change run on background workers under the same cross-process operation gate, with normal window-close protection and the shared backend recovery behavior. They are independent operations, not a scene transaction combining both categories. Snapshot/readback errors remain visible.
 
-HDR requires a supported display and an available HDR-specific Windows API. Unavailable controls are disabled. Clone-group editing, physical Identify, DPI/color-depth/VRR settings, a separate Communications output, and automatic device relinking remain outside this view.
+HDR requires a supported display and an available HDR-specific Windows API. Unavailable controls are disabled. Physical Identify, DPI, colour depth and VRR settings, and automatic device relinking are not part of this view.
 
 Now never writes preset or scene files itself; its Save buttons hand a draft to the normal editor. Its temporary display draft is held only in memory; errors and actual state after an attempted application are reread. It does not include appearance/theme controls.
