@@ -523,7 +523,7 @@ impl DirectorApp {
                     );
                     self.flow.navigated();
                 } else {
-                    self.library_cancelled(crate::gui::library_flow::Slot::Tv, cx);
+                    self.flow_cancelled(crate::gui::editor_flow::Slot::Tv, cx);
                 }
             }
             TvMessage::Name(v) if !self.busy => {
@@ -868,7 +868,7 @@ impl DirectorApp {
             TvMessage::Saved(result) => match result {
                 Ok(tvs) => {
                     self.end();
-                    let added = crate::gui::library_flow::added_id(
+                    let added = crate::gui::editor_flow::added_id(
                         self.tv.tvs.iter().map(|t| t.id.as_str()),
                         tvs.iter().map(|t| t.id.as_str()),
                     );
@@ -881,7 +881,7 @@ impl DirectorApp {
                     self.status = "TVs saved.".into();
                     self.guard_saved(true, cx);
                     self.announce(cx);
-                    self.library_saved(crate::gui::library_flow::Slot::Tv, added, cx);
+                    self.flow_saved(crate::gui::editor_flow::Slot::Tv, added, cx);
                 }
                 Err(e) => self.failure(e),
             },

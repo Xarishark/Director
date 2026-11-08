@@ -1316,7 +1316,7 @@ mod tests {
             (
                 "save as display preset dialog",
                 region(
-                    include_str!("current_ui.rs"),
+                    include_str!("now_ui.rs"),
                     "pub(crate) fn current_dialog",
                     "#[cfg(test)]",
                 ),

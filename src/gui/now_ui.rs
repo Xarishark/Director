@@ -42,7 +42,7 @@ pub(crate) enum SoundChange {
     ToggleMute { input: bool },
 }
 #[derive(Clone)]
-pub(crate) enum CurrentMessage {
+pub(crate) enum NowMessage {
     Load,
     Loaded(Displays, Devices),
     Display(DisplayMessage),
@@ -75,7 +75,7 @@ pub(crate) enum CurrentMessage {
     SaveAudio,
 }
 #[derive(Default)]
-pub(crate) struct CurrentState {
+pub(crate) struct NowState {
     pub display: DisplayState,
     baseline: Option<Layout>,
     outputs: Vec<Output>,
@@ -103,7 +103,7 @@ pub(crate) struct CurrentState {
     /// Apply the staged FPS limit once the display change running now succeeds.
     fps_after_displays: bool,
 }
-impl CurrentState {
+impl NowState {
     pub fn dirty(&self) -> bool {
         self.fps_dirty || self.display_dirty()
     }
@@ -203,8 +203,8 @@ impl CurrentState {
             .map(f64::from);
     }
 }
-fn msg(value: CurrentMessage) -> Message {
-    Message::Current(value)
+fn msg(value: NowMessage) -> Message {
+    Message::Now(value)
 }
 fn read_displays() -> Displays {
     let layout = windows_displays::capture()?;
@@ -223,10 +223,10 @@ impl DirectorApp {
         target: Option<String>,
         cx: &ComponentContext<Self>,
     ) {
-        if !self.guard_ready || self.current.sound_pending {
+        if !self.guard_ready || self.now.sound_pending {
             return;
         }
-        let state = &mut self.current;
+        let state = &mut self.now;
         state.sound_pending = true;
         state.tokens_at_start = (state.volume_token, state.mic_token);
         crate::gui::close_guard::set_busy(true);
@@ -253,7 +253,7 @@ impl DirectorApp {
                     }
                 }
             })();
-            msg(CurrentMessage::SoundDone(result, devices()))
+            msg(NowMessage::SoundDone(result, devices()))
         });
     }
     pub(crate) fn load_current(&mut self, cx: &ComponentContext<Self>) {
@@ -263,35 +263,33 @@ impl DirectorApp {
         #[cfg(test)]
         if crate::gui::preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
             self.fps = crate::gui::fps_ui::FpsState::fixture();
-            self.current.fps_dirty = false;
+            self.now.fps_dirty = false;
             return;
         }
         self.fps.live = None;
-        self.current.fps_dirty = false;
+        self.now.fps_dirty = false;
         self.update_fps(crate::gui::fps_ui::FpsMessage::Discover, cx);
         self.begin("Reading your current setup…");
-        work(cx, || {
-            msg(CurrentMessage::Loaded(read_displays(), devices()))
-        });
+        work(cx, || msg(NowMessage::Loaded(read_displays(), devices())));
     }
-    pub(crate) fn update_current(&mut self, event: CurrentMessage, cx: &ComponentContext<Self>) {
+    pub(crate) fn update_now(&mut self, event: NowMessage, cx: &ComponentContext<Self>) {
         match event {
-            CurrentMessage::Load if !self.busy => self.load_current(cx),
-            CurrentMessage::Loaded(displays, audio) => {
+            NowMessage::Load if !self.busy => self.load_current(cx),
+            NowMessage::Loaded(displays, audio) => {
                 self.end();
                 let mut errors = vec![];
                 match displays {
-                    Ok((layout, options)) => self.current.set_displays(layout, options),
+                    Ok((layout, options)) => self.now.set_displays(layout, options),
                     Err(e) => {
-                        self.current.display = DisplayState::default();
-                        self.current.baseline = None;
+                        self.now.display = DisplayState::default();
+                        self.now.baseline = None;
                         errors.push(e);
                     }
                 }
                 match audio {
-                    Ok((outputs, inputs)) => self.current.set_devices(outputs, inputs),
+                    Ok((outputs, inputs)) => self.now.set_devices(outputs, inputs),
                     Err(e) => {
-                        self.current.set_devices(vec![], vec![]);
+                        self.now.set_devices(vec![], vec![]);
                         errors.push(e);
                     }
                 }
@@ -304,18 +302,16 @@ impl DirectorApp {
                 .into();
                 self.details = errors.join("\n");
             }
-            CurrentMessage::Display(DisplayMessage::CaptureLost)
-                if !self.busy && self.current.display.drag.is_some() =>
+            NowMessage::Display(DisplayMessage::CaptureLost)
+                if !self.busy && self.now.display.drag.is_some() =>
             {
-                let token = self.current.display.drag_token;
+                let token = self.now.display.drag_token;
                 work(cx, move || {
                     std::thread::sleep(std::time::Duration::from_millis(25));
-                    msg(CurrentMessage::Display(DisplayMessage::CancelLostDrag(
-                        token,
-                    )))
+                    msg(NowMessage::Display(DisplayMessage::CancelLostDrag(token)))
                 });
             }
-            CurrentMessage::Display(event) if !self.busy => {
+            NowMessage::Display(event) if !self.busy => {
                 // These editor messages are synchronous and perform no persistence
                 // or device operations. Reuse the exact preset gesture/change logic.
                 if matches!(
@@ -328,19 +324,19 @@ impl DirectorApp {
                         | DisplayMessage::CancelLostDrag(..)
                         | DisplayMessage::Noop
                 ) {
-                    std::mem::swap(&mut self.display, &mut self.current.display);
+                    std::mem::swap(&mut self.display, &mut self.now.display);
                     self.update_display(event, cx);
-                    std::mem::swap(&mut self.display, &mut self.current.display);
-                    if !self.error && self.current.display_dirty() {
+                    std::mem::swap(&mut self.display, &mut self.now.display);
+                    if !self.error && self.now.display_dirty() {
                         self.status = "Display changes ready to apply.".into();
                     }
                 }
             }
-            CurrentMessage::ApplyDisplays
-                if !self.busy && self.guard_ready && self.current.display.drag.is_none() =>
+            NowMessage::ApplyDisplays
+                if !self.busy && self.guard_ready && self.now.display.drag.is_none() =>
             {
                 if let (Some(draft), Some(editor)) =
-                    (&self.current.display.draft, &self.current.display.editor)
+                    (&self.now.display.draft, &self.now.display.editor)
                 {
                     if let Err(e) = editor.validate(&draft.layout) {
                         self.failure(e);
@@ -361,7 +357,7 @@ impl DirectorApp {
                                 details: vec![e],
                             },
                         };
-                        msg(CurrentMessage::DisplaysApplied(
+                        msg(NowMessage::DisplaysApplied(
                             report,
                             read_displays(),
                             devices(),
@@ -369,29 +365,29 @@ impl DirectorApp {
                     });
                 }
             }
-            CurrentMessage::ApplyAll
-                if !self.busy && self.guard_ready && self.current.display.drag.is_none() =>
+            NowMessage::ApplyAll
+                if !self.busy && self.guard_ready && self.now.display.drag.is_none() =>
             {
-                if self.current.display_dirty() {
-                    self.current.fps_after_displays = self.current.fps_dirty;
-                    self.update_current(CurrentMessage::ApplyDisplays, cx);
-                } else if self.current.fps_dirty {
+                if self.now.display_dirty() {
+                    self.now.fps_after_displays = self.now.fps_dirty;
+                    self.update_now(NowMessage::ApplyDisplays, cx);
+                } else if self.now.fps_dirty {
                     self.update_fps(crate::gui::fps_ui::FpsMessage::Apply, cx);
                 }
             }
-            CurrentMessage::DisplaysApplied(report, actual, audio) => {
+            NowMessage::DisplaysApplied(report, actual, audio) => {
                 self.end();
-                let then_fps = std::mem::take(&mut self.current.fps_after_displays);
+                let then_fps = std::mem::take(&mut self.now.fps_after_displays);
                 let succeeded = report.succeeded();
                 self.error = !succeeded;
                 self.status = report.message;
                 self.details = report.details.join("\n");
                 self.announce(cx);
                 match actual {
-                    Ok((layout, options)) => self.current.set_displays(layout, options),
+                    Ok((layout, options)) => self.now.set_displays(layout, options),
                     Err(e) => {
-                        self.current.display = DisplayState::default();
-                        self.current.baseline = None;
+                        self.now.display = DisplayState::default();
+                        self.now.baseline = None;
                         self.error = true;
                         self.details.push_str(&format!(
                             "
@@ -400,7 +396,7 @@ Could not read the resulting display state: {e}"
                     }
                 }
                 match audio {
-                    Ok((outputs, inputs)) => self.current.set_devices(outputs, inputs),
+                    Ok((outputs, inputs)) => self.now.set_devices(outputs, inputs),
                     Err(e) => self.details.push_str(&format!(
                         "
 Could not read audio outputs: {e}"
@@ -411,13 +407,13 @@ Could not read audio outputs: {e}"
                     self.update_fps(crate::gui::fps_ui::FpsMessage::Apply, cx);
                 }
             }
-            CurrentMessage::Device(input, Some(index)) if !self.busy => {
-                if let Some(device) = self.current.shown(input).get(index)
-                    && self.current.default_device(input).map(|d| &d.id) != Some(&device.id)
+            NowMessage::Device(input, Some(index)) if !self.busy => {
+                if let Some(device) = self.now.shown(input).get(index)
+                    && self.now.default_device(input).map(|d| &d.id) != Some(&device.id)
                 {
                     let id = device.id.clone();
                     // With a separate calls device, the main output leaves calls alone.
-                    let roles = if !input && self.current.calls_separate() {
+                    let roles = if !input && self.now.calls_separate() {
                         Roles::Media
                     } else {
                         Roles::All
@@ -425,15 +421,15 @@ Could not read audio outputs: {e}"
                     self.sound_change(SoundChange::Use { input, roles }, Some(id), cx);
                 }
             }
-            CurrentMessage::SplitCalls(on) if !self.busy && !self.current.sound_pending => {
+            NowMessage::SplitCalls(on) if !self.busy && !self.now.sound_pending => {
                 // Re-renders report the switch's current state; only act on a real change.
-                if on == self.current.calls_separate() {
+                if on == self.now.calls_separate() {
                     return;
                 }
-                self.current.calls_split = on;
+                self.now.calls_split = on;
                 if !on
-                    && let Some(main) = self.current.default_device(false)
-                    && self.current.calls_device().map(|c| &c.id) != Some(&main.id)
+                    && let Some(main) = self.now.default_device(false)
+                    && self.now.calls_device().map(|c| &c.id) != Some(&main.id)
                 {
                     let id = main.id.clone();
                     self.sound_change(
@@ -446,9 +442,9 @@ Could not read audio outputs: {e}"
                     );
                 }
             }
-            CurrentMessage::CallsDevice(Some(index)) if !self.busy => {
-                if let Some(device) = self.current.shown(false).get(index)
-                    && self.current.calls_device().map(|d| &d.id) != Some(&device.id)
+            NowMessage::CallsDevice(Some(index)) if !self.busy => {
+                if let Some(device) = self.now.shown(false).get(index)
+                    && self.now.calls_device().map(|d| &d.id) != Some(&device.id)
                 {
                     let id = device.id.clone();
                     self.sound_change(
@@ -461,8 +457,8 @@ Could not read audio outputs: {e}"
                     );
                 }
             }
-            CurrentMessage::Volume(input, value) if !self.busy && value.is_finite() => {
-                let state = &mut self.current;
+            NowMessage::Volume(input, value) if !self.busy && value.is_finite() => {
+                let state = &mut self.now;
                 let (slider, token) = if input {
                     (&mut state.mic_volume, &mut state.mic_token)
                 } else {
@@ -478,11 +474,11 @@ Could not read audio outputs: {e}"
                 let token = *token;
                 work(cx, move || {
                     std::thread::sleep(SETTLE);
-                    msg(CurrentMessage::VolumeSettled(input, token))
+                    msg(NowMessage::VolumeSettled(input, token))
                 });
             }
-            CurrentMessage::VolumeSettled(input, token) => {
-                let state = &self.current;
+            NowMessage::VolumeSettled(input, token) => {
+                let state = &self.now;
                 let (latest, value) = if input {
                     (state.mic_token, state.mic_volume)
                 } else {
@@ -495,7 +491,7 @@ Could not read audio outputs: {e}"
                     // Try again once the running change has finished.
                     work(cx, move || {
                         std::thread::sleep(SETTLE);
-                        msg(CurrentMessage::VolumeSettled(input, token))
+                        msg(NowMessage::VolumeSettled(input, token))
                     });
                     return;
                 }
@@ -504,11 +500,11 @@ Could not read audio outputs: {e}"
                     self.sound_change(SoundChange::Volume { input, percent }, None, cx);
                 }
             }
-            CurrentMessage::ToggleMute(input) if !self.busy && !self.current.sound_pending => {
+            NowMessage::ToggleMute(input) if !self.busy && !self.now.sound_pending => {
                 self.sound_change(SoundChange::ToggleMute { input }, None, cx);
             }
-            CurrentMessage::SoundDone(result, devices) => {
-                self.current.sound_pending = false;
+            NowMessage::SoundDone(result, devices) => {
+                self.now.sound_pending = false;
                 crate::gui::close_guard::set_busy(false);
                 match &result {
                     Ok(message) => {
@@ -524,9 +520,9 @@ Could not read audio outputs: {e}"
                 }
                 if let Ok((outputs, inputs)) = devices {
                     // Keep a slider that moved again while this change ran where it is.
-                    let (volume, mic) = (self.current.volume, self.current.mic_volume);
-                    self.current.set_devices(outputs, inputs);
-                    let state = &mut self.current;
+                    let (volume, mic) = (self.now.volume, self.now.mic_volume);
+                    self.now.set_devices(outputs, inputs);
+                    let state = &mut self.now;
                     let (output_at_start, mic_at_start) = state.tokens_at_start;
                     if state.volume_token != output_at_start {
                         state.volume = volume.or(state.volume);
@@ -536,35 +532,35 @@ Could not read audio outputs: {e}"
                     }
                 }
             }
-            CurrentMessage::SaveDisplays
+            NowMessage::SaveDisplays
                 if !self.busy
-                    && self.current.display.drag.is_none()
-                    && self.current.display.draft.is_some() =>
+                    && self.now.display.drag.is_none()
+                    && self.now.display.draft.is_some() =>
             {
-                self.current.save_name = Some(String::new());
-                self.current.save_error = None;
-                self.current.save_revision += 1;
+                self.now.save_name = Some(String::new());
+                self.now.save_error = None;
+                self.now.save_revision += 1;
             }
-            CurrentMessage::SaveName(name) => {
-                if let Some(current) = &mut self.current.save_name {
+            NowMessage::SaveName(name) => {
+                if let Some(current) = &mut self.now.save_name {
                     *current = name;
                 }
             }
-            CurrentMessage::SaveClosed(result) => {
-                let Some(name) = self.current.save_name.clone() else {
+            NowMessage::SaveClosed(result) => {
+                let Some(name) = self.now.save_name.clone() else {
                     return;
                 };
                 let name = name.trim().to_string();
                 if result != ContentDialogResult::Primary {
-                    self.current.save_name = None;
-                    self.current.save_error = None;
+                    self.now.save_name = None;
+                    self.now.save_error = None;
                     return;
                 }
                 // Seed from the staged layout so unapplied edits are saved too.
                 let (Some(draft), Some(editor)) =
-                    (&self.current.display.draft, &self.current.display.editor)
+                    (&self.now.display.draft, &self.now.display.editor)
                 else {
-                    self.current.save_name = None;
+                    self.now.save_name = None;
                     return;
                 };
                 let error = if name.is_empty() {
@@ -576,15 +572,15 @@ Could not read audio outputs: {e}"
                 };
                 if let Some(e) = error {
                     // Reopen the dialog with the reason and the name kept.
-                    self.current.save_name = Some(name);
-                    self.current.save_error = Some(e);
-                    self.current.save_revision += 1;
+                    self.now.save_name = Some(name);
+                    self.now.save_error = Some(e);
+                    self.now.save_revision += 1;
                     return;
                 }
                 let layout = draft.layout.clone();
                 self.begin("Saving display preset…");
                 work(cx, move || {
-                    msg(CurrentMessage::DisplaysSaved((|| {
+                    msg(NowMessage::DisplaysSaved((|| {
                         let _lock = OperationLock::acquire()?;
                         let path = director::display::displays::path()?;
                         let existing = director::display::displays::load(&path)?;
@@ -606,12 +602,12 @@ Could not read audio outputs: {e}"
                     })()))
                 });
             }
-            CurrentMessage::DisplaysSaved(result) => {
+            NowMessage::DisplaysSaved(result) => {
                 self.end();
                 match result {
                     Ok(name) => {
-                        self.current.save_name = None;
-                        self.current.save_error = None;
+                        self.now.save_name = None;
+                        self.now.save_error = None;
                         self.error = false;
                         self.details.clear();
                         // Show it among the presets; Now keeps its staged edits. The list's
@@ -621,20 +617,20 @@ Could not read audio outputs: {e}"
                         self.navigate_now(Some("displays".into()), cx);
                     }
                     Err(e) => {
-                        self.current.save_error = Some(e);
-                        self.current.save_revision += 1;
+                        self.now.save_error = Some(e);
+                        self.now.save_revision += 1;
                     }
                 }
             }
-            CurrentMessage::SaveAudio if !self.busy => {
-                let Some(output) = self.current.default_device(false) else {
+            NowMessage::SaveAudio if !self.busy => {
+                let Some(output) = self.now.default_device(false) else {
                     return;
                 };
                 let mut scene =
                     director::scene::scenes::Scene::new(crate::gui::scene_ui::new_id(), "");
-                scene.sound = Some(self.current.sound_now(output));
-                self.update_library(
-                    crate::gui::library_flow::LibraryMessage::NewScene(Box::new(scene)),
+                scene.sound = Some(self.now.sound_now(output));
+                self.update_editor_flow(
+                    crate::gui::editor_flow::EditorFlowMessage::NewScene(Box::new(scene)),
                     cx,
                 );
             }
@@ -643,7 +639,7 @@ Could not read audio outputs: {e}"
     }
     /// The optional separate calls output: a switch, and its picker while on.
     fn calls_row(&self, cx: &ViewContext<Self>) -> View {
-        let state = &self.current;
+        let state = &self.now;
         let available = !self.busy && !state.sound_pending && self.guard_ready;
         let on = state.calls_separate();
         let devices = state.shown(false);
@@ -659,7 +655,7 @@ Could not read audio outputs: {e}"
                     .vertical_alignment(VerticalAlignment::Bottom)
                     .is_on(on)
                     .is_enabled(available && state.default_device(false).is_some())
-                    .on_toggled(cx.callback(|v| msg(CurrentMessage::SplitCalls(v))))
+                    .on_toggled(cx.callback(|v| msg(NowMessage::SplitCalls(v))))
                     .slot(ToggleSwitchSlot::Header, "Different device for calls"),
                 ComboBox::new()
                     .grid_column(1)
@@ -670,13 +666,13 @@ Could not read audio outputs: {e}"
                     .selected_index(current.and_then(|c| devices.iter().position(|o| o.id == c.id)))
                     .placeholder_text("Same as the output above")
                     .is_enabled(available && on)
-                    .on_selection_changed(cx.callback(|i| msg(CurrentMessage::CallsDevice(i))))
+                    .on_selection_changed(cx.callback(|i| msg(NowMessage::CallsDevice(i))))
                     .slot(ComboBoxSlot::Header, "Calls output"),
             ))
     }
     /// The output (false) or microphone (true): device picker, mute button and volume slider.
     fn sound_row(&self, cx: &ViewContext<Self>, input: bool) -> View {
-        let state = &self.current;
+        let state = &self.now;
         let current = state.default_device(input);
         let available = !self.busy && !state.sound_pending && self.guard_ready;
         let muted = current.and_then(|d| d.muted) == Some(true);
@@ -705,7 +701,7 @@ Could not read audio outputs: {e}"
                 .is_enabled(available)
                 .on_selection_changed(cx.callback(move |i: Option<usize>| {
                     // The index is into the connected devices shown, not the full list.
-                    msg(CurrentMessage::Device(input, i))
+                    msg(NowMessage::Device(input, i))
                 }))
                 .slot(
                     ComboBoxSlot::Header,
@@ -725,7 +721,7 @@ Could not read audio outputs: {e}"
                             if muted { "Unmute" } else { "Mute" }
                         ))
                         .is_enabled(available && current.is_some_and(|c| c.muted.is_some()))
-                        .on_click(cx.message(msg(CurrentMessage::ToggleMute(input))))
+                        .on_click(cx.message(msg(NowMessage::ToggleMute(input))))
                         .content(
                             StackPanel::new()
                                 .orientation(Orientation::Horizontal)
@@ -758,7 +754,7 @@ Could not read audio outputs: {e}"
                         .is_enabled(!self.busy && self.guard_ready && volume.is_some())
                         .vertical_alignment(VerticalAlignment::Center)
                         .on_value_changed(
-                            cx.callback(move |v: f64| msg(CurrentMessage::Volume(input, v))),
+                            cx.callback(move |v: f64| msg(NowMessage::Volume(input, v))),
                         ),
                     TextBlock::new()
                         .grid_column(2)
@@ -770,49 +766,43 @@ Could not read audio outputs: {e}"
     }
     /// What Apply changes would apply, for its tooltip.
     fn staged_summary(&self) -> &'static str {
-        match (self.current.display_dirty(), self.current.fps_dirty) {
+        match (self.now.display_dirty(), self.now.fps_dirty) {
             (true, true) => "Apply the display and FPS limit changes",
             (true, false) => "Apply the display changes",
             (false, true) => "Apply the FPS limit change",
             (false, false) => "Change a display or the FPS limit first",
         }
     }
-    pub(crate) fn current_view(&self, cx: &ViewContext<Self>) -> View {
+    pub(crate) fn now_view(&self, cx: &ViewContext<Self>) -> View {
         use crate::gui::ui;
-        let dragging = self.current.display.drag.is_some();
-        let dirty = self.current.dirty();
+        let dragging = self.now.display.drag.is_some();
+        let dirty = self.now.dirty();
         let can_apply = !self.busy
             && self.guard_ready
             && !dragging
-            && (self.current.display_dirty() || self.current.fps_dirty)
-            && (!self.current.fps_dirty || self.live_fps_ready());
+            && (self.now.display_dirty() || self.now.fps_dirty)
+            && (!self.now.fps_dirty || self.live_fps_ready());
         // Apply and Discard sit in the map's bottom-right corner, as in Windows Settings.
         // Apply also applies a staged FPS limit, which says so in its card.
         let map_actions = vec![
             Button::new()
                 .automation_name("Discard current setup edits")
                 .is_enabled(!self.busy && dirty)
-                .on_click(cx.message(msg(CurrentMessage::Load)))
+                .on_click(cx.message(msg(NowMessage::Load)))
                 .content("Discard")
                 .tooltip("Drop staged changes and read the current Windows setup again"),
             Button::new()
                 .style(ButtonStyle::Accent)
                 .automation_name("Apply current changes")
                 .is_enabled(can_apply)
-                .on_click(cx.message(msg(CurrentMessage::ApplyAll)))
+                .on_click(cx.message(msg(NowMessage::ApplyAll)))
                 .content("Apply changes")
                 .tooltip(self.staged_summary()),
         ];
         let displays = if let (Some(draft), Some(editor)) =
-            (&self.current.display.draft, &self.current.display.editor)
+            (&self.now.display.draft, &self.now.display.editor)
         {
-            self.monitor_editor_with(
-                &draft.layout,
-                editor,
-                cx,
-                EditorTarget::Current,
-                map_actions,
-            )
+            self.monitor_editor_with(&draft.layout, editor, cx, EditorTarget::Now, map_actions)
         } else if self.busy {
             ui::loading("Reading your displays…")
         } else {
@@ -825,8 +815,8 @@ Could not read audio outputs: {e}"
                 Button::new()
                     .style(ButtonStyle::Subtle)
                     .automation_name("Save these displays as a preset")
-                    .is_enabled(!self.busy && !dragging && self.current.display.draft.is_some())
-                    .on_click(cx.message(msg(CurrentMessage::SaveDisplays)))
+                    .is_enabled(!self.busy && !dragging && self.now.display.draft.is_some())
+                    .on_click(cx.message(msg(NowMessage::SaveDisplays)))
                     .content("Save as display preset…")
                     .tooltip("Open a new display preset with this layout, including edits you haven’t applied"),
             ),
@@ -842,8 +832,8 @@ Could not read audio outputs: {e}"
                     Button::new()
                         .style(ButtonStyle::Subtle)
                         .automation_name("Save this sound as a scene")
-                        .is_enabled(!self.busy && self.current.default_device(false).is_some())
-                        .on_click(cx.message(msg(CurrentMessage::SaveAudio)))
+                        .is_enabled(!self.busy && self.now.default_device(false).is_some())
+                        .on_click(cx.message(msg(NowMessage::SaveAudio)))
                         .content("Save as scene…")
                         .tooltip("Open a new scene whose Sound step uses this output and volume"),
                 ),
@@ -858,7 +848,7 @@ Could not read audio outputs: {e}"
         let fps = ui::column(
             ui::FORM_WIDTH,
             0.0,
-            (self.fps_controls(cx, crate::gui::fps_ui::Target::Current),),
+            (self.fps_controls(cx, crate::gui::fps_ui::Target::Now),),
         );
         // No page title: the sidebar already says Now, and the sections explain themselves.
         ui::page(
@@ -878,7 +868,7 @@ Could not read audio outputs: {e}"
 impl DirectorApp {
     /// Now's save-as-preset dialog: just a name. No tooltips inside dialogs.
     pub(crate) fn current_dialog(&self, cx: &ViewContext<Self>) -> View {
-        let Some(name) = &self.current.save_name else {
+        let Some(name) = &self.now.save_name else {
             return View::empty();
         };
         let dialog = ContentDialog::new()
@@ -887,19 +877,19 @@ impl DirectorApp {
             .primary_button_text("Save")
             .close_button_text("Cancel")
             .is_primary_button_enabled(!self.busy && !name.trim().is_empty())
-            .on_closed(cx.callback(|result| msg(CurrentMessage::SaveClosed(result))))
+            .on_closed(cx.callback(|result| msg(NowMessage::SaveClosed(result))))
             .content(
                 StackPanel::new().spacing(crate::gui::ui::GAP_M).width(360.0).children((
                     TextBox::new()
                         .automation_name("Display preset name")
                         .text(name.clone())
                         .placeholder_text("For example, Desk monitors")
-                        .on_text_changed(cx.callback(|v| msg(CurrentMessage::SaveName(v))))
+                        .on_text_changed(cx.callback(|v| msg(NowMessage::SaveName(v))))
                         .slot(TextBoxSlot::Header, "Name"),
                     crate::gui::ui::caption(
                         "Saves the layout shown here, including changes you haven’t applied. Your screens don’t change.",
                     ),
-                    match &self.current.save_error {
+                    match &self.now.save_error {
                         Some(e) => TextBlock::new()
                             .text(e.clone())
                             .foreground(crate::gui::ui::critical())
@@ -910,7 +900,7 @@ impl DirectorApp {
                 )),
             );
         Grid::new().keyed_children([KeyedView::new(
-            format!("save-dialog-{}", self.current.save_revision),
+            format!("save-dialog-{}", self.now.save_revision),
             dialog,
         )])
     }
@@ -965,7 +955,7 @@ mod tests {
     #[test]
     fn live_edits_keep_an_independent_baseline_and_reset_without_presets() {
         let original = layout();
-        let mut state = CurrentState::default();
+        let mut state = NowState::default();
         state.set_displays(
             original.clone(),
             vec![Options {
@@ -994,7 +984,7 @@ mod tests {
     }
     #[test]
     fn save_as_scene_keeps_the_output_and_microphone_as_shown() {
-        let mut state = CurrentState::default();
+        let mut state = NowState::default();
         let mut speakers = output("speakers", true);
         speakers.muted = Some(false);
         let mut mic = output("mic", true);
@@ -1018,7 +1008,7 @@ mod tests {
     }
     #[test]
     fn a_separate_calls_device_is_detected_and_saved_with_the_scene() {
-        let mut state = CurrentState::default();
+        let mut state = NowState::default();
         let mut desk = output("desk", true);
         desk.communications = true;
         state.set_devices(vec![desk, output("headset", false)], vec![]);
@@ -1049,7 +1039,7 @@ mod tests {
     }
     #[test]
     fn sliders_follow_the_default_devices_and_pickers_hide_disconnected_ones() {
-        let mut state = CurrentState::default();
+        let mut state = NowState::default();
         let mut gone = output("gone", false);
         gone.active = false;
         let mut mic = output("mic", true);

@@ -326,9 +326,9 @@ impl DirectorApp {
             self.update_fps(crate::gui::fps_ui::FpsMessage::Discover, cx);
         }
         let ready = self.scene_ready();
-        // The last item of each section's dropdown creates a new Library item in place.
+        // The last item of each section's dropdown creates a new display preset or TV in place.
         if ready && self.scene.draft.is_some() {
-            use crate::gui::library_flow::{LibraryMessage, Slot};
+            use crate::gui::editor_flow::{EditorFlowMessage, Slot};
             let create = match &m {
                 SceneMessage::Display(Some(i)) if *i == self.scene.displays.len() + 1 => {
                     Some(Slot::Display)
@@ -337,7 +337,7 @@ impl DirectorApp {
                 _ => None,
             };
             if let Some(slot) = create {
-                self.update_library(LibraryMessage::FromScene(slot), cx);
+                self.update_editor_flow(EditorFlowMessage::FromScene(slot), cx);
                 return;
             }
         }
@@ -373,8 +373,8 @@ impl DirectorApp {
                         self.scene.ready = true;
                         self.scene.active = director::scene::scene_session::active();
                         self.status = "Ready.".into();
-                        self.library_select_in_scene(cx);
-                        self.library_resume(cx);
+                        self.flow_select_in_scene(cx);
+                        self.flow_resume(cx);
                         self.starter_loaded(cx);
                     }
                     Err(e) => {

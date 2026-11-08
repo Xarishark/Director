@@ -277,7 +277,7 @@ impl DirectorApp {
                     self.status = notice;
                     self.announce(cx);
                 }
-                self.library_resume(cx);
+                self.flow_resume(cx);
             }
             DisplayMessage::Create if self.display_ready() && self.display.draft.is_none() => {
                 self.begin("Reading monitors and supported display modes…");
@@ -499,7 +499,7 @@ impl DirectorApp {
                 self.error = false;
                 self.status = "Ready.".into();
                 self.details.clear();
-                self.library_cancelled(crate::gui::library_flow::Slot::Display, cx);
+                self.flow_cancelled(crate::gui::editor_flow::Slot::Display, cx);
             }
             DisplayMessage::Save if self.display_ready() && self.display.drag.is_none() => {
                 if let Some(mut preset) = self.display.draft.clone() {
@@ -523,7 +523,7 @@ impl DirectorApp {
             DisplayMessage::Saved(result) => match result {
                 Ok(p) => {
                     self.end();
-                    let added = crate::gui::library_flow::added_id(
+                    let added = crate::gui::editor_flow::added_id(
                         self.display.presets.iter().map(|p| p.id.as_str()),
                         p.iter().map(|p| p.id.as_str()),
                     );
@@ -535,7 +535,7 @@ impl DirectorApp {
                     self.status = "Display presets saved. Your screens are unchanged.".into();
                     self.guard_saved(true, cx);
                     self.announce(cx);
-                    self.library_saved(crate::gui::library_flow::Slot::Display, added, cx);
+                    self.flow_saved(crate::gui::editor_flow::Slot::Display, added, cx);
                 }
                 Err(e) => self.failure(e),
             },

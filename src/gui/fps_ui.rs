@@ -7,7 +7,7 @@ use windows_reactor::*;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
     Scene,
-    Current,
+    Now,
 }
 #[derive(Clone)]
 pub(crate) enum FpsMessage {
@@ -72,18 +72,18 @@ impl DirectorApp {
     fn fps_request(&self, target: Target) -> Option<&Request> {
         match target {
             Target::Scene => self.scene.draft.as_ref().and_then(|d| d.fps.as_ref()),
-            Target::Current => self.fps.live.as_ref(),
+            Target::Now => self.fps.live.as_ref(),
         }
     }
     fn fps_request_mut(&mut self, target: Target) -> Option<&mut Request> {
         match target {
             Target::Scene => self.scene.draft.as_mut().and_then(|d| d.fps.as_mut()),
-            Target::Current => self.fps.live.as_mut(),
+            Target::Now => self.fps.live.as_mut(),
         }
     }
     fn fps_edited(&mut self, target: Target) {
-        if target == Target::Current {
-            self.current.fps_dirty = self.fps.live.is_some();
+        if target == Target::Now {
+            self.now.fps_dirty = self.fps.live.is_some();
         }
     }
     pub(crate) fn update_fps(&mut self, m: FpsMessage, cx: &ComponentContext<Self>) {
@@ -137,7 +137,7 @@ impl DirectorApp {
             FpsMessage::Enable(target, on) if !self.busy => {
                 let request = if on { self.fps_default() } else { None };
                 match target {
-                    Target::Current => self.fps.live = request,
+                    Target::Now => self.fps.live = request,
                     Target::Scene => {
                         if let Some(d) = &mut self.scene.draft {
                             d.fps = request
@@ -224,7 +224,7 @@ impl DirectorApp {
                                 })
                             }
                         }
-                        self.current.fps_dirty = false;
+                        self.now.fps_dirty = false;
                         self.status = "Fixture FPS applied. No real settings changed.".into();
                         self.announce(cx);
                         return;
@@ -254,7 +254,7 @@ impl DirectorApp {
                 self.fps.caps = caps;
                 match result {
                     Ok(text) => {
-                        self.current.fps_dirty = false;
+                        self.now.fps_dirty = false;
                         self.status = "FPS configuration applied.".into();
                         self.details = text;
                         self.error = false;
@@ -281,7 +281,7 @@ impl DirectorApp {
             .flatten();
         scene
             .or_else(|| {
-                self.current
+                self.now
                     .display
                     .draft
                     .as_ref()
@@ -296,7 +296,7 @@ impl DirectorApp {
     }
     /// Now's staged FPS change can be applied: it's valid and its method is available.
     pub(crate) fn live_fps_ready(&self) -> bool {
-        self.current.fps_dirty
+        self.now.fps_dirty
             && self.fps.live.as_ref().is_some_and(|r| {
                 r.validate().is_ok()
                     && self
@@ -337,7 +337,7 @@ impl DirectorApp {
             })
             .unwrap_or_else(|| {
                 // On Now with nothing staged, say what every method has set right now.
-                if target != Target::Current {
+                if target != Target::Now {
                     return String::new();
                 }
                 let set = self
@@ -384,12 +384,12 @@ impl DirectorApp {
                     .spacing(2.0)
                     .vertical_alignment(VerticalAlignment::Center)
                     .children((
-                        ui::label(if target == Target::Current {
+                        ui::label(if target == Target::Now {
                             "FPS limit"
                         } else {
                             "Change FPS limit"
                         }),
-                        ui::caption(if target == Target::Current && self.current.fps_dirty {
+                        ui::caption(if target == Target::Now && self.now.fps_dirty {
                             "Not applied yet: use Apply changes on the display map.".into()
                         } else if on {
                             current
@@ -544,7 +544,7 @@ impl DirectorApp {
         let content = StackPanel::new()
             .spacing(ui::GAP_M)
             .children((header, status, check, body));
-        if target == Target::Current {
+        if target == Target::Now {
             ui::card(content)
         } else {
             content

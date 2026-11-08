@@ -8,7 +8,7 @@ use windows_reactor::*;
 #[derive(Clone, Copy)]
 pub(crate) enum EditorTarget {
     Preset,
-    Current,
+    Now,
 }
 /// How many monitor cards fit side by side in a column `width` wide (at least 1, at most 3).
 pub(crate) fn monitor_columns(width: f64) -> usize {
@@ -20,9 +20,7 @@ pub(crate) fn monitor_columns(width: f64) -> usize {
 fn route(target: EditorTarget, value: DisplayMessage) -> Message {
     match target {
         EditorTarget::Preset => Message::Display(value),
-        EditorTarget::Current => {
-            Message::Current(crate::gui::current_ui::CurrentMessage::Display(value))
-        }
+        EditorTarget::Now => Message::Now(crate::gui::now_ui::NowMessage::Display(value)),
     }
 }
 fn msg(target: EditorTarget, index: usize, change: Change) -> Message {
@@ -70,7 +68,7 @@ fn preview(
 ) -> View {
     let drag = match target {
         EditorTarget::Preset => app.display.drag.as_ref(),
-        EditorTarget::Current => app.current.display.drag.as_ref(),
+        EditorTarget::Now => app.now.display.drag.as_ref(),
     };
     let (width, height) = app.map_size();
     let map = drag.map_or_else(
@@ -79,7 +77,7 @@ fn preview(
     );
     let selected = match target {
         EditorTarget::Preset => app.display.selected,
-        EditorTarget::Current => app.current.display.selected,
+        EditorTarget::Now => app.now.display.selected,
     };
     let cards = layout
         .monitors
@@ -298,7 +296,7 @@ impl DirectorApp {
         };
         let selected = match target {
             EditorTarget::Preset => self.display.selected,
-            EditorTarget::Current => self.current.display.selected,
+            EditorTarget::Now => self.now.display.selected,
         };
         let cards = (0..layout.monitors.len())
             .map(|i| {
@@ -371,7 +369,7 @@ impl DirectorApp {
     ) -> MonitorParts {
         let revision = match target {
             EditorTarget::Preset => self.display.orientation_revision,
-            EditorTarget::Current => self.current.display.orientation_revision,
+            EditorTarget::Now => self.now.display.orientation_revision,
         };
         let m = &layout.monitors[i];
         let options = director::display::display_mirroring::common_options(editor, layout, i);

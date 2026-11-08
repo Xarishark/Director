@@ -43,7 +43,7 @@ fn changed<T: PartialEq>(base: &Option<T>, draft: Option<&T>) -> bool {
 
 fn page_name(page: Page) -> &'static str {
     match page {
-        Page::Current => "Now",
+        Page::Now => "Now",
         Page::Displays => "this display preset",
         Page::Tvs => "this TV",
         Page::Scenes => "this scene",
@@ -85,7 +85,7 @@ impl DirectorApp {
             Page::Scenes => self.scene.draft.as_ref().is_some_and(|d| {
                 !self.scene.scenes.iter().any(|s| s.id == d.id) || g.scene.as_ref() != Some(d)
             }),
-            Page::Current | Page::Options => false,
+            Page::Now | Page::Options => false,
         }
     }
     fn unsaved(&self) -> bool {
@@ -94,7 +94,7 @@ impl DirectorApp {
             Page::Displays => changed(&g.display, self.display.draft.as_ref()),
             Page::Tvs => changed(&g.tv, self.tv.draft.as_ref()),
             Page::Scenes => changed(&g.scene, self.scene.draft.as_ref()),
-            Page::Current => self.current.dirty(),
+            Page::Now => self.now.dirty(),
             Page::Options => false,
         }
     }
@@ -124,7 +124,7 @@ impl DirectorApp {
                     })
             }
             // Now applies changes rather than saving them.
-            Page::Current | Page::Options => false,
+            Page::Now | Page::Options => false,
         }
     }
     fn draft_name(&self) -> Option<String> {
@@ -182,7 +182,7 @@ impl DirectorApp {
                     Page::Displays => Message::Display(DisplayMessage::Cancel),
                     Page::Tvs => Message::Tv(crate::gui::tv_ui::TvMessage::Cancel),
                     Page::Scenes => Message::Scene(crate::gui::scene_ui::SceneMessage::Cancel),
-                    _ => Message::Current(crate::gui::current_ui::CurrentMessage::Load),
+                    _ => Message::Now(crate::gui::now_ui::NowMessage::Load),
                 };
                 <Self as Component>::update(self, discard, cx);
                 // Discarding Now rereads Windows in the background; navigate right away.
@@ -224,10 +224,10 @@ impl DirectorApp {
         let can_save = self.can_save();
         let title = match self.draft_name() {
             Some(name) => format!("Save changes to “{name}”?"),
-            None if self.page == Page::Current => "Discard your Now edits?".into(),
+            None if self.page == Page::Now => "Discard your Now edits?".into(),
             None => "Save your changes?".into(),
         };
-        let body = if self.page == Page::Current {
+        let body = if self.page == Page::Now {
             "You changed settings in Now without applying them. Discard them, or keep editing and apply them first.".to_string()
         } else if can_save {
             format!(

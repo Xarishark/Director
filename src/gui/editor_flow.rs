@@ -1,8 +1,8 @@
-//! Cross-page flows between Now, Scenes and the Library.
+//! Cross-page flows between Now, Scenes and the Displays and TVs editors.
 //!
 //! Now can seed a new display preset from what it has staged, and the scene editor can create a
 //! display preset or TV in place and get back to the scene with it selected. Every flow ends in
-//! the normal Library editor, so saving still only saves.
+//! the normal Displays or TVs editor, so saving still only saves.
 use crate::{
     DirectorApp, Message, Page, gui::display_ui::DisplayMessage, gui::scene_ui::SceneMessage, work,
 };
@@ -16,7 +16,7 @@ pub(crate) enum Slot {
 }
 
 #[derive(Clone)]
-pub(crate) enum LibraryMessage {
+pub(crate) enum EditorFlowMessage {
     /// Open a new display preset, seeded from a staged layout when one is given.
     NewDisplay(Option<Layout>),
     NewTv,
@@ -27,7 +27,7 @@ pub(crate) enum LibraryMessage {
 }
 
 #[derive(Default)]
-pub(crate) struct LibraryFlow {
+pub(crate) struct EditorFlow {
     /// A new display preset to open once the Displays page has loaded.
     display_seed: Option<Option<Layout>>,
     /// A new scene draft to open once Scenes has loaded.
@@ -38,7 +38,7 @@ pub(crate) struct LibraryFlow {
     scene_select: Option<(Slot, String)>,
 }
 
-impl LibraryFlow {
+impl EditorFlow {
     /// A user-initiated page change abandons any pending return to the scene.
     pub(crate) fn navigated(&mut self) {
         self.scene_return = None;
@@ -46,23 +46,23 @@ impl LibraryFlow {
 }
 
 impl DirectorApp {
-    fn library_go(&mut self, tag: &str, cx: &ComponentContext<Self>) {
+    fn flow_go(&mut self, tag: &str, cx: &ComponentContext<Self>) {
         let before = self.page;
         self.navigate_now(Some(tag.into()), cx);
         // Entering a page reloads it (sometimes via a queued message) and its load handler
         // resumes the flow. Staying on the same page reloads nothing, so resume now.
         if self.page == before {
-            self.library_resume(cx);
+            self.flow_resume(cx);
         }
     }
-    pub(crate) fn update_library(&mut self, m: LibraryMessage, cx: &ComponentContext<Self>) {
+    pub(crate) fn update_editor_flow(&mut self, m: EditorFlowMessage, cx: &ComponentContext<Self>) {
         if self.busy {
             return;
         }
         match m {
-            LibraryMessage::NewDisplay(seed) => {
+            EditorFlowMessage::NewDisplay(seed) => {
                 if self.display.draft.is_some() {
-                    self.library_go("displays", cx);
+                    self.flow_go("displays", cx);
                     self.warn(
                         "Finish or cancel the display preset you’re editing first.",
                         "",
@@ -70,34 +70,34 @@ impl DirectorApp {
                     return;
                 }
                 self.flow.display_seed = Some(seed);
-                self.library_go("displays", cx);
+                self.flow_go("displays", cx);
             }
-            LibraryMessage::NewTv => {
+            EditorFlowMessage::NewTv => {
                 if self.tv.draft.is_some() {
-                    self.library_go("tvs", cx);
+                    self.flow_go("tvs", cx);
                     self.warn("Finish or cancel the TV you’re setting up first.", "");
                     return;
                 }
                 self.tv.add_after_load = true;
-                self.library_go("tvs", cx);
+                self.flow_go("tvs", cx);
             }
-            LibraryMessage::NewScene(scene) => {
+            EditorFlowMessage::NewScene(scene) => {
                 if self.scene.draft.is_some() {
-                    self.library_go("scenes", cx);
+                    self.flow_go("scenes", cx);
                     self.warn("Finish or cancel the scene you’re editing first.", "");
                     return;
                 }
                 self.flow.scene_seed = Some(*scene);
-                self.library_go("scenes", cx);
+                self.flow_go("scenes", cx);
             }
-            LibraryMessage::FromScene(slot) => {
+            EditorFlowMessage::FromScene(slot) => {
                 if self.scene.draft.is_none() {
                     return;
                 }
-                self.update_library(
+                self.update_editor_flow(
                     match slot {
-                        Slot::Display => LibraryMessage::NewDisplay(None),
-                        Slot::Tv => LibraryMessage::NewTv,
+                        Slot::Display => EditorFlowMessage::NewDisplay(None),
+                        Slot::Tv => EditorFlowMessage::NewTv,
                     },
                     cx,
                 );
@@ -106,8 +106,8 @@ impl DirectorApp {
             }
         }
     }
-    /// Opens a pending new preset once its Library page has finished loading.
-    pub(crate) fn library_resume(&mut self, cx: &ComponentContext<Self>) {
+    /// Opens a pending new preset once its Displays page has finished loading.
+    pub(crate) fn flow_resume(&mut self, cx: &ComponentContext<Self>) {
         // Keep a pending seed until its page has finished loading; a load may still be queued.
         if self.page == Page::Displays
             && self.display_ready()
@@ -141,8 +141,8 @@ impl DirectorApp {
             self.status = "Name this scene to save the sound set in Now.".into();
         }
     }
-    /// Call after a Library save succeeds, with the item it added (if any).
-    pub(crate) fn library_saved(
+    /// Call after a Displays or TVs save succeeds, with the item it added (if any).
+    pub(crate) fn flow_saved(
         &mut self,
         slot: Slot,
         new_id: Option<String>,
@@ -153,17 +153,17 @@ impl DirectorApp {
         {
             self.flow.scene_return = None;
             self.flow.scene_select = Some((slot, id));
-            self.library_go("scenes", cx);
+            self.flow_go("scenes", cx);
         }
     }
-    pub(crate) fn library_cancelled(&mut self, slot: Slot, cx: &ComponentContext<Self>) {
+    pub(crate) fn flow_cancelled(&mut self, slot: Slot, cx: &ComponentContext<Self>) {
         if self.flow.scene_return == Some(slot) {
             self.flow.scene_return = None;
-            self.library_go("scenes", cx);
+            self.flow_go("scenes", cx);
         }
     }
     /// Selects a just-created item in the scene draft after the scene catalog reloads.
-    pub(crate) fn library_select_in_scene(&mut self, cx: &ComponentContext<Self>) {
+    pub(crate) fn flow_select_in_scene(&mut self, cx: &ComponentContext<Self>) {
         let Some((slot, id)) = self.flow.scene_select.take() else {
             return;
         };
@@ -209,7 +209,7 @@ mod tests {
     }
     #[test]
     fn navigating_clears_a_pending_scene_return() {
-        let mut flow = LibraryFlow {
+        let mut flow = EditorFlow {
             scene_return: Some(Slot::Tv),
             ..Default::default()
         };
