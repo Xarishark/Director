@@ -71,7 +71,7 @@ Director needs **Windows 11, version 24H2 or newer** (x64), because switching HD
 
 ## Command line
 
-Every scene, preset, TV, screen and audio device has a CLI name: its name in lowercase with dashes, so "TV Gaming" is `tv-gaming`. The **>\_** button next to a name copies the exact command, ready for a Stream Deck action or a shortcut.
+Every scene, preset, TV, screen and audio device has a CLI name: its name in lowercase with dashes, so "TV Gaming" is `tv-gaming`. The **>\_** button next to a name copies the exact command, ready for a [Stream Deck button or shortcut](#stream-deck-and-shortcuts).
 
 ```powershell
 director scene apply tv-gaming
@@ -84,6 +84,26 @@ director list
 ```
 
 `director --help` lists every command. Commands run without opening the window and return a non-zero exit code when something fails.
+
+## Stream Deck and shortcuts
+
+To run a command from a Stream Deck button, a desktop shortcut or a hotkey tool without a terminal window ever appearing, start it through Windows' console host in headless mode:
+
+```text
+conhost.exe --headless cmd.exe /c director scene apply tv-gaming
+```
+
+On a Stream Deck, add a **System → Open** action and paste the whole line into its **App / File** field. Some useful buttons:
+
+| Button | Command |
+| --- | --- |
+| Couch ↔ desk | `conhost.exe --headless cmd.exe /c director scene apply tv-gaming` |
+| Back to desk | `conhost.exe --headless cmd.exe /c director scene end` |
+| Volume up / down | `conhost.exe --headless cmd.exe /c director audio volume +5` (or `-5`) |
+| Mute | `conhost.exe --headless cmd.exe /c director audio mute toggle` |
+| TV on / off | `conhost.exe --headless cmd.exe /c director tv toggle living-room-tv` |
+
+**One button to go to the couch and back.** Give your TV Gaming scene a **Return** step pointing at your Desk scene. The first press applies TV Gaming. Pressing the same button again while it's active runs its leave steps (for example closing Big Picture and turning the TV off) and applies Desk. With **Notify when CLI scenes fail** on in Options, a Windows notification tells you if a run didn't finish.
 
 ## Guides
 

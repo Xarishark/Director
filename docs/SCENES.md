@@ -48,7 +48,7 @@ Before running any leave steps, Director checks that the Return scene still exis
 
 ## Shortcuts and the command line
 
-The **>\_** button after a scene's name shows the commands for it, each with **Copy**: by CLI name (`director scene apply tv-gaming`, easy to read) and by ID (keeps working after a rename). Paste either into a Stream Deck action, a shortcut or a script. Setup adds `director` to PATH.
+The **>\_** button after a scene's name shows the commands for it, each with **Copy**: by CLI name (`director scene apply tv-gaming`, easy to read) and by ID (keeps working after a rename). Paste either into a Stream Deck action, a shortcut or a script. Setup adds `director` to PATH. To run it without a terminal window appearing, prefix it with `conhost.exe --headless cmd.exe /c`, as shown in the [README](../README.md#stream-deck-and-shortcuts). With a **Return** step, one button applies the scene and a second press takes you back.
 
 ```text
 director scene list
