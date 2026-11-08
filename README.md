@@ -103,7 +103,20 @@ On a Stream Deck, add a **System → Open** action and paste the whole line into
 | Mute | `conhost.exe --headless cmd.exe /c director audio mute toggle` |
 | TV on / off | `conhost.exe --headless cmd.exe /c director tv toggle living-room-tv` |
 
-**One button to go to the couch and back.** Give your TV Gaming scene a **Return** step pointing at your Desk scene. The first press applies TV Gaming. Pressing the same button again while it's active runs its leave steps (for example closing Big Picture and turning the TV off) and applies Desk. With **Notify when CLI scenes fail** on in Options, a Windows notification tells you if a run didn't finish.
+### One button to the couch and back
+
+1. Make a **Desk** scene for your everyday setup (the **Save everyday scene** card on an empty Scenes page does this for you; name it Desk instead of Default).
+2. Make a **TV Gaming** scene with the TV, the TV layout, **TV's sound** and anything else you want, such as Steam Big Picture in **After**.
+3. Optionally, add a **When leaving** link `steam://close/bigpicture` and turn on **Turn off the TV when you leave this scene** in its Prepare TV step.
+4. In the TV Gaming scene, open **Return**, switch it on and choose **Desk**. Save.
+5. On your Stream Deck, add a **System → Open** action with `conhost.exe --headless cmd.exe /c director scene apply tv-gaming`.
+
+Now the same button does both:
+
+- **First press:** TV Gaming becomes active. The TV wakes, the screens and sound switch, and Big Picture opens.
+- **Second press:** because TV Gaming is already active, Director runs its leave steps (Big Picture closes, the TV turns off) and then applies Desk.
+
+Turn on **Notify when CLI scenes fail** in Options to get a Windows notification if a press doesn't complete.
 
 ## Guides
 
