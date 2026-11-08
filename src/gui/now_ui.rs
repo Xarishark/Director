@@ -264,6 +264,10 @@ impl DirectorApp {
         if crate::gui::preset_cards_preview::ENABLED.load(std::sync::atomic::Ordering::Acquire) {
             self.fps = crate::gui::fps_ui::FpsState::fixture();
             self.now.fps_dirty = false;
+            let (layout, options) = crate::gui::preset_cards_preview::now_displays();
+            self.now.set_displays(layout, options);
+            self.now
+                .set_devices(self.outputs.clone(), self.inputs.clone());
             return;
         }
         self.fps.live = None;
