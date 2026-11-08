@@ -35,7 +35,7 @@ Display preset cards show a preview of the layout. A scene card shows its main c
 Director needs **Windows 11, version 24H2 or newer** (x64). Setup checks this and stops on older versions.
 
 1. Use the **Download for Windows** button above to get **Director-x64-setup.exe** from the latest GitHub Release. You can also get it from the **Director-Windows-x64** artifact of a successful **Windows build** run.
-2. Run setup and click **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval. If Microsoft Windows App Runtime 2.6 is missing, setup downloads it (about 125 MB) and installs it first. Leave **Create a desktop shortcut** selected if you want one. See the [installation and runtime guide](docs/WINDOWS_GUI.md).
+2. Run setup and click **Install**. Director installs for everyone on the PC, so Windows asks for administrator approval. If Microsoft Windows App Runtime 2.6 is missing, setup downloads it (about 125 MB) and installs it first. Leave **Create a desktop shortcut** selected if you want one. See the [installation and runtime guide](docs/INSTALL.md).
 3. Click **Launch**, or open **Director** from Start or the desktop. Setup adds Director to PATH. Open a new terminal to use the command line.
 
 ## Set up your first TV scene
@@ -82,7 +82,7 @@ director audio mute toggle
 
 - [Displays](docs/DISPLAYS.md) · [Sound](docs/SOUND.md) · [Scenes](docs/SCENES.md)
 - [TV setup and pairing](docs/TVS.md) · [Test a Samsung or TCL TV](docs/TV_TESTING.md)
-- [FPS limits](docs/FPS.md) · [Diagnostics](docs/DIAGNOSTICS.md) · [Build, test, and CLI reference](docs/DEVELOPMENT.md)
+- [FPS limits](docs/FPS.md) · [Diagnostics](docs/TROUBLESHOOTING.md) · [Build, test, and CLI reference](docs/DEVELOPMENT.md)
 
 ## Contributing
 

@@ -86,15 +86,34 @@ Real hardware checks (applying layouts, switching audio, waking a TV) can't run 
 
 ## Crash reports
 
-`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, a backtrace for panics and the newest 40 log records. On the next start the newest unseen report is offered once; dismissing it renames it to `.seen.txt`. **Report on GitHub** opens `issues/new` with only the summary, version and backtrace in the URL; the log lines stay in the file for the reporter to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well. Native faults that bypass the panic hook (fail-fast, access violations) appear only in Windows' Application event log. See [Diagnostics](DIAGNOSTICS.md) for the logs.
+`director::crash::install` sets a panic hook (after `diagnostics::init`), and a fatal Reactor error from `App::run_component` is recorded too. Each report is a text file in `Logs\Crashes` (`crash-<unix ms>.txt`, newest 10 kept) with the summary, version, Windows build, message, a backtrace for panics and the newest 40 log records. On the next start the newest unseen report is offered once; dismissing it renames it to `.seen.txt`. **Report on GitHub** opens `issues/new` with only the summary, version and backtrace in the URL; the log lines stay in the file for the reporter to attach. Panics caught by worker `catch_unwind` safety nets are recorded as well. Native faults that bypass the panic hook (fail-fast, access violations) appear only in Windows' Application event log. See [Diagnostics](TROUBLESHOOTING.md) for the logs.
 
 ## Artwork
 
 `assets/director.svg` is the only source for the app icon. `packaging/windows_icon.rs` rasterizes seven sizes with the build-only `resvg` crate, embeds them with `rc.exe` or `windres` (override with `WINDRES`), embeds `packaging/director.manifest`, and stages `director.ico` beside the executable. The installer's 64 px setup logo is copied from that icon.
 
+## Installer
+
+`scripts/package-msi.ps1` builds both installer files with WiX 6.0.2 into `target\installer`:
+
+```powershell
+.\scripts\package-msi.ps1                      # release build, then package
+.\scripts\package-msi.ps1 -UseExistingRelease  # package the existing release build
+.\scripts\package-msi.ps1 -Wix C:\tools\wix.exe
+```
+
+It adds the pinned WiX Util and bootstrapper extensions to the global WiX cache when missing.
+
+- `Director-<version>-x64.msi` comes from [installer/Director.wxs](../installer/Director.wxs): a per-machine package with no dialogs of its own. It installs to `%ProgramFiles%\Director`, adds shortcuts, the `director-run:` handler and the PATH entry, and refuses Windows builds below 26100 through a launch condition.
+- `Director-<version>-x64-setup.exe` is a WiX Burn bundle from [installer/DirectorSetup.wxs](../installer/DirectorSetup.wxs) with the [Director theme](../installer/theme). It embeds the MSI, checks the Windows build, and installs the Windows App Runtime first when the pinned package isn't registered. Releases publish only this file.
+
+The runtime is pinned in two places. To move to a newer one, update the version, download URL, SHA-512 hash and size in `DirectorSetup.wxs` (`wix burn remotepayload` generates them), and `$runtimeVersion` and `$runtimePackage` in the packaging script. Users see what setup does in [Install](INSTALL.md).
+
+`windows-reactor` is a preview crate, pinned to `=0.100.0` with `Cargo.lock`; its published API differs from current upstream examples, so check the matching source before using a new API. It needs the framework-dependent Windows App Runtime 2.4 or newer and shows a download prompt when it's missing; the CLI doesn't need the runtime. The executable embeds `packaging/director.manifest` (Windows 10/11 supported OS, `maxversiontested` 10.0.26100.0, per-monitor v2 DPI). Raise `maxversiontested` after testing on a newer Windows release.
+
 ## GitHub Actions
 
-The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to `main`, and can be run by hand from the Actions tab. On the hosted Windows runner with the MSVC toolchain it checks formatting, runs Clippy and the tests, builds the release executable, packages the MSI and the `setup.exe` that embeds it, and uploads the setup as the **Director-Windows-x64** artifact (GitHub zips artifacts; release assets download as the plain file). When a merge into `main` raises the version, the workflow publishes a GitHub Release with that setup. A manual run on `main` with `publish_release` enabled publishes the current version. See [Setup and MSI](WINDOWS_GUI.md#setup-and-msi).
+The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pull requests and pushes to `main`, and can be run by hand from the Actions tab. On the hosted Windows runner with the MSVC toolchain it checks formatting, runs Clippy and the tests, builds the release executable, packages the MSI and the `setup.exe` that embeds it, and uploads the setup as the **Director-Windows-x64** artifact (GitHub zips artifacts; release assets download as the plain file). When a merge into `main` raises the version, the workflow publishes a GitHub Release with that setup. A manual run on `main` with `publish_release` enabled publishes the current version. See [Setup and MSI](#installer).
 
 ## Versioning
 

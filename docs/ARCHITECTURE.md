@@ -9,7 +9,7 @@ Director is one Rust executable, `director.exe`. Started without arguments it op
 | Library crate `director` | `src/lib.rs` | Domain models, persistence, the scene and device engines, Windows and TV backends, the CLI |
 | Binary | `src/main.rs` and `src/*_ui.rs` | The `DirectorApp` WinUI component (through `windows-reactor` 0.100), pages and dialogs |
 | Build script | `build.rs`, `packaging/windows_icon.rs` | Renders `assets/director.svg` into the embedded icon and `director.ico`, embeds `packaging/director.manifest`, stages SVG assets beside the executable |
-| Installer | `installer/`, `scripts/package-msi.ps1` | WiX MSI plus a `setup.exe` bundle that installs the Windows App Runtime when missing; see [Windows GUI](WINDOWS_GUI.md) |
+| Installer | `installer/`, `scripts/package-msi.ps1` | WiX MSI plus a `setup.exe` bundle that installs the Windows App Runtime when missing; see [Windows GUI](INSTALL.md) |
 
 ## Integration policy
 
@@ -26,7 +26,7 @@ Director talks to Windows and to TVs directly: Win32 and WinRT APIs, Core Audio,
 | TV brands | `lg_protocol` + `windows_lg`, `samsung` + `windows_samsung`, `android_tv` + `windows_android_tv` | LG webOS and Samsung Tizen over WinHTTP WebSockets; Android TV Remote v2 over in-process TLS (`rustls`) with a per-TV client certificate. |
 | FPS | `fps`, `windows_fps` | Global NVIDIA or RTSS frame-rate limit with snapshot, readback and restore. See [FPS](FPS.md). |
 | CLI | `cli`, `cli_list`, `cli_name`, `audio_cli`, `display_cli`, `tv_cli` | Argument parsing and output. CLI names are derived from item names, never stored. |
-| App services | `storage`, `preferences`, `backup`, `diagnostics`, `crash`, `notifications`, `windows_close` | Settings files, preferences, backup and restore, logs, crash reports, Windows notifications and close protection. See [Diagnostics](DIAGNOSTICS.md). |
+| App services | `storage`, `preferences`, `backup`, `diagnostics`, `crash`, `notifications`, `windows_close` | Settings files, preferences, backup and restore, logs, crash reports, Windows notifications and close protection. See [Diagnostics](TROUBLESHOOTING.md). |
 
 ## Threading and locking
 

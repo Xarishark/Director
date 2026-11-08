@@ -71,4 +71,4 @@ New display presets can show a small neutral "Setting up a TV?" card with Add TV
 
 ## Options
 
-Options holds app-wide settings as setting cards. **Applying scenes**: keep finished changes when a later step fails, the device wait and TV input protection. Then notifications for failed CLI scenes, TV setup tips, **Backup** (export and restore), **Diagnostics** (logs and Report a problem) and **About**. See [Diagnostics](DIAGNOSTICS.md).
+Options holds app-wide settings as setting cards. **Applying scenes**: keep finished changes when a later step fails, the device wait and TV input protection. Then notifications for failed CLI scenes, TV setup tips, **Backup** (export and restore), **Diagnostics** (logs and Report a problem) and **About**. See [Diagnostics](TROUBLESHOOTING.md).
