@@ -221,7 +221,7 @@ pub fn report(tv: &crate::tvs::Tv) -> Result<CompatibilityReport, String> {
         test.firmware = clean(&test.firmware);
     }
     Ok(CompatibilityReport {
-        format_version: 2,
+        format_version: 1,
         director_version: env!("CARGO_PKG_VERSION"),
         brand: tv.brand.label(),
         model: clean(&tv.compatibility().model),
@@ -320,7 +320,7 @@ mod tests {
     }
     #[test]
     fn report_is_an_allowlist_and_never_serializes_secrets_or_addresses() {
-        let tv:crate::tvs::Tv=serde_json::from_value(serde_json::json!({"id":"private-id","name":"private-alias","brand":"samsung","address":"192.0.2.50","display":null,"credential":[1,2,3],"samsung":{"model":"S90C","firmware":"1234","tests":[]}})).unwrap();
+        let tv:crate::tvs::Tv=serde_json::from_value(serde_json::json!({"id":"private-id","name":"private-alias","brand":"samsung","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1,2,3],"samsung":{"model":"S90C","firmware":"1234","tests":[]}})).unwrap();
         let data = serde_json::to_string(&report(&tv).unwrap()).unwrap();
         assert!(data.contains("S90C"));
         for value in [

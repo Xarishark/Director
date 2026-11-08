@@ -16,9 +16,8 @@ use std::{
 };
 
 const LIMIT: u64 = 8 * 1024 * 1024;
-/// Version 2 drops audio presets: scenes hold their sound. Version 1 backups still restore;
-/// their scenes' audio presets are migrated into the Sound step.
-const VERSION: u8 = 2;
+/// The backup file format. Other versions are refused.
+const VERSION: u8 = 1;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,9 +25,6 @@ struct Backup {
     version: u8,
     scenes: Vec<scenes::Scene>,
     displays: Vec<displays::Preset>,
-    /// Version 1 audio presets, read only to migrate the scenes that used them.
-    #[serde(default, skip_serializing)]
-    audio: Option<serde_json::Value>,
     tv_names: BTreeMap<String, String>,
 }
 
@@ -84,7 +80,6 @@ pub fn export(path: &Path) -> Result<(), String> {
         version: VERSION,
         scenes,
         displays,
-        audio: None,
         tv_names,
     };
     let bytes = serde_json::to_vec_pretty(&backup).map_err(|e| e.to_string())?;
@@ -114,16 +109,11 @@ fn read(path: &Path) -> Result<Backup, String> {
     if bytes.len() as u64 > LIMIT {
         return Err("The backup is too large.".into());
     }
-    let mut backup: Backup =
+    let backup: Backup =
         serde_json::from_slice(&bytes).map_err(|e| format!("Invalid Director backup: {e}"))?;
-    if !(1..=VERSION).contains(&backup.version) {
+    if backup.version != VERSION {
         return Err("This backup version is unsupported.".into());
     }
-    let legacy = backup
-        .audio
-        .take()
-        .and_then(|v| v.get("presets").cloned().or(Some(v)));
-    scenes::migrate(&mut backup.scenes, legacy);
     scenes::validate_backup(&backup.scenes)?;
     displays::validate(&backup.displays)?;
     Ok(backup)
@@ -279,7 +269,6 @@ mod tests {
             version: VERSION,
             scenes: vec![],
             displays: vec![],
-            audio: None,
             tv_names: BTreeMap::new(),
         };
         let file = folder.join("Director.director-backup");
@@ -303,26 +292,5 @@ mod tests {
         fs::remove_dir(blocker).unwrap();
         restore_catalog(&import, &scene_path, &display_path).unwrap();
         assert!(displays::load(&display_path).unwrap().is_empty());
-    }
-
-    #[test]
-    fn version_one_backups_migrate_audio_presets_into_scene_sound() {
-        let folder =
-            std::env::temp_dir().join(format!("director-backup-v1-{}", std::process::id()));
-        fs::create_dir_all(&folder).unwrap();
-        let file = folder.join("old.director-backup");
-        let v1 = serde_json::json!({
-            "version": 1,
-            "scenes": [{"id":"s","name":"Desk","display":null,"audio":"p","tv":null,"actions":[]}],
-            "displays": [],
-            "audio": [{"id":"p","name":"Desk sound","output_id":"soundbar","output_name":"SOUNDBAR","volume_percent":10,"keep_changes":false}],
-            "tv_names": {}
-        });
-        fs::write(&file, serde_json::to_vec(&v1).unwrap()).unwrap();
-        let backup = read(&file).unwrap();
-        let sound = backup.scenes[0].sound.as_ref().unwrap();
-        assert_eq!(sound.volume, Some(10));
-        assert!(matches!(&sound.output, Some(SoundOutput::Device { id, .. }) if id == "soundbar"));
-        let _ = fs::remove_dir_all(folder);
     }
 }

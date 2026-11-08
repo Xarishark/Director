@@ -49,7 +49,7 @@ requires it. Applying a scene first runs the previous scene's When leaving steps
 runs them without applying another scene.";
 
 /// `director list`, or `<area> list` and the other read-only lists, with an optional
-/// `--json`. Older spellings (`display presets`, `display current`) still work.
+/// `--json`.
 fn list_command(args: &[String]) -> Option<(&'static [crate::cli_list::Category], bool, bool)> {
     use crate::cli_list::Category;
     let mut words: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -67,8 +67,8 @@ fn list_command(args: &[String]) -> Option<(&'static [crate::cli_list::Category]
     let categories: &'static [Category] = match words.as_slice() {
         ["list"] => &Category::ALL,
         ["scene", "list"] => &[Category::Scenes],
-        ["display", "list" | "presets"] => &[Category::DisplayPresets],
-        ["display", "screens" | "current"] => &[Category::Screens],
+        ["display", "list"] => &[Category::DisplayPresets],
+        ["display", "screens"] => &[Category::Screens],
         ["audio", "list"] => &[Category::AudioOutputs, Category::AudioInputs],
         ["audio", "outputs"] => &[Category::AudioOutputs],
         ["audio", "inputs"] => &[Category::AudioInputs],
@@ -146,9 +146,7 @@ mod tests {
         for (command, wanted) in [
             ("scene list", Category::Scenes),
             ("display list", Category::DisplayPresets),
-            ("display presets", Category::DisplayPresets),
             ("display screens", Category::Screens),
-            ("display current", Category::Screens),
             ("audio outputs", Category::AudioOutputs),
             ("audio inputs --json", Category::AudioInputs),
             ("tv list", Category::Tvs),
@@ -158,7 +156,7 @@ mod tests {
                 "{command}"
             );
         }
-        assert!(list("audio presets").is_none());
+        assert!(list("display presets").is_none());
         assert!(list("list scenes").is_none());
         assert!(list("audio list extra").is_none());
         assert!(list("scene apply desk").is_none());

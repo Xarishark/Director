@@ -64,7 +64,7 @@ pub struct Monitor {
     pub device_path: Option<String>,
     pub name: String,
     pub connected: bool,
-    /// None preserves legacy behavior: leave HDR unchanged.
+    /// None leaves the screen's HDR state as it is when the preset is applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hdr: Option<bool>,
     pub enabled: bool,
@@ -152,12 +152,8 @@ pub struct Preset {
     pub id: String,
     pub name: String,
     pub captured_at_unix_seconds: u64,
-    #[serde(default = "confirmation_default")]
     pub confirm_changes: bool,
     pub layout: Layout,
-}
-fn confirmation_default() -> bool {
-    true
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -287,13 +283,9 @@ pub(crate) mod tests {
         );
     }
     #[test]
-    fn legacy_presets_require_confirmation_and_opt_out_round_trips() {
+    fn confirmation_opt_out_round_trips() {
         let original = sample();
-        let mut json = serde_json::to_value(&original).unwrap();
-        json.as_object_mut().unwrap().remove("confirm_changes");
-        let legacy: Preset = serde_json::from_value(json).unwrap();
-        assert!(legacy.confirm_changes);
-        let mut automatic = legacy.clone();
+        let mut automatic = original.clone();
         automatic.confirm_changes = false;
         let restored: Preset =
             serde_json::from_slice(&serde_json::to_vec(&automatic).unwrap()).unwrap();

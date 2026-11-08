@@ -1,8 +1,8 @@
 //! Command-line names: "Desk View" is `desk-view`, so names never need quotes.
 //!
 //! CLI names are derived from the saved name every time and never stored. Lookups accept an
-//! exact ID or anything that normalizes to the same CLI name, so older quoted commands such
-//! as `"Desk View"` keep working.
+//! exact ID or anything that normalizes to the same CLI name, so a quoted name such as
+//! `"Desk View"` works too.
 
 /// Lowercase letters and digits, with every run of other characters turned into one `-`.
 /// Empty only for a name made entirely of symbols.

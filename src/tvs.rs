@@ -42,13 +42,11 @@ pub struct Tv {
     pub id: String,
     pub name: String,
     pub address: String,
-    #[serde(default)]
     pub brand: Brand,
     #[serde(default)]
     pub samsung: crate::samsung::Metadata,
     #[serde(default)]
     pub android: crate::samsung::Metadata,
-    #[serde(default)]
     pub connection: Connection,
     pub display: Option<DisplayLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -321,21 +319,11 @@ mod tests {
 }
 
 #[cfg(test)]
-mod compatibility_tests {
+mod tv_file_tests {
     use super::*;
     #[test]
-    fn legacy_paired_tv_keeps_credential_with_new_optional_metadata() {
-        let old = serde_json::json!({"id":"legacy","name":"TV","address":"192.0.2.50","connection":"encrypted","display":null,"credential":[1,2,3]});
-        let tv: Tv = serde_json::from_value(old).unwrap();
-        assert!(tv.credential == Some(vec![1, 2, 3]));
-        assert!(tv.inputs.is_empty());
-        assert!(tv.pc_input.is_none());
-        assert!(tv.network.targets().is_empty());
-        tv.validate().unwrap();
-    }
-    #[test]
     fn audio_link_roundtrips_without_repairing_or_changing_display() {
-        let mut t:Tv=serde_json::from_value(serde_json::json!({"id":"link","name":"TV","address":"192.0.2.50","display":null,"credential":[4,8]})).unwrap();
+        let mut t:Tv=serde_json::from_value(serde_json::json!({"id":"link","name":"TV","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[4,8]})).unwrap();
         let old = t.clone();
         t.audio = Some(crate::audio::DeviceSelection {
             id: "remembered-hdmi".into(),
@@ -347,17 +335,16 @@ mod compatibility_tests {
         let data = serde_json::to_vec(&t).unwrap();
         let back: Tv = serde_json::from_slice(&data).unwrap();
         assert!(back == t);
-        let mut legacy = serde_json::to_value(&t).unwrap();
-        legacy.as_object_mut().unwrap().remove("audio");
-        let back: Tv = serde_json::from_value(legacy).unwrap();
+        let mut unlinked = serde_json::to_value(&t).unwrap();
+        unlinked.as_object_mut().unwrap().remove("audio");
+        let back: Tv = serde_json::from_value(unlinked).unwrap();
         assert!(back.audio.is_none());
         t.audio.as_mut().unwrap().id.clear();
         assert!(t.validate().is_err());
     }
     #[test]
-    fn legacy_tv_defaults_to_lg_and_brand_change_invalidates_auth_and_tests() {
-        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"legacy","name":"LG","address":"192.0.2.50","display":null,"credential":[1,2]})).unwrap();
-        assert_eq!(tv.brand, Brand::Lg);
+    fn brand_change_invalidates_auth_and_tests() {
+        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"lg","name":"LG","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1,2]})).unwrap();
         let old = tv.clone();
         tv.brand = Brand::Samsung;
         tv.samsung.record(2, true);
@@ -366,12 +353,7 @@ mod compatibility_tests {
     }
     #[test]
     fn android_metadata_is_independent_and_reports_omit_private_identity() {
-        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"private-tv-id-123","name":"Private living room alias","address":"192.0.2.50","display":null,"credential":null})).unwrap();
-        let legacy = serde_json::to_value(&tv).unwrap();
-        let mut old = legacy.as_object().unwrap().clone();
-        old.remove("android");
-        let loaded: Tv = serde_json::from_value(old.into()).unwrap();
-        assert!(loaded.android.tests.is_empty());
+        let mut tv:Tv=serde_json::from_value(serde_json::json!({"id":"private-tv-id-123","name":"Private living room alias","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":null})).unwrap();
         tv.brand = Brand::TclAndroid;
         tv.credential = Some(vec![21, 42]);
         tv.android.model = Some("TCL fixture".into());

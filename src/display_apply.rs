@@ -432,9 +432,9 @@ pub(crate) mod tests {
         let result = apply(&mut backend, &wanted, || true);
         assert_eq!(result.outcome, Outcome::Failed);
         assert_eq!(backend.current.monitors[0].hdr, Some(false));
-        let mut legacy = wanted.clone();
-        legacy.monitors[0].hdr = None;
-        assert!(verify(&legacy, &before).is_ok());
+        let mut unset = wanted.clone();
+        unset.monitors[0].hdr = None;
+        assert!(verify(&unset, &before).is_ok());
     }
     #[test]
     fn no_op_and_preflight_failures_never_write() {
