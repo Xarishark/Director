@@ -44,6 +44,8 @@
           <RegistryValue Root="HKLM" Key="Software\Director\Installer" Name="MachinePath" Type="integer" Value="1" KeyPath="yes" />
           <Environment Id="AppendMachinePath" Name="PATH" Action="set" Part="last" System="yes" Value="[INSTALLFOLDER]" />
         </Component>
+        <Component Id="License" Guid="*"><File Source="$(var.SourceDir)\LICENSE" Name="LICENSE.txt" /></Component>
+        <Component Id="ThirdPartyLicenses" Guid="*"><File Source="$(var.SourceDir)\THIRD_PARTY_LICENSES.md" /></Component>
         <Component Id="WindowIcon" Guid="*">
           <File Source="$(var.ReleaseDir)\director.ico" />
         </Component>
@@ -71,6 +73,8 @@
       <ComponentRef Id="DesktopShortcut" />
       <ComponentRef Id="RunProtocol" />
       <ComponentRef Id="MachinePath" />
+      <ComponentRef Id="License" />
+      <ComponentRef Id="ThirdPartyLicenses" />
       <ComponentRef Id="WindowIcon" />
       <ComponentRef Id="DeleteIcon" />
       <ComponentRef Id="RemoteIcon" />

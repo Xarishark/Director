@@ -50,7 +50,7 @@ $setup = Join-Path $outputDir "Director-$version-x64-setup.exe"
 New-Item -ItemType Directory -Force $outputDir | Out-Null
 
 Invoke-Wix @('build', '-arch', 'x64', '-d', "Version=$version", '-d', "ReleaseDir=$release",
-             '-d', "Publisher=$publisher", '-d', "Description=$description",
+             '-d', "Publisher=$publisher", '-d', "Description=$description", '-d', "SourceDir=$root",
              '-o', $msi, (Join-Path $installerDir 'Director.wxs'))
 if ($LASTEXITCODE -ne 0) { throw 'WiX could not build the Director MSI.' }
 

@@ -111,6 +111,17 @@ The [Windows build workflow](../.github/workflows/windows-build.yml) runs for pu
 
 Set the app version in the root [Cargo.toml](../Cargo.toml) under `[package]`. Keep it in three-part numeric form, such as `0.9.1`, for MSI packaging. After changing it, refresh the root package entry in `Cargo.lock` with a normal Cargo check before running the locked build. The [MSI packaging script](../scripts/package-msi.ps1) reads the version from Cargo.toml and uses it for the MSI and setup.exe versions and filenames.
 
+## Third-party notices
+
+`THIRD_PARTY_LICENSES.md` lists the license of every crate compiled into `director.exe`, and the installer copies it beside the executable with `LICENSE.txt`. Regenerate it after adding or updating a dependency:
+
+```powershell
+cargo install cargo-about --locked --features cli
+cargo about generate -c build/about.toml build/about.hbs -o THIRD_PARTY_LICENSES.md
+```
+
+`build/about.toml` lists the accepted licenses; generation fails if a new crate uses one that isn't listed, so review it before adding it there.
+
 ## Protecting main
 
 The build check is named **Windows x64 build**. Configure it as a required check with an up-to-date branch and require pull requests for main, including administrators. Private repository branch protection requires GitHub Pro or an eligible paid organization plan. GitHub rejected protection on the repository’s current plan.
