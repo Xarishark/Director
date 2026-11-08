@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in Director doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Scenes
+        2. Apply "TV Gaming"
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Director version
+      description: Run `director --version` or see Options → About.
+      placeholder: "0.12.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Settings → System → About, for example "Windows 11 24H2 (26100.2605)".
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware involved
+      description: GPU, monitors, audio devices or TV model, if the problem involves them.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: From Options → Open logs folder. Logs contain no pairing keys, but may contain device names; trim anything you'd rather not share.
+      render: text

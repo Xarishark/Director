@@ -1,0 +1,6 @@
+# Blank issues stay enabled: Director's Report on GitHub button opens issues/new with a pre-filled title and body.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Xarishark/Director/security/advisories/new
+    about: Please report security problems privately.
