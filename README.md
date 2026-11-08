@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Windows_11-24H2%2B-0078D4?logo=windows&logoColor=white" alt="Windows 11 24H2 or newer">
   <a href="https://github.com/Xarishark/Director/actions/workflows/windows-build.yml"><img src="https://github.com/Xarishark/Director/actions/workflows/windows-build.yml/badge.svg" alt="Windows build"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License"></a>
+  <a href="https://github.com/sponsors/Xarishark"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white" alt="Sponsor Director on GitHub"></a>
 </p>
 
 <p align="center"><a href="https://github.com/Xarishark/Director/releases/latest/download/Director-x64-setup.exe"><img src="https://img.shields.io/badge/Download_for_Windows-x64_setup-0078D4?style=for-the-badge&amp;logo=windows&amp;logoColor=white" alt="Download Director for Windows (x64 setup)"></a></p>
