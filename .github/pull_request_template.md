@@ -7,7 +7,7 @@
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --locked --all-targets -- -D warnings`
 - [ ] `cargo test --locked -- --test-threads=1`
-- [ ] Docs, README or `docs/DECISIONS.md` updated where behaviour changed
+- [ ] Docs and README updated where behaviour changed
 - [ ] `THIRD_PARTY_LICENSES.md` regenerated if dependencies changed
 
 ## Tested by hand

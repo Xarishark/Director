@@ -29,7 +29,7 @@ cargo test --locked -- --test-threads=1
 
 The build script stages `director.ico`, `icons\` and `orientations\` beside the executable. Keep them there if you copy the executable somewhere else. `Cargo.lock` is committed and every CI build is `--locked`.
 
-`scripts/dev.ps1` is an optional wrapper. It finds a project-local Rust and LLVM-MinGW toolchain in `.localonly\tools` (ignored by Git) or falls back to the one on PATH, and changes environment variables only for its own process:
+`scripts/dev.ps1` is an optional wrapper. It finds a project-local Rust and LLVM-MinGW toolchain in `.localonly\tools` (machine-local; keep it out of commits) or falls back to the one on PATH, and changes environment variables only for its own process:
 
 ```powershell
 .\scripts\dev.ps1 test --locked

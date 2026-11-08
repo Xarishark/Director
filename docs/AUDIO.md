@@ -5,7 +5,7 @@ Director handles sound in two places:
 - **Live controls** change one thing right away: the **Now** page and `director audio` commands. Picking an output or microphone makes it the Windows default, a volume slider or `audio volume` sets the level, and mute buttons or `audio mute` toggle mute. Nothing is saved.
 - **A scene's Sound step** saves sound settings in the scene and applies them with the scene's other steps, as one transaction with rollback.
 
-Audio presets are retired (decision D066). Scenes that used one, and scenes that used a TV's linked audio, migrate into a Sound step when they load. See [scenes](SCENES.md).
+Audio presets are retired. Scenes that used one, and scenes that used a TV's linked audio, migrate into a Sound step when they load. See [scenes](SCENES.md).
 
 ## Now
 

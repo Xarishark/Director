@@ -31,7 +31,7 @@ cargo run
    cargo test --locked -- --test-threads=1
    ```
 
-4. Update the docs in `docs/` and the README when behaviour changes, and add an entry to [docs/DECISIONS.md](docs/DECISIONS.md) for a design decision.
+4. Update the docs in `docs/` and the README when behaviour changes, and explain design choices in the pull request description.
 5. Open the pull request against `main`. The **Windows x64 build** check must pass.
 
 Some things can't be tested in CI: applying layouts, switching audio, and talking to a real TV. Say in the pull request what you checked by hand and on which hardware. Don't change devices on someone else's machine without asking.
