@@ -412,9 +412,13 @@ impl Component for DirectorApp {
             content,
         )]);
         let status = self.status_view(cx);
-        // The update bar sits under the status area, and steps aside while work runs (its own
-        // download shows progress in the status area instead).
-        let banner = self.update.available.is_some() && !self.update.dismissed && !self.busy;
+        // The update bar sits under the status area on the Scenes start page (Options → About
+        // has the same controls), and steps aside while work runs (its own download shows
+        // progress in the status area instead).
+        let banner = self.page == Page::Scenes
+            && self.update.available.is_some()
+            && !self.update.dismissed
+            && !self.busy;
         let body = Border::new()
             .padding(Thickness::new(
                 crate::gui::ui::PAGE_PADDING_X,

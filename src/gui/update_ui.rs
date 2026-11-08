@@ -175,7 +175,7 @@ impl DirectorApp {
         }
     }
 
-    /// A bar at the bottom of every page while a newer version is available, until closed.
+    /// A bar at the bottom of the Scenes page while a newer version is available, until closed.
     pub(crate) fn update_banner(&self, cx: &ViewContext<Self>) -> View {
         use crate::gui::ui;
         let Some(release) = &self.update.available else {
