@@ -971,7 +971,7 @@ mod tests {
         assert_eq!(b.calls, ["snapshot", "display", "audio"]);
     }
     fn linked_tv() -> crate::tvs::Tv {
-        serde_json::from_value(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1],"audio":{"id":"hdmi","name":"LG HDMI"}})).unwrap()
+        serde_json::from_value(serde_json::json!({"id":"tv","name":"C1","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1],"audio":{"id":"hdmi","name":"LG HDMI"}})).unwrap()
     }
     fn tv_sound(volume: Option<u8>) -> Sound {
         Sound {
@@ -1141,7 +1141,7 @@ mod tests {
     }
     #[test]
     fn leaving_turns_the_tv_off_after_the_leave_actions() {
-        let tv = serde_json::from_value::<crate::tvs::Tv>(serde_json::json!({"id":"tv","name":"C1","address":"192.0.2.50","display":null,"credential":[1]})).unwrap();
+        let tv = serde_json::from_value::<crate::tvs::Tv>(serde_json::json!({"id":"tv","name":"C1","brand":"lg","connection":"encrypted","address":"192.0.2.50","display":null,"credential":[1]})).unwrap();
         let mut s = scene();
         s.tv = Some(TvPreparation {
             id: "tv".into(),

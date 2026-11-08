@@ -8,23 +8,19 @@ pub struct Preferences {
     pub hide_tv_setup_tip: bool,
     #[serde(default)]
     pub notify_scene_failures: bool,
-    /// Keep steps that finished when a later scene or audio preset step fails.
+    /// Keep steps that finished when a later scene step fails.
     #[serde(default)]
     pub keep_completed_changes: bool,
     /// How long scenes wait for a TV or audio device, and for waited apps (1–120 s).
     #[serde(default = "default_wait")]
     pub device_wait_seconds: u16,
-    /// The Scenes page's "make your next scene" tip was dismissed. Written only when set, so
-    /// older builds keep reading the file until the tip is dismissed.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    /// The Scenes page's "make your next scene" tip was dismissed.
+    #[serde(default)]
     pub hide_next_scene_tip: bool,
     /// After a scene selects a TV input, keep switching back to it for this long when a TV
     /// box or console takes the input over (0–60 s, 0 = off). Only for TVs that report
-    /// their input. Written only when changed, so older builds keep reading the file.
-    #[serde(
-        default = "default_input_guard",
-        skip_serializing_if = "is_default_input_guard"
-    )]
+    /// their input.
+    #[serde(default = "default_input_guard")]
     pub tv_input_guard_seconds: u16,
 }
 fn default_wait() -> u16 {
@@ -32,9 +28,6 @@ fn default_wait() -> u16 {
 }
 fn default_input_guard() -> u16 {
     crate::tv_input_guard::DEFAULT_SECONDS
-}
-fn is_default_input_guard(seconds: &u16) -> bool {
-    *seconds == default_input_guard()
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -127,13 +120,6 @@ mod tests {
         assert_eq!(initial.device_wait_seconds, 30);
         assert!(!initial.hide_next_scene_tip);
         assert_eq!(initial.tv_input_guard_seconds, 10);
-        std::fs::write(
-            &path,
-            br#"{"version":1,"preferences":{"hide_tv_setup_tip":false,"notify_scene_failures":false,"keep_completed_changes":false,"device_wait_seconds":30}}"#,
-        )
-        .unwrap();
-        assert_eq!(load(&path).unwrap(), initial, "older files still load");
-        std::fs::remove_file(&path).unwrap();
         assert_eq!(initial.audio_policy(), crate::audio::FailurePolicy::Revert);
         let hidden = Preferences {
             hide_tv_setup_tip: true,
@@ -146,15 +132,8 @@ mod tests {
         save(&path, &initial, &hidden).unwrap();
         assert_eq!(load(&path).unwrap(), hidden);
         assert_eq!(hidden.scene_policy().input_guard_seconds, 0);
-        let written = std::fs::read_to_string(&path).unwrap();
-        assert!(written.contains("tv_input_guard_seconds"));
         save(&path, &hidden, &initial).unwrap();
-        assert!(
-            !std::fs::read_to_string(&path)
-                .unwrap()
-                .contains("tv_input_guard_seconds"),
-            "the default stays out of the file for older builds"
-        );
+        assert_eq!(load(&path).unwrap(), initial);
         save(&path, &initial, &hidden).unwrap();
         assert!(save(&path, &initial, &initial).is_err());
         let future = br#"{"version":99,"preferences":{"hide_tv_setup_tip":false}}"#;
