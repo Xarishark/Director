@@ -7,6 +7,7 @@ Thanks for helping. Bug reports, TV compatibility reports and pull requests are 
 - **Crashes**: Director saves a crash report and offers **Report on GitHub** the next time it starts. That opens a pre-filled issue; attach the crash file from `%LOCALAPPDATA%\Director\Logs\Crashes` if you can.
 - **Bugs**: open an issue with your Windows version, your Director version (`director --version` or **Options → About**), the steps that went wrong, and recent log lines from **Options → Open logs folder** if they help. Logs never contain pairing keys, but they can contain device names; trim anything you'd rather not share.
 - **TV compatibility**: follow [Test a Samsung or TCL TV](docs/TV_TESTING.md) and attach the exported report.
+- **Feature requests**: use the [feature request form](https://github.com/Xarishark/Director/issues/new?template=feature.yml). If an external command-line tool or script fills a gap in your setup, name it; the aim is to build it into Director.
 - **Security issues**: please don't open a public issue; see [SECURITY.md](SECURITY.md).
 
 ## Building

@@ -1,0 +1,34 @@
+name: Feature request
+description: Something Director should do, or an external tool it could replace
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Director aims to do its job without helper tools. If you use an external command-line tool or script for displays, sound, TVs, frame-rate limits, or apps and links around a scene, tell us which one; the goal is to build it in natively.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What do you want to do?
+      description: The setup or switch you're trying to make, in your own words.
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: Tool or script this would replace
+      description: Optional. For example NirCmd, a display-switching CLI, rtss-cli, or a TV script, with the command you run.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where would you use it?
+      multiple: true
+      options:
+        - In a scene
+        - On the Now page
+        - From the command line, a shortcut or a Stream Deck
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware involved
+      description: GPU, monitors, audio devices or TV model, if it matters.
