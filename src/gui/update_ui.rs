@@ -3,6 +3,10 @@
 //! setup can replace the files.
 use crate::{DirectorApp, Message, Page, work};
 use director::update::{self, Release};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use windows_reactor::*;
 
 #[derive(Default)]
@@ -12,6 +16,9 @@ pub(crate) struct UpdateState {
     /// The banner was closed for this session.
     pub dismissed: bool,
     pub checking: bool,
+    /// While setup downloads: bytes so far (shared with the worker), the expected size, and
+    /// the count last shown.
+    download: Option<(Arc<AtomicU64>, u64, u64)>,
     /// What the last check from Options found, shown under its button.
     pub result: Option<Result<String, String>>,
 }
@@ -24,6 +31,8 @@ pub(crate) enum UpdateMessage {
     Install,
     Started(Result<(), String>),
     ReleaseNotes,
+    /// Redraw the download progress.
+    Tick,
     Dismiss,
 }
 
@@ -103,18 +112,34 @@ impl DirectorApp {
                     self.failure("Apply or discard your changes before updating Director.".into());
                     return;
                 }
-                self.begin(format!("Downloading Director {}…", release.version));
+                self.begin(format!(
+                    "Downloading Director {}. When it’s ready, confirm the Windows prompt; Director closes and reopens after the update.",
+                    release.version
+                ));
+                let received = Arc::new(AtomicU64::new(0));
+                self.update.download = Some((received.clone(), release.size, 0));
                 work(cx, move || {
+                    let reopen = update::installed_exe();
                     msg(UpdateMessage::Started(
-                        update::download(&release).and_then(|setup| update::launch(&setup)),
+                        update::download(&release, Some(&received))
+                            .and_then(|setup| update::launch(&setup, reopen.as_deref())),
                     ))
                 });
+                tick(cx);
+            }
+            UpdateMessage::Tick => {
+                if let Some((received, _, shown)) = &mut self.update.download {
+                    *shown = received.load(Ordering::Relaxed);
+                    tick(cx);
+                }
             }
             UpdateMessage::Started(result) => {
+                self.update.download = None;
                 self.end();
                 match result {
                     Ok(()) => {
-                        self.status = "Setup started. Director closes so it can update.".into();
+                        self.status =
+                            "Setup started. Director reopens when the update is done.".into();
                         director::diagnostics::flush();
                         if let Ok(window) = crate::gui::close_guard::window() {
                             use windows::Win32::{
@@ -132,6 +157,14 @@ impl DirectorApp {
             UpdateMessage::Dismiss => self.update.dismissed = true,
             _ => {}
         }
+    }
+
+    /// Download progress from 0 to 1, while setup downloads.
+    pub(crate) fn update_progress(&self) -> Option<f64> {
+        self.update
+            .download
+            .as_ref()
+            .map(|(_, total, shown)| (*shown as f64 / (*total).max(1) as f64).min(1.0))
     }
 
     fn install_label(&self) -> &'static str {
@@ -263,4 +296,11 @@ impl DirectorApp {
                 result,
             ))
     }
+}
+
+fn tick(cx: &ComponentContext<DirectorApp>) {
+    work(cx, || {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        msg(UpdateMessage::Tick)
+    });
 }

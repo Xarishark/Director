@@ -3,6 +3,7 @@
 //! window checks at startup (Options can turn that off) or the user asks.
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const LATEST: &str = "https://api.github.com/repos/Xarishark/Director/releases/latest";
 /// Setup's fixed release asset name (see the release job in the Windows build workflow).
@@ -140,7 +141,7 @@ fn hex32(text: &str) -> Option<[u8; 32]> {
 #[cfg(windows)]
 pub fn latest() -> Result<Release, String> {
     let _operation = crate::diagnostics::Operation::start("update.check", None);
-    let body = http::get(LATEST, "application/vnd.github+json", MAX_JSON)?;
+    let body = http::get(LATEST, "application/vnd.github+json", MAX_JSON, None)?;
     let release = parse_release(&body);
     crate::diagnostics::event(
         "update.check",
@@ -164,15 +165,21 @@ fn download_folder() -> PathBuf {
     std::env::temp_dir().join("Director-update")
 }
 
-/// Download the release's setup and check its size and SHA-256 digest.
+/// Download the release's setup and check its size and SHA-256 digest. `received` counts
+/// the bytes downloaded so far, for a progress bar.
 #[cfg(windows)]
-pub fn download(release: &Release) -> Result<PathBuf, String> {
+pub fn download(release: &Release, received: Option<&AtomicU64>) -> Result<PathBuf, String> {
     let _operation = crate::diagnostics::Operation::start("update.download", None);
     let folder = download_folder();
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder)
         .map_err(|e| format!("Could not create a folder for the download: {e}"))?;
-    let body = http::get(&release.download, "application/octet-stream", MAX_SETUP)?;
+    let body = http::get(
+        &release.download,
+        "application/octet-stream",
+        MAX_SETUP,
+        received,
+    )?;
     verify(release, &body)?;
     let path = folder.join(format!("Director-{}-x64-setup.exe", release.version));
     std::fs::write(&path, &body).map_err(|e| format!("Could not save the download: {e}"))?;
@@ -199,52 +206,76 @@ pub fn installed() -> bool {
 
 #[cfg(windows)]
 fn runs_from_program_files() -> bool {
-    let Some(programs) =
-        std::env::var_os("ProgramW6432").or_else(|| std::env::var_os("ProgramFiles"))
-    else {
+    let Some(expected) = installed_exe() else {
         return false;
     };
-    let expected = Path::new(&programs).join("Director").join("director.exe");
     std::env::current_exe().is_ok_and(|exe| {
         exe.to_string_lossy()
             .eq_ignore_ascii_case(&expected.to_string_lossy())
     })
 }
 
-/// Start the downloaded setup. It keeps the desktop shortcut as it is now, asks Windows for
-/// permission, replaces the installed version and offers to open Director when it's done.
+/// Where setup installs director.exe.
 #[cfg(windows)]
-pub fn launch(setup: &Path) -> Result<(), String> {
-    use windows::{
-        Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
-        core::{PCWSTR, w},
-    };
-    let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    let file = wide(&setup.to_string_lossy());
-    let arguments = wide(if desktop_shortcut() {
-        "DesktopShortcut=1"
-    } else {
-        "DesktopShortcut=0"
-    });
-    let result = unsafe {
-        ShellExecuteW(
-            None,
-            w!("open"),
-            PCWSTR(file.as_ptr()),
-            PCWSTR(arguments.as_ptr()),
-            None,
-            SW_SHOWNORMAL,
-        )
-    };
-    if result.0 as isize <= 32 {
-        return Err(format!(
-            "Windows couldn't start setup ({}). It's saved at {}.",
-            result.0 as isize,
-            setup.display()
-        ));
-    }
+pub fn installed_exe() -> Option<PathBuf> {
+    let programs = std::env::var_os("ProgramW6432").or_else(|| std::env::var_os("ProgramFiles"))?;
+    Some(Path::new(&programs).join("Director").join("director.exe"))
+}
+
+/// Start the downloaded setup with only its progress window (`/passive`): no pages to click
+/// through, just the Windows permission prompt. It keeps the desktop shortcut as it is now.
+/// A hidden `cmd` waits for setup and, when `reopen` is given and setup succeeded, starts
+/// that program again as the normal user. A cancelled prompt, a failure or a pending restart
+/// leaves it closed.
+#[cfg(windows)]
+pub fn launch(setup: &Path, reopen: Option<&Path>) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let line = waiter_command(setup, desktop_shortcut(), reopen)?;
+    let system = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .ok_or("Windows didn't report its folder, so setup couldn't start.")?;
+    std::process::Command::new(system.join("System32").join("cmd.exe"))
+        .raw_arg(&line)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| {
+            format!(
+                "Windows couldn't start setup ({e}). It's saved at {}.",
+                setup.display()
+            )
+        })?;
     crate::diagnostics::event("update.setup", "started", &setup.to_string_lossy());
     Ok(())
+}
+
+/// The `cmd.exe` arguments that run setup and, if it succeeds, reopen Director. `start
+/// /wait` sets ERRORLEVEL to setup's exit code.
+fn waiter_command(setup: &Path, shortcut: bool, reopen: Option<&Path>) -> Result<String, String> {
+    let quoted = |path: &Path| {
+        let text = path.to_string_lossy();
+        if text.is_empty() || text.contains(['"', '%', '\r', '\n']) {
+            Err(format!("Setup can't start from {}.", path.display()))
+        } else {
+            Ok(format!("\"{text}\""))
+        }
+    };
+    let mut line = format!(
+        "start \"\" /wait {} /passive DesktopShortcut={}",
+        quoted(setup)?,
+        u8::from(shortcut)
+    );
+    if let Some(app) = reopen {
+        line.push_str(&format!(
+            " & if not errorlevel 1 start \"\" {}",
+            quoted(app)?
+        ));
+    }
+    // /s: cmd removes only the outer quotes and runs the rest as written.
+    Ok(format!("/d /s /c \"{line}\""))
 }
 
 /// The installer records the desktop shortcut choice in HKLM\Software\Director\Installer.
@@ -302,7 +333,12 @@ mod http {
 
     /// An HTTPS GET that follows redirects (never to plain HTTP) and reads at most `limit`
     /// bytes. Uses the system's proxy settings.
-    pub(super) fn get(url: &str, accept: &str, limit: u64) -> Result<Vec<u8>, String> {
+    pub(super) fn get(
+        url: &str,
+        accept: &str,
+        limit: u64,
+        received: Option<&super::AtomicU64>,
+    ) -> Result<Vec<u8>, String> {
         let rest = url
             .strip_prefix("https://")
             .ok_or("Updates only use HTTPS.")?;
@@ -401,6 +437,9 @@ mod http {
                 return Ok(body);
             }
             body.extend_from_slice(&chunk[..read as usize]);
+            if let Some(received) = received {
+                received.store(body.len() as u64, super::Ordering::Relaxed);
+            }
             if body.len() as u64 > limit {
                 return Err("GitHub sent more data than expected.".into());
             }
@@ -431,9 +470,9 @@ pub fn cli(args: &[String]) -> Result<i32, String> {
         return Ok(0);
     }
     println!("Downloading setup…");
-    let setup = download(&release)?;
+    let setup = download(&release, None)?;
     println!("Checksum verified. Starting setup; confirm the Windows prompt to install.");
-    launch(&setup)?;
+    launch(&setup, None)?;
     Ok(0)
 }
 
@@ -469,9 +508,29 @@ mod tests {
     #[cfg(windows)]
     fn downloads_and_verifies_the_latest_setup() {
         let release = latest().unwrap();
-        let path = download(&release).unwrap();
+        let path = download(&release, None).unwrap();
         assert_eq!(std::fs::metadata(&path).unwrap().len(), release.size);
         std::fs::remove_dir_all(download_folder()).unwrap();
+    }
+
+    #[test]
+    fn setup_waits_then_reopens_only_after_success() {
+        let line = waiter_command(
+            Path::new(r"C:\Temp\Director-update\Director-1.0.0-x64-setup.exe"),
+            true,
+            Some(Path::new(r"C:\Program Files\Director\director.exe")),
+        )
+        .unwrap();
+        assert_eq!(
+            line,
+            r#"/d /s /c "start "" /wait "C:\Temp\Director-update\Director-1.0.0-x64-setup.exe" /passive DesktopShortcut=1 & if not errorlevel 1 start "" "C:\Program Files\Director\director.exe"""#
+        );
+        let cli = waiter_command(Path::new(r"C:\a b\s.exe"), false, None).unwrap();
+        assert_eq!(
+            cli,
+            r#"/d /s /c "start "" /wait "C:\a b\s.exe" /passive DesktopShortcut=0""#
+        );
+        assert!(waiter_command(Path::new(r"C:\%TEMP%\s.exe"), true, None).is_err());
     }
 
     #[test]
